@@ -90,15 +90,21 @@ public enum InputRules {
     public static let inlineMarkers: Set<String> = ["*", "_", "`", "~", "\u{FF5E}"]
 
     /// Checks whether typing `typed` closes `**bold**`, `*italic*`, `__bold__`, `_italic_`,
-    /// `~~strike~~` or `` `code` ``. `prefix` is the text of the line before the caret.
-    public static func inlineShortcut(prefix: String, typed: String) -> InlineMatch? {
-        let units = Array((prefix + typed).utf16)
+    /// `~~strike~~` or `` `code` ``. `prefix` is the text of the line before the caret and
+    /// `following` the character after it, if there is one.
+    ///
+    /// The line is read as `InlineParser` reads Markdown, so typing it gives what pasting it
+    /// would: a backslash makes the marker after it text; a backtick still open before the
+    /// caret may yet start code, which holds no emphasis; and letters, digits and spaces are
+    /// told apart by whole characters, in any script.
+    public static func inlineShortcut(prefix: String, typed: String, following: Character? = nil) -> InlineMatch? {
+        let line = TypedLine(prefix + typed)
         switch typed {
-        case "*": return emphasisMatch(units, marker: star, onlyAtWordEdges: false)
-        case "_": return emphasisMatch(units, marker: underscore, onlyAtWordEdges: true)
-        case "`": return codeMatch(units)
-        case "~": return tildeMatch(units, tilde: tilde)
-        case "\u{FF5E}": return tildeMatch(units, tilde: fullWidthTilde)
+        case "*": return emphasisMatch(line, marker: star, onlyAtWordEdges: false, following: following)
+        case "_": return emphasisMatch(line, marker: underscore, onlyAtWordEdges: true, following: following)
+        case "`": return codeMatch(line)
+        case "~": return tildeMatch(line, tilde: tilde)
+        case "\u{FF5E}": return tildeMatch(line, tilde: fullWidthTilde)
         default: return nil
         }
     }
@@ -107,37 +113,99 @@ public enum InputRules {
     private static let underscore = UInt16(UInt8(ascii: "_"))
     private static let backtick = UInt16(UInt8(ascii: "`"))
     private static let tilde = UInt16(UInt8(ascii: "~"))
+    private static let backslash = UInt16(UInt8(ascii: "\\"))
     private static let fullWidthTilde: UInt16 = 0xFF5E
 
-    private static func isSpace(_ unit: UInt16) -> Bool {
-        unit == 0x20 || unit == 0x09 || unit == 0x0A || unit == 0xA0 || unit == 0x3000
-    }
+    /// A line typed up to and including the character just typed, in UTF-16 units, which the
+    /// match offsets count.
+    private struct TypedLine {
+        let text: String
+        let units: [UInt16]
 
-    private static func hasTrimmedContent(_ units: [UInt16], _ range: Range<Int>) -> Bool {
-        !range.isEmpty && !isSpace(units[range.lowerBound]) && !isSpace(units[range.upperBound - 1])
-    }
+        init(_ text: String) {
+            self.text = text
+            units = Array(text.utf16)
+        }
 
-    /// A letter or digit, which an underscore inside a word sits between.
-    private static func isWordCharacter(_ unit: UInt16) -> Bool {
-        guard let scalar = Unicode.Scalar(unit) else { return false }
-        return scalar.properties.isAlphabetic || scalar.properties.numericType != nil
+        var count: Int { units.count }
+
+        subscript(index: Int) -> UInt16 { units[index] }
+
+        /// Whether the character at `index` is escaped: an odd number of backslashes before it.
+        func isEscaped(_ index: Int) -> Bool {
+            var backslashes = 0
+            var position = index - 1
+            while position >= 0, units[position] == InputRules.backslash {
+                backslashes += 1
+                position -= 1
+            }
+            return backslashes % 2 == 1
+        }
+
+        /// Any Unicode space, as `Character.isWhitespace` has it. Spaces are all single units.
+        func isSpace(_ index: Int) -> Bool {
+            Unicode.Scalar(units[index])?.properties.isWhitespace ?? false
+        }
+
+        func hasTrimmedContent(_ range: Range<Int>) -> Bool {
+            !range.isEmpty && !isSpace(range.lowerBound) && !isSpace(range.upperBound - 1)
+        }
+
+        /// The whole character ending at `offset`. A letter beyond the Basic Multilingual Plane,
+        /// like many CJK characters, takes two units, and one of those alone isn't a letter.
+        func character(before offset: Int) -> Character? {
+            guard offset > 0 else { return nil }
+            return text[..<String.Index(utf16Offset: offset, in: text)].last
+        }
+
+        /// The backtick run still open before `end`, if there is one: what follows it may yet be
+        /// code. As in Markdown, a backslash makes a backtick that would open code just text, but
+        /// inside code it's only a backslash.
+        func openCode(before end: Int) -> (start: Int, length: Int)? {
+            var open: (start: Int, length: Int)?
+            var index = 0
+            while index < end {
+                guard units[index] == InputRules.backtick else {
+                    index += 1
+                    continue
+                }
+                if open == nil, isEscaped(index) {
+                    index += 1
+                    continue
+                }
+                var length = 1
+                while index + length < end, units[index + length] == InputRules.backtick {
+                    length += 1
+                }
+                if let current = open {
+                    if current.length == length { open = nil }
+                } else {
+                    open = (index, length)
+                }
+                index += length
+            }
+            return open
+        }
     }
 
     /// `**bold**` and `*italic*`, or with underscores. An underscore only opens at the start
-    /// of a word, as in Markdown, so snake_case stays as typed.
-    private static func emphasisMatch(_ units: [UInt16], marker: UInt16, onlyAtWordEdges: Bool) -> InlineMatch? {
-        let count = units.count
-        guard count >= 3 else { return nil }
+    /// of a word and closes at its end, as in Markdown, so snake_case stays as typed.
+    private static func emphasisMatch(_ line: TypedLine, marker: UInt16, onlyAtWordEdges: Bool, following: Character?) -> InlineMatch? {
+        let count = line.count
+        guard count >= 3, !line.isEscaped(count - 1), line.openCode(before: count - 1) == nil else { return nil }
+        if onlyAtWordEdges, following?.isLetterOrNumber == true { return nil }
         func opensHere(_ index: Int) -> Bool {
-            !onlyAtWordEdges || index == 0 || !isWordCharacter(units[index - 1])
+            !onlyAtWordEdges || !(line.character(before: index)?.isLetterOrNumber ?? false)
         }
-        if units[count - 2] == marker {
+        if line[count - 2] == marker {
             // Closing pair: the nearest opening pair decides.
+            guard !line.isEscaped(count - 2) else { return nil }
             var index = count - 4
             while index >= 0 {
-                if units[index] == marker, units[index + 1] == marker, index == 0 || units[index - 1] != marker, opensHere(index) {
+                if line[index] == marker, line[index + 1] == marker, index == 0 || line[index - 1] != marker,
+                   !line.isEscaped(index), opensHere(index) {
                     let content = (index + 2)..<(count - 2)
-                    guard hasTrimmedContent(units, content) else { return nil }
+                    guard line.hasTrimmedContent(content) else { return nil }
                     return InlineMatch(range: index..<count, content: content, style: .bold)
                 }
                 index -= 1
@@ -145,14 +213,14 @@ public enum InputRules {
             return nil
         }
         // Closing single: the nearest marker must be a single one, or the user is still typing
-        // a pair.
+        // a pair. An escaped marker is text, and the search goes on past it.
         var index = count - 3
         while index >= 0 {
-            if units[index] == marker {
-                guard index == 0 || units[index - 1] != marker, units[index + 1] != marker else { return nil }
+            if line[index] == marker, !line.isEscaped(index) {
+                guard index == 0 || line[index - 1] != marker, line[index + 1] != marker else { return nil }
                 if opensHere(index) {
                     let content = (index + 1)..<(count - 1)
-                    guard hasTrimmedContent(units, content) else { return nil }
+                    guard line.hasTrimmedContent(content) else { return nil }
                     return InlineMatch(range: index..<count, content: content, style: .italic)
                 }
             }
@@ -161,30 +229,25 @@ public enum InputRules {
         return nil
     }
 
-    private static func codeMatch(_ units: [UInt16]) -> InlineMatch? {
-        let count = units.count
-        guard count >= 3, units[count - 2] != backtick else { return nil }
-        var index = count - 2
-        while index >= 0 {
-            if units[index] == backtick {
-                guard index == 0 || units[index - 1] != backtick else { return nil }
-                let content = (index + 1)..<(count - 1)
-                guard units[content].contains(where: { !isSpace($0) }) else { return nil }
-                return InlineMatch(range: index..<count, content: content, style: .code)
-            }
-            index -= 1
-        }
-        return nil
+    /// A single backtick closes the code the nearest open one started. Only single ones: a run
+    /// of two or more needs one as long to close it, which typing one at a time can't tell.
+    private static func codeMatch(_ line: TypedLine) -> InlineMatch? {
+        let count = line.count
+        guard count >= 3, line[count - 2] != backtick, let open = line.openCode(before: count - 1), open.length == 1 else { return nil }
+        let content = (open.start + 1)..<(count - 1)
+        guard content.contains(where: { !line.isSpace($0) }) else { return nil }
+        return InlineMatch(range: open.start..<count, content: content, style: .code)
     }
 
-    private static func tildeMatch(_ units: [UInt16], tilde: UInt16) -> InlineMatch? {
-        let count = units.count
-        guard count >= 5, units[count - 2] == tilde else { return nil }
+    private static func tildeMatch(_ line: TypedLine, tilde: UInt16) -> InlineMatch? {
+        let count = line.count
+        guard count >= 5, line[count - 2] == tilde, !line.isEscaped(count - 2),
+              line.openCode(before: count - 1) == nil else { return nil }
         var index = count - 4
         while index >= 0 {
-            if units[index] == tilde, units[index + 1] == tilde, index == 0 || units[index - 1] != tilde {
+            if line[index] == tilde, line[index + 1] == tilde, index == 0 || line[index - 1] != tilde, !line.isEscaped(index) {
                 let content = (index + 2)..<(count - 2)
-                guard hasTrimmedContent(units, content) else { return nil }
+                guard line.hasTrimmedContent(content) else { return nil }
                 return InlineMatch(range: index..<count, content: content, style: .strikethrough)
             }
             index -= 1

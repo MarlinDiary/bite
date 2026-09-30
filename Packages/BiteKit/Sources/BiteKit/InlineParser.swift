@@ -20,7 +20,6 @@ enum InlineParser {
         var count: Int
         let canOpen: Bool
         let canClose: Bool
-        var isActive = true
     }
 
     private struct Match {
@@ -32,11 +31,23 @@ enum InlineParser {
     static func parse(_ text: some StringProtocol) -> [InlineRun] {
         var tokens = tokenize(Array(text))
         let matches = matchDelimiters(&tokens)
+        // Each pair styles the tokens between its markers. Counting pairs in and out as the
+        // tokens go by keeps a long line linear: checking every pair for every token took
+        // seconds for a line of a few hundred thousand characters.
+        var entering = [[InlineStyle]](repeating: [], count: tokens.count + 1)
+        var leaving = [[InlineStyle]](repeating: [], count: tokens.count + 1)
+        for match in matches where match.closer - match.opener > 1 {
+            entering[match.opener + 1].append(match.style)
+            leaving[match.closer].append(match.style)
+        }
+        var depth: [InlineStyle: Int] = [:]
         var runs: [InlineRun] = []
         for (index, token) in tokens.enumerated() {
+            for style in leaving[index] { depth[style, default: 0] -= 1 }
+            for style in entering[index] { depth[style, default: 0] += 1 }
             var style: InlineStyle = []
-            for match in matches where match.opener < index && index < match.closer {
-                style.insert(match.style)
+            for (option, count) in depth where count > 0 {
+                style.insert(option)
             }
             switch token {
             case .text(let string):
@@ -56,6 +67,9 @@ enum InlineParser {
     private static func tokenize(_ characters: [Character]) -> [Token] {
         var tokens: [Token] = []
         var buffer = ""
+        // Backtick run lengths with no closing run left after some point: a later run of the
+        // same length can't find one either, so it isn't searched for again.
+        var unclosedLengths: Set<Int> = []
         func flush() {
             if !buffer.isEmpty {
                 tokens.append(.text(buffer))
@@ -73,11 +87,13 @@ enum InlineParser {
             }
             if character == "`" {
                 let length = runLength(of: "`", in: characters, from: index)
-                if let close = closingBacktickRun(length: length, in: characters, from: index + length) {
+                if !unclosedLengths.contains(length),
+                   let close = closingBacktickRun(length: length, in: characters, from: index + length) {
                     flush()
                     tokens.append(.code(codeContent(characters[(index + length)..<close])))
                     index = close + length
                 } else {
+                    unclosedLengths.insert(length)
                     buffer += String(repeating: "`", count: length)
                     index += length
                 }
@@ -148,50 +164,77 @@ enum InlineParser {
         return content
     }
 
+    /// CommonMark's delimiter matching, with its stack of possible openers and its
+    /// `openers_bottom`: once no opener was found for a kind of closer, later ones of that kind
+    /// stop looking where it stopped. Going back through the whole line for each closer, and
+    /// marking everything between each pair, made a long line quadratic.
     private static func matchDelimiters(_ tokens: inout [Token]) -> [Match] {
+        struct Kind: Hashable {
+            let character: Character
+            let canOpen: Bool
+            let lengthModThree: Int
+        }
         var matches: [Match] = []
+        // Token indices of delimiters that may still open, in order.
+        var openers: [Int] = []
+        // How far down `openers` a closer of each kind still needs to look.
+        var bottoms: [Kind: Int] = [:]
+        func popOpeners(to height: Int) {
+            openers.removeSubrange(height...)
+            for (kind, bottom) in bottoms where bottom > height {
+                bottoms[kind] = height
+            }
+        }
         for closerIndex in tokens.indices {
-            guard case .delimiter(var closer) = tokens[closerIndex], closer.canClose, closer.isActive else { continue }
-            while closer.count > 0 {
-                guard let openerIndex = opener(for: closer, before: closerIndex, in: tokens),
-                      case .delimiter(var opener) = tokens[openerIndex] else { break }
-                let used = closer.character == "~" ? 2 : (opener.count >= 2 && closer.count >= 2 ? 2 : 1)
-                let style: InlineStyle = closer.character == "~" ? .strikethrough : (used == 2 ? .bold : .italic)
-                opener.count -= used
-                closer.count -= used
-                tokens[openerIndex] = .delimiter(opener)
-                matches.append(Match(opener: openerIndex, closer: closerIndex, style: style))
-                // Emphasis can't cross: anything left between the pair is literal.
-                for between in (openerIndex + 1)..<closerIndex {
-                    if case .delimiter(var inner) = tokens[between] {
-                        inner.isActive = false
-                        tokens[between] = .delimiter(inner)
+            guard case .delimiter(var closer) = tokens[closerIndex] else { continue }
+            if closer.canClose {
+                let kind = Kind(character: closer.character, canOpen: closer.canOpen, lengthModThree: closer.originalCount % 3)
+                while closer.count > 0 {
+                    // What's left of a tilde run is too short to strike anything through. It
+                    // mustn't count as a search that failed, which would stop longer runs.
+                    if closer.character == "~", closer.count < 2 { break }
+                    var position = openers.count - 1
+                    let bottom = min(bottoms[kind] ?? 0, openers.count)
+                    var found: Int?
+                    while position >= bottom {
+                        if case .delimiter(let opener) = tokens[openers[position]], canPair(opener, closer) {
+                            found = position
+                            break
+                        }
+                        position -= 1
                     }
+                    guard let foundPosition = found, case .delimiter(var opener) = tokens[openers[foundPosition]] else {
+                        bottoms[kind] = openers.count
+                        break
+                    }
+                    let openerIndex = openers[foundPosition]
+                    let used = closer.character == "~" ? 2 : (opener.count >= 2 && closer.count >= 2 ? 2 : 1)
+                    let style: InlineStyle = closer.character == "~" ? .strikethrough : (used == 2 ? .bold : .italic)
+                    opener.count -= used
+                    closer.count -= used
+                    tokens[openerIndex] = .delimiter(opener)
+                    matches.append(Match(opener: openerIndex, closer: closerIndex, style: style))
+                    // Emphasis can't cross: anything left between the pair is literal.
+                    popOpeners(to: foundPosition + 1)
+                    if opener.count == 0 { popOpeners(to: foundPosition) }
                 }
             }
             tokens[closerIndex] = .delimiter(closer)
+            if closer.canOpen, closer.count > 0 {
+                openers.append(closerIndex)
+            }
         }
         return matches
     }
 
-    private static func opener(for closer: Delimiter, before closerIndex: Int, in tokens: [Token]) -> Int? {
-        var index = closerIndex - 1
-        while index >= 0 {
-            if case .delimiter(let opener) = tokens[index], opener.isActive, opener.canOpen, opener.count > 0,
-               opener.character == closer.character {
-                if closer.character == "~" {
-                    if opener.count >= 2, closer.count >= 2 { return index }
-                } else {
-                    // CommonMark's "rule of three", needed to read `**a*b***` correctly.
-                    let eitherBoth = opener.canClose || closer.canOpen
-                    let sum = opener.originalCount + closer.originalCount
-                    let bothMultiples = opener.originalCount % 3 == 0 && closer.originalCount % 3 == 0
-                    if !(eitherBoth && sum % 3 == 0 && !bothMultiples) { return index }
-                }
-            }
-            index -= 1
-        }
-        return nil
+    private static func canPair(_ opener: Delimiter, _ closer: Delimiter) -> Bool {
+        guard opener.canOpen, opener.count > 0, opener.character == closer.character else { return false }
+        if closer.character == "~" { return opener.count >= 2 && closer.count >= 2 }
+        // CommonMark's "rule of three", needed to read `**a*b***` correctly.
+        let eitherBoth = opener.canClose || closer.canOpen
+        let sum = opener.originalCount + closer.originalCount
+        let bothMultiples = opener.originalCount % 3 == 0 && closer.originalCount % 3 == 0
+        return !(eitherBoth && sum % 3 == 0 && !bothMultiples)
     }
 }
 

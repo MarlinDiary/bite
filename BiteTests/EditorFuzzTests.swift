@@ -92,10 +92,11 @@ struct EditorFuzzTests {
     ]
 
     private static let typed = ["a", "b", " ", "- ", "1. ", "a. ", "i. ", "> ", "\" ", "[] ", "# ", "```", "---",
-                                "**x**", "*y*", "`z`", "~~s~~", "\n", "\n", "\n", "\t", "x", "\u{4E2D}"]
+                                "**x**", "*y*", "`z`", "~~s~~", "\n", "\n", "\n", "\t", "x", "\u{4E2D}",
+                                "`**c**`", "\\*e*", "\u{1D49C}_u_", "_v_", "*\u{2003}w*", "999999999. ", "\u{20BB7}"]
 
     private static let pasted = ["x", "- a\n- b", "1. one\n2. two", "```\ncode\n```", "> q", "a\nb", "a. p\nb. q",
-                                 "**b** and *i*", "---", "# h"]
+                                 "**b** and *i*", "---", "# h", "- [x]\titem", "`**c**` and \\*e*", "999999998. a\nb\nc"]
 
     private static let actions: [FormatAction] = [.todo, .bullet, .ordered, .heading, .quote, .code, .bold, .italic,
                                                   .strikethrough, .outdent, .indent]
@@ -239,6 +240,17 @@ struct EditorFuzzTests {
         return problems
     }
 
+    /// A selection or caret as the text view makes one: never inside a character, as between
+    /// the two halves of a letter beyond the Basic Multilingual Plane, which UIKit won't do.
+    private static func whole(_ range: NSRange, in editor: EditorHarness) -> NSRange {
+        let text = editor.textView.text as NSString
+        guard range.location < text.length else { return range }
+        guard range.length > 0 else {
+            return NSRange(location: text.rangeOfComposedCharacterSequence(at: range.location).location, length: 0)
+        }
+        return text.rangeOfComposedCharacterSequences(for: range)
+    }
+
     // MARK: Running
 
     /// `trace` sees the page after every edit, for tracking a failure down.
@@ -263,14 +275,18 @@ struct EditorFuzzTests {
             case 5, 6:
                 let line = random.int(0...max(0, lines.count - 1))
                 let lineLength = (lines.isEmpty ? 0 : (lines[line] as NSString).length)
-                let column = random.chance(2) ? nil : random.int(0...lineLength)
+                var column = random.chance(2) ? nil : random.int(0...lineLength)
+                if let offset = column, offset < lineLength {
+                    column = (lines[line] as NSString).rangeOfComposedCharacterSequence(at: offset).location
+                }
                 log.append("caret \(line):\(column.map(String.init) ?? "end")")
                 editor.moveCaret(line: line, column: column)
             case 7:
                 let from = random.int(0...length)
                 let to = random.int(from...min(length, from + random.pick([2, 8, 40, 400])))
-                log.append("select \(from)..<\(to)")
-                editor.textView.selectedRange = NSRange(location: from, length: to - from)
+                let selection = whole(NSRange(location: from, length: to - from), in: editor)
+                log.append("select \(selection.location)..<\(NSMaxRange(selection))")
+                editor.textView.selectedRange = selection
             case 8:
                 let action = random.pick(actions)
                 log.append("button \(action)")
@@ -319,16 +335,18 @@ struct EditorFuzzTests {
                     let lastEnd = lines.prefix(last + 1).reduce(0) { $0 + ($1 as NSString).length + 1 } - 1
                     to = min(length, random.chance(2) ? lastEnd : lastEnd + 1)
                 }
-                let drop = random.int(0...length)
-                log.append("drag \(from)..<\(to) to \(drop)")
-                editor.controller.move(NSRange(location: from, length: to - from), to: drop)
+                let dragged = whole(NSRange(location: from, length: to - from), in: editor)
+                let drop = whole(NSRange(location: random.int(0...length), length: 0), in: editor).location
+                log.append("drag \(dragged.location)..<\(NSMaxRange(dragged)) to \(drop)")
+                editor.controller.move(dragged, to: drop)
             default:
                 // Typing over a selection, Return included.
                 let from = random.int(0...length)
                 let to = random.int(from...min(length, from + random.pick([1, 5, 30])))
                 let text = random.pick(["x", "\n", "- ", "\u{4E2D}"])
-                log.append("select \(from)..<\(to), type \(text.debugDescription)")
-                editor.textView.selectedRange = NSRange(location: from, length: to - from)
+                let selection = whole(NSRange(location: from, length: to - from), in: editor)
+                log.append("select \(selection.location)..<\(NSMaxRange(selection)), type \(text.debugDescription)")
+                editor.textView.selectedRange = selection
                 editor.type(text)
             }
             // Each edit is its own event, as on a phone. It also lets the keyboard's own work run:

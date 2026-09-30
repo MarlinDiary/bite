@@ -296,3 +296,19 @@ struct LinesWithoutTheirLastLineBreakTests {
         #expect(editor.markdown == "ba\n-\nc")
     }
 }
+
+/// Lines dropped where the caret already was, with a divider last among them: the caret was
+/// set to where it had been, so UIKit said nothing, and it stayed on the divider.
+@MainActor
+struct CaretAfterDroppingADividerTests {
+    @Test func theCaretStepsOffTheDivider() {
+        let editor = EditorHarness("t\nu\n- h\n---\np")
+        let text = editor.textView.text as NSString
+        editor.controller.move(NSRange(location: 4, length: 3), to: 1)
+        #expect(editor.markdown == "t\n- h\n---\nu\np")
+        let caret = editor.textView.selectedRange.location
+        let line = (editor.textView.text as NSString).paragraphRange(for: NSRange(location: caret, length: 0))
+        let kind = AttributedDocument.document(from: editor.textView.textStorage, in: line).blocks.first?.kind
+        #expect(kind != .divider, "caret at \(caret) in \(text)")
+    }
+}

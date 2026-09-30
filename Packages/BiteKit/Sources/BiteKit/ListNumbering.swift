@@ -133,8 +133,16 @@ public enum ListNumbering {
     /// still read back in it.
     static func marker(for ordinal: Int, style: NumberStyle?, startsList: Bool) -> String {
         guard let style, let written = written(ordinal, in: style), let value = value(ofMarker: written),
-              !startsList || (value.number == ordinal && value.style == style) else { return "\(ordinal)." }
+              !startsList || (value.number == ordinal && value.style == style) else { return digits(ordinal, startsList: startsList) }
         return written + "."
+    }
+
+    /// Markdown reads nine digits at most, as CommonMark does: `1000000000.` is text. Only a
+    /// list's first number counts, and a list can only start where one can be read, so a later
+    /// item past 999999999 is written with its last nine digits, which read as the next item.
+    private static func digits(_ ordinal: Int, startsList: Bool) -> String {
+        guard !startsList, ordinal > 999_999_999 else { return "\(ordinal)." }
+        return "\(ordinal % 1_000_000_000)."
     }
 
     /// The value of a letter or Roman numeral marker: a single letter, or a Roman numeral all in

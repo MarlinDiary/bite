@@ -29,7 +29,8 @@ public enum MarkdownSerializer {
                     index += 1
                 }
                 let fence = codeFence(for: codeLines, language: language)
-                lines.append(fence + language)
+                // A language starting with the fence's own character would read as part of it.
+                lines.append(fence + (language.first == fence.first ? " " : "") + language)
                 lines.append(contentsOf: codeLines)
                 lines.append(fence)
                 continue
@@ -188,12 +189,13 @@ public enum MarkdownSerializer {
         }
 
         let order: [InlineStyle] = [.bold, .italic, .strikethrough]
-        var output = ""
+        // Text is escaped once what's around it is known (see `escape`), so pieces come first.
+        var pieces: [(text: String, isText: Bool)] = []
         var open: [InlineStyle] = []
         func close(keeping keep: InlineStyle) {
             guard let first = open.firstIndex(where: { !keep.contains($0) }) else { return }
             for style in open[first...].reversed() {
-                output += delimiter(for: style)
+                pieces.append((delimiter(for: style), false))
             }
             open.removeSubrange(first...)
         }
@@ -203,18 +205,28 @@ public enum MarkdownSerializer {
                 // Keep open only what the next word continues with.
                 let next = segments[(index + 1)...].first(where: { !$0.isSpace })?.style ?? []
                 close(keeping: next)
-                output += segment.text
+                pieces.append((segment.text, false))
                 continue
             }
             let target = segment.style.subtracting(.code)
             close(keeping: target)
             for style in order where target.contains(style) && !open.contains(style) {
-                output += delimiter(for: style)
+                pieces.append((delimiter(for: style), false))
                 open.append(style)
             }
-            output += segment.style.contains(.code) ? codeSpan(segment.text) : escape(segment.text)
+            pieces.append(segment.style.contains(.code) ? (codeSpan(segment.text), false) : (segment.text, true))
         }
         close(keeping: [])
+
+        var output = ""
+        for (index, piece) in pieces.enumerated() {
+            guard piece.isText else {
+                output += piece.text
+                continue
+            }
+            let after = pieces[(index + 1)...].first(where: { !$0.text.isEmpty })?.text.first
+            output += escape(piece.text, before: output.last, after: after)
+        }
         return output
     }
 
@@ -238,7 +250,9 @@ public enum MarkdownSerializer {
         return needsPadding ? fence + " " + text + " " + fence : fence + text + fence
     }
 
-    private static func escape(_ text: String) -> String {
+    /// `before` and `after` are what's written either side of the text: a delimiter, a space
+    /// or other text.
+    private static func escape(_ text: String, before: Character?, after: Character?) -> String {
         // Most text has nothing to escape. The characters that may need it are all ASCII.
         guard text.utf8.contains(where: { $0 == 0x5C || $0 == 0x2A || $0 == 0x60 || $0 == 0x7E || $0 == 0x5F }) else {
             return text
@@ -250,11 +264,13 @@ public enum MarkdownSerializer {
             case "\\", "*", "`":
                 output += "\\" + String(character)
             case "~":
-                // A tilde next to another, or at either end where a `~~` delimiter may sit
-                // right beside it, would read back as part of a strikethrough run.
-                let touchesTilde = index == 0 || index == characters.count - 1
-                    || characters[index - 1] == "~" || characters[index + 1] == "~"
-                output += touchesTilde ? "\\~" : "~"
+                // A tilde next to another, the text's own or a `~~` delimiter beside it, would
+                // read back as part of a strikethrough run. Whether one is beside it is known
+                // now: escaping every tilde at the edge of a run wrote a backslash that was gone
+                // after the page was read back and saved again.
+                let previous = index > 0 ? characters[index - 1] : before
+                let next = index < characters.count - 1 ? characters[index + 1] : after
+                output += previous == "~" || next == "~" ? "\\~" : "~"
             case "_":
                 // Underscores only emphasise at the edge of a word, so snake_case stays as it
                 // is. At either end the neighbour is unknown: it may be a delimiter.

@@ -30,6 +30,8 @@ struct MarkdownFuzzTests {
 
     private static let pieces = [
         "a", "b", "word", "\u{4E2D}\u{6587}", "🙂", " ", " ", "  ", "\t",
+        // Letters in two UTF-16 units, a combining accent, and spaces beyond ASCII.
+        "\u{1D49C}", "\u{20BB7}", "e\u{0301}", "\u{2003}", "\u{00A0}", "\u{3000}",
         "*", "**", "***", "_", "__", "x_y", "~", "~~", "`", "``", "```", "~~~", "\\", "\\*",
         "#", "## ", "- ", "-", "--", "---", "+ ", "* ", "> ", "1. ", "3) ", "12.", "[ ] ", "[x]", "[X] ",
         "a. ", "i. ", "B) ", "iv. ", "Q. ", "OK. ", "mix. ", "x.",
@@ -56,7 +58,7 @@ struct MarkdownFuzzTests {
                 }
             }
             return Block(kind: kind, indent: random.int(0...3), isChecked: random.chance(2),
-                         number: random.chance(3) ? random.pick([0, 2, 7, 9, 10, 26, 27, 99, 4000, 123_456]) : nil,
+                         number: random.chance(3) ? random.pick([0, 2, 7, 9, 10, 26, 27, 99, 4000, 123_456, 999_999_998, 999_999_999]) : nil,
                          numberStyle: random.chance(2) ? random.pick(NumberStyle.allCases) : nil,
                          language: random.pick(["", "", "swift", "c++", "a b", "x`y"]), runs: runs)
         }
@@ -110,11 +112,14 @@ struct MarkdownFuzzTests {
             // Text, kinds, levels, numbers and languages always survive.
             #expect(Self.canonical(back, keepingStyles: false) == Self.canonical(document, keepingStyles: false),
                     "\(markdown.debugDescription)")
-            // Styles too, unless bold or italic changes mid-word somewhere; then the serializer
-            // may let a style go rather than write something ambiguous.
-            if !document.blocks.contains(where: { MarkdownSerializer.emphasisChangesMidWord($0.runs) }) {
-                #expect(Self.canonical(back, keepingStyles: true) == Self.canonical(document, keepingStyles: true),
-                        "\(markdown.debugDescription)")
+            // Styles too, on every line where bold or italic doesn't change mid-word; there the
+            // serializer may let a style go rather than write something ambiguous.
+            let styled = Self.canonical(document, keepingStyles: true).blocks
+            let styledBack = Self.canonical(back, keepingStyles: true).blocks
+            if styled.count == styledBack.count {
+                for index in styled.indices where !MarkdownSerializer.emphasisChangesMidWord(document.blocks[index].runs) {
+                    #expect(styledBack[index] == styled[index], "\(markdown.debugDescription), line \(index)")
+                }
             }
             // Writing what was read gives the same Markdown again.
             #expect(MarkdownSerializer.markdown(from: back) == markdown, "\(markdown.debugDescription)")

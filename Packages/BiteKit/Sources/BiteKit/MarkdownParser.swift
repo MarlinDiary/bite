@@ -154,7 +154,8 @@ public enum MarkdownParser {
             let content = afterMarker.isEmpty ? afterMarker : afterMarker.dropFirst()
             for (marker, checked) in [("[ ]", false), ("[x]", true), ("[X]", true)] where content.hasPrefix(marker) {
                 let afterTask = content.dropFirst(marker.count)
-                if afterTask.isEmpty || afterTask.first == " " {
+                // Space or tab, as GFM has it and as the other markers take.
+                if MarkdownSyntax.startsContent(afterTask) {
                     return (.todo, checked, nil, nil, afterTask.isEmpty ? afterTask : afterTask.dropFirst())
                 }
             }

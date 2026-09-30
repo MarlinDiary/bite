@@ -365,12 +365,18 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
 
     // MARK: Shortcuts
 
+    /// The characters that can set a shortcut off.
+    private static let shortcutTriggers = InputRules.inlineMarkers.union([" ", "\u{3000}", "-", "`", "\u{00B7}"])
+
     /// Returns true when `character` completed a shortcut and was consumed.
     private func handleTyped(_ character: String, at location: Int) -> Bool {
+        guard Self.shortcutTriggers.contains(character) else { return false }
         let line = lineRange(at: location)
         let block = block(of: line)
-        let prefix = string.substring(with: NSRange(location: line.location, length: location - line.location))
-        let restOfLineIsEmpty = location == contentRange(of: line).upperBound
+        let prefixRange = NSRange(location: line.location, length: location - line.location)
+        let prefix = string.substring(with: prefixRange)
+        let content = contentRange(of: line)
+        let restOfLineIsEmpty = location == content.upperBound
 
         if block.kind == .code {
             if restOfLineIsEmpty, InputRules.closesCodeBlock(prefix: prefix, typed: character) {
@@ -380,30 +386,49 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
             return false
         }
         guard block.kind != .divider else { return false }
+        // Inline code is code: what's typed in it goes in as typed. Two stars in it used to
+        // turn the text between them bold and take the stars out of the code.
+        guard !typingStyle(at: location).contains(.code) else { return false }
+        // Code earlier on the line is text too. A marker in it doesn't start a block, and
+        // stands in for no marker of an inline shortcut.
+        let code = codeRanges(in: prefixRange)
 
         switch character {
         case " ", "\u{3000}":
             // A full-width space (U+3000) comes from Chinese keyboards set to full width.
-            if let change = InputRules.blockShortcut(forPrefix: prefix) {
+            if code.isEmpty, let change = InputRules.blockShortcut(forPrefix: prefix) {
                 convert(line, removingPrefix: prefix, to: change, from: block, typed: character)
                 return true
             }
         case "-", "`", "\u{00B7}":
             // Three backticks turn the text after them into code, as in Notion. A divider holds
             // no text, so `---` only works on an empty line.
-            if let kind = InputRules.lineShortcut(forPrefix: prefix, typed: character), kind == .code || restOfLineIsEmpty {
+            if code.isEmpty, let kind = InputRules.lineShortcut(forPrefix: prefix, typed: character), kind == .code || restOfLineIsEmpty {
                 makeLine(line, removingPrefix: prefix, kind: kind, typed: character)
                 return true
             }
         default:
             break
         }
-        if InputRules.inlineMarkers.contains(character),
-           let match = InputRules.inlineShortcut(prefix: prefix, typed: character) {
-            applyInline(match, lineStart: line.location, caret: location, typed: character)
-            return true
+        guard InputRules.inlineMarkers.contains(character) else { return false }
+        // Code stands in as characters that are neither spaces, letters nor markers, the way
+        // its backticks sit in Markdown. Same length, so the match's offsets still hold.
+        let text = NSMutableString(string: prefix)
+        for range in code {
+            text.replaceCharacters(in: range, with: String(repeating: "#", count: range.length))
         }
-        return false
+        let following = location < content.upperBound ? string.substring(with: string.rangeOfComposedCharacterSequence(at: location)).first : nil
+        guard let match = InputRules.inlineShortcut(prefix: text as String, typed: character, following: following) else { return false }
+        applyInline(match, lineStart: line.location, caret: location, typed: character)
+        return true
+    }
+
+    /// Where inline code is in `range`, relative to its start.
+    private func codeRanges(in range: NSRange) -> [NSRange] {
+        guard range.length > 0 else { return [] }
+        return inlineRuns(in: storage, range: range).compactMap { run, style in
+            style.contains(.code) ? NSRange(location: run.location - range.location, length: run.length) : nil
+        }
     }
 
     private func convert(_ line: NSRange, removingPrefix prefix: String, to change: InputRules.BlockChange, from current: BlockAttributes, typed: String) {
@@ -743,6 +768,7 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         // One line pasted among text goes in as text, markers and all: `- `, `# ` or `1. ` only
         // start a block on a line of their own. Bold, italics and code still come through.
         let isOneLine = !MarkdownParser.normalizedLineBreaks(text).contains("\n")
+        if isOneLine, pasteIntoInlineCode(text, over: selection) { return }
         let document = isOneLine && hasText(besides: selection) ? MarkdownParser.parseText(text) : MarkdownParser.parse(text)
         guard !document.blocks.isEmpty else { return }
         let current = block(of: lineRange(at: selection.location))
@@ -776,6 +802,23 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
             replace(selection, with: inserted, selection: caret)
         }
         textView.scrollRangeToVisible(textView.selectedRange)
+    }
+
+    /// Into inline code a line goes in as it is, as typing puts it there: code holds no
+    /// Markdown. Code copied from Bite comes as Markdown in backticks, which go.
+    private func pasteIntoInlineCode(_ text: String, over selection: NSRange) -> Bool {
+        let block = block(of: lineRange(at: selection.location))
+        guard block.kind != .code, !string.substring(with: selection).contains("\n") else { return false }
+        let style = selection.length > 0 ? inlineStyle(at: selection.location) : typingStyle(at: selection.location)
+        guard style.contains(.code) else { return false }
+        let runs = MarkdownParser.parseText(text).blocks.first?.runs ?? []
+        let isCode = !runs.isEmpty && runs.allSatisfy { $0.style.contains(.code) }
+        var attributes = block.dictionary
+        attributes[.biteInline] = style.rawValue
+        let inserted = NSAttributedString(string: isCode ? runs.map(\.text).joined() : text, attributes: attributes)
+        replace(selection, with: inserted, selection: NSRange(location: selection.location + inserted.length, length: 0))
+        textView.scrollRangeToVisible(textView.selectedRange)
+        return true
     }
 
     // MARK: Drag and drop
@@ -911,7 +954,10 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         storage.replaceCharacters(in: range, with: replacement)
         storage.endEditing()
         isApplyingEdit = false
-        textView.selectedRange = clamp(selection)
+        // Stepped over a divider here too: UIKit says nothing when the selection is set to what
+        // it was, though the line under it may have become a divider, as when lines were
+        // dragged to where the caret was.
+        textView.selectedRange = stepOverDivider(clamp(selection))
         textView.inputDelegate?.textDidChange(textView)
         contentDidChange(in: replacedRange)
         tellKeyboardOnceItsDone()

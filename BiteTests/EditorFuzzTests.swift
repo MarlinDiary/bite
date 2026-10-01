@@ -393,9 +393,9 @@ struct EditorFuzzTests {
 
     @Test func randomEditsKeepThePageSound() {
         let environment = ProcessInfo.processInfo.environment
-        // Each edit waits for the keyboard's own bookkeeping, as on a phone, which takes a while
-        // in the simulator; this many runs take a couple of minutes.
-        let seeds = Int(environment["FUZZ_SEEDS"] ?? "") ?? 120
+        // Each edit lets the run loop turn, as between keystrokes on a phone. This many runs take
+        // a few seconds; `TEST_RUNNER_FUZZ_SEEDS=300` runs more.
+        let seeds = Int(environment["FUZZ_SEEDS"] ?? "") ?? 40
         let steps = Int(environment["FUZZ_STEPS"] ?? "") ?? 25
         let firstSeed = Int(environment["FUZZ_FIRST_SEED"] ?? "") ?? 1
         var failures: [String] = []

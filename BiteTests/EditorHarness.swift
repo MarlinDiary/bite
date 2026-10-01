@@ -23,9 +23,23 @@ final class EditorHarness {
         window.frame = frame
         textView.frame = window.bounds
         window.addSubview(textView)
-        window.makeKeyAndVisible()
+        Self.show(window)
         controller.load(markdown: markdown)
         controller.focus()
+    }
+
+    /// Puts a test window on screen. A key window takes the system keyboard along with the text
+    /// view, and the keyboard's own work after every edit made the tests five times slower; the
+    /// text view is first responder either way. `TEST_RUNNER_KEY_WINDOW=1` makes it key, for a
+    /// last check that the tests pass with the keyboard there too. Run that one test at a time
+    /// (`-parallel-testing-enabled NO`): only one window is key, so a test waiting on the run
+    /// loop lost its keyboard to the tests run meanwhile.
+    static func show(_ window: UIWindow) {
+        if ProcessInfo.processInfo.environment["KEY_WINDOW"] != nil {
+            window.makeKeyAndVisible()
+        } else {
+            window.isHidden = false
+        }
     }
 
     /// Types each character as a separate keystroke. `\n` is Return and `\t` is Tab.

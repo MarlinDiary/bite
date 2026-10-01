@@ -12,6 +12,8 @@ struct DotPager: UIViewRepresentable {
     /// The page mostly on screen right now. During a swipe it runs ahead of or behind
     /// `selection`, and the dot bar follows it.
     @Binding var visiblePage: Int
+    /// Set while a finger is on the dot bar.
+    var isDotBarTouched = false
     @Environment(DotStore.self) private var store
 
     func makeCoordinator() -> DotPagerCoordinator {
@@ -55,6 +57,8 @@ struct DotPager: UIViewRepresentable {
             controller.loadedRevision = store.revisions[controller.dot]
             controller.load(markdown: store.markdown[controller.dot])
         }
+        // Before the page: the finger that picked it may still be down.
+        coordinator.isDotBarTouched = isDotBarTouched
         coordinator.show(page: selection)
     }
 }
@@ -111,6 +115,14 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
     /// Set while SwiftUI is updating the pager, when its state can't change.
     private var isInSwiftUIUpdate = false
 
+    /// Set while a finger is on the dot bar. Sliding along it passes page after page, and the
+    /// keyboard waits for the finger to lift: passed on at every dot, it held each one up.
+    var isDotBarTouched = false {
+        didSet {
+            if oldValue, !isDotBarTouched { dotBarLetGo() }
+        }
+    }
+
     /// Selection changed from SwiftUI (the dot bar).
     func show(page: Int) {
         guard page != scrollView.currentPage, controllers.indices.contains(page) else { return }
@@ -118,14 +130,21 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         pageAwaitingFocus = nil
         let moveKeyboard = keyboardIsUp
         // The page shows up already where it will be edited, not scrolling there once it has.
-        if moveKeyboard { controllers[page].arrive() }
+        if moveKeyboard, !controllers[page].textView.isFirstResponder { controllers[page].arrive() }
         haptics.prepare()
         isInSwiftUIUpdate = true
         scrollView.go(to: page)
         isInSwiftUIUpdate = false
-        if moveKeyboard {
+        if moveKeyboard, !isDotBarTouched {
             passKeyboard(to: page)
         }
+    }
+
+    /// The finger is off the dot bar, and the page it left on screen takes the keyboard.
+    private func dotBarLetGo() {
+        let page = scrollView.currentPage
+        guard keyboardIsUp, !controllers[page].textView.isFirstResponder else { return }
+        passKeyboard(to: page)
     }
 
     /// Hands the keyboard to `page`. The page giving it up keeps its room for the keyboard, as
@@ -145,12 +164,30 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
 
     /// The pages beside `page`, readied once the current frame is done, while nothing moves. A
     /// page can take several milliseconds, more than a frame, and done as a finger started to
-    /// drag, it made the page catch.
+    /// drag, it made the page catch. The pages further away follow, one at a time.
     private func prepareNeighbors(of page: Int) {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.scrollView.isDragging, !self.scrollView.isDecelerating else { return }
             self.ready(page - 1)
             self.ready(page + 1)
+            self.prepareFarPages(from: page)
+        }
+    }
+
+    /// Readies the nearest page to `page` that isn't ready yet, a moment later, and then the next,
+    /// while the keyboard stays on `page`. A finger sliding along the dots then finds every page
+    /// ready; readying them as it went held up each dot it passed, the first time.
+    private func prepareFarPages(from page: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, self.keyboardIsUp, self.scrollView.currentPage == page,
+                  self.controllers[page].textView.isFirstResponder else { return }
+            let waiting = self.controllers.indices.filter { !self.controllers[$0].textView.keepsKeyboardRoom && $0 != page }
+            guard let next = waiting.min(by: { abs($0 - page) < abs($1 - page) }) else { return }
+            // While anything moves, the page being scrolled too, it waits its turn.
+            if self.isStill(showing: page), !self.isDotBarTouched {
+                self.ready(next)
+            }
+            self.prepareFarPages(from: page)
         }
     }
 

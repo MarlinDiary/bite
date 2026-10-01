@@ -221,6 +221,44 @@ struct PassingTheKeyboardTests {
         #expect(harness.editing == nil)
     }
 
+    /// Sliding along the dots passes page after page. The keyboard waits for the finger to lift,
+    /// and then moves to the page it left on screen: passed on at every dot, it held each one up.
+    /// Each page passed is readied for it meanwhile.
+    @Test func slidingAlongTheDotsPassesTheKeyboardOnceTheFingerLifts() {
+        let harness = PagerHarness(editing: 1)
+        harness.pager.isDotBarTouched = true
+        harness.pager.show(page: 2)
+        harness.pager.show(page: 3)
+        #expect(harness.scrollView.currentPage == 3)
+        #expect(harness.editing == 1)
+        #expect(harness.pager.controllers[3].textView.keepsKeyboardRoom)
+        harness.pager.isDotBarTouched = false
+        #expect(harness.editing == 3)
+    }
+
+    /// With the keyboard on a page, every other page is readied in turn, so a finger sliding
+    /// along the dots finds them all ready.
+    @Test func everyPageIsReadiedInTurn() async {
+        let harness = PagerHarness(editing: 1)
+        harness.pager.show(page: 3)
+        #expect(harness.editing == 3)
+        for _ in 0..<40 where !harness.pager.controllers.allSatisfy({ $0.dot == 3 || $0.textView.keepsKeyboardRoom }) {
+            await harness.wait(0.05)
+        }
+        #expect(harness.pager.controllers.filter { $0.dot != 3 }.allSatisfy { $0.textView.keepsKeyboardRoom })
+    }
+
+    /// Slid back to the page being edited, the keyboard stays where it is.
+    @Test func slidingBackToThePageBeingEdited() {
+        let harness = PagerHarness(editing: 1)
+        harness.pager.isDotBarTouched = true
+        harness.pager.show(page: 2)
+        harness.pager.show(page: 1)
+        harness.pager.isDotBarTouched = false
+        #expect(harness.editing == 1)
+        #expect(harness.scrollView.currentPage == 1)
+    }
+
     /// A dot picked while a swipe settles takes the keyboard, and keeps it once the swipe is over.
     @Test func aDotPickedMeanwhileKeepsTheKeyboard() async {
         let harness = PagerHarness(editing: 1)

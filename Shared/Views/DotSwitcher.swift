@@ -10,9 +10,15 @@ struct DotSwitcher: View {
     let highlighted: Int
     /// Called just before a tap opens another dot's page, as opposed to sliding onto it.
     var onTap: () -> Void = {}
+    /// Called with true as a finger comes down on the bar, before it opens a page, and with
+    /// false once it's lifted.
+    var onTouch: (Bool) -> Void = { _ in }
     @Environment(DotStore.self) private var store
     /// The dot under the finger while one is down on the bar.
     @State private var touchedDot: Int?
+    /// Whether a finger is down on the bar. Unlike `onEnded`, this also ends when the system
+    /// takes the touch away.
+    @GestureState private var isTouched = false
 
     /// Every size here is a phone's, times this. A Mac's controls are smaller than a phone's,
     /// which are made for a finger: there the bar is 30 points tall, as a toolbar's controls are.
@@ -52,18 +58,29 @@ struct DotSwitcher: View {
         .contentShape(.capsule)
         .gesture(
             DragGesture(minimumDistance: 0)
+                .updating($isTouched) { _, state, _ in state = true }
                 .onChanged { value in
                     let dot = dot(at: value.location.x)
                     // The finger's first touch is a tap; every dot after that, a slide.
                     let isTouchDown = touchedDot == nil
+                    if isTouchDown { onTouch(true) }
                     if touchedDot != dot { touchedDot = dot }
                     guard selection != dot else { return }
                     if isTouchDown { onTap() }
                     selection = dot
                 }
-                .onEnded { _ in touchedDot = nil }
+                .onEnded { _ in lift() }
         )
+        .onChange(of: isTouched) { _, isTouched in
+            if !isTouched { lift() }
+        }
         .glassEffect(.regular.interactive(), in: .capsule)
+    }
+
+    private func lift() {
+        guard touchedDot != nil else { return }
+        touchedDot = nil
+        onTouch(false)
     }
 
     /// The dot at `x` across the bar; past either end, the one at that end.

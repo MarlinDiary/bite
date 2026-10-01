@@ -11,6 +11,8 @@ struct RootView: View {
     /// Set by a tap on a dot, whose page opens at once: the wash then changes with it. After a
     /// swipe, or while sliding along the dots, the wash fades over instead.
     @State private var washChangesAtOnce = false
+    /// Set while a finger is on the dot bar.
+    @State private var isDotBarTouched = false
 
     var body: some View {
         @Bindable var store = store
@@ -24,10 +26,12 @@ struct RootView: View {
                 .animation(washChangesAtOnce ? nil : .easeInOut(duration: 0.35), value: visiblePage)
 
             // Full height at all times; the text views handle the keyboard with their own insets.
-            DotPager(selection: $store.selection, visiblePage: Binding(get: { visiblePage }, set: { reportedPage = $0 }))
+            DotPager(selection: $store.selection, visiblePage: Binding(get: { visiblePage }, set: { reportedPage = $0 }),
+                     isDotBarTouched: isDotBarTouched)
                 .ignoresSafeArea()
 
-            TopBar(selection: $store.selection, visiblePage: visiblePage) { washChangesAtOnce = true }
+            TopBar(selection: $store.selection, visiblePage: visiblePage, onTap: { washChangesAtOnce = true },
+                   onTouch: { isDotBarTouched = $0 })
         }
         .background(Color(uiColor: .systemBackground))
         .tint(accent)
@@ -42,9 +46,10 @@ private struct TopBar: View {
     @Binding var selection: Int
     let visiblePage: Int
     let onTap: () -> Void
+    let onTouch: (Bool) -> Void
 
     var body: some View {
-        DotSwitcher(selection: $selection, highlighted: visiblePage, onTap: onTap)
+        DotSwitcher(selection: $selection, highlighted: visiblePage, onTap: onTap, onTouch: onTouch)
             .frame(maxWidth: .infinity)
             .overlay(alignment: .trailing) {
                 DotMenu(dot: selection)

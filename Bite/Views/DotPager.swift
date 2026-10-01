@@ -35,6 +35,9 @@ struct DotPager: UIViewRepresentable {
         store.reportPendingEdits = { [weak coordinator] in
             coordinator?.controllers.forEach { $0.reportPendingChange() }
         }
+        store.clearInEditor = { [weak coordinator] dot in
+            coordinator?.controllers[dot].clear()
+        }
         coordinator.scrollView.currentPage = selection
         coordinator.letPageScrollToTop(selection)
         return coordinator.container

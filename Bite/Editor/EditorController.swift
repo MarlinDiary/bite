@@ -648,6 +648,16 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
 
     // MARK: Format bar and menu actions
 
+    /// Empties the page as one edit, which undo brings back: Clear Text asks for no
+    /// confirmation, so a slip of the finger is one undo away.
+    func clear() {
+        finishComposing()
+        typingOverride = nil
+        replace(NSRange(location: 0, length: storage.length), with: styledText(for: BiteDocument()),
+                selection: NSRange(location: 0, length: 0))
+        reportPendingChange()
+    }
+
     func perform(_ action: FormatAction) {
         finishComposing()
         switch action {

@@ -20,6 +20,8 @@ final class DotStore {
     /// Set by the editors, which report typing once it pauses: brings any change they haven't
     /// reported yet into `markdown`.
     @ObservationIgnored var reportPendingEdits: () -> Void = {}
+    /// Set by the editors: empties a dot as an edit, which undo brings back.
+    @ObservationIgnored var clearInEditor: ((Int) -> Void)?
 
     private static let selectionKey = "selectedDot"
 
@@ -71,7 +73,17 @@ final class DotStore {
         return markdown[dot]
     }
 
+    /// The page as plain text (see `PlainTextSerializer`), with any typing not reported yet.
+    func currentPlainText(dot: Int) -> String {
+        PlainTextSerializer.plainText(from: MarkdownParser.parse(currentMarkdown(dot: dot)))
+    }
+
     func clear(dot: Int) {
+        if let clearInEditor {
+            clearInEditor(dot)
+            saveNow()
+            return
+        }
         // Typing from a moment ago goes in first, so it can't come back after the page is cleared.
         reportPendingEdits()
         markdown[dot] = ""

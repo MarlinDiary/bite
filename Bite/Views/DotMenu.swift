@@ -2,27 +2,43 @@ import SwiftUI
 import UIKit
 import BiteKit
 
-/// The "…" button: copy as Markdown, share, clear, and the app icon's colour.
+/// The "…" button: settings, copying the page as Markdown or plain text, clearing it, and
+/// sharing it.
 struct DotMenu: View {
     let dot: Int
     @Environment(DotStore.self) private var store
-    @State private var isConfirmingClear = false
+    @State private var isShowingSettings = false
 
     var body: some View {
+        let isEmpty = store.isEmpty[dot]
         Menu {
             Section {
-                Button("Copy as Markdown", systemImage: "doc.on.doc") {
+                Button("Settings", systemImage: "gearshape") {
+                    isShowingSettings = true
+                }
+            }
+            Section {
+                Button("Copy Markdown", systemImage: "doc.on.doc") {
                     UIPasteboard.general.string = store.currentMarkdown(dot: dot)
                 }
-                Button("Share…", systemImage: "square.and.arrow.up") {
+                .disabled(isEmpty)
+                Button("Copy Plain Text", systemImage: "doc.plaintext") {
+                    UIPasteboard.general.string = store.currentPlainText(dot: dot)
+                }
+                .disabled(isEmpty)
+                // Neither red nor asked about: the page is cleared as an edit, which undo brings
+                // back.
+                Button("Clear Text", systemImage: "eraser") {
+                    store.clear(dot: dot)
+                }
+                .disabled(isEmpty)
+            }
+            Section {
+                Button("Share Text", systemImage: "square.and.arrow.up") {
                     ShareSheet.present(text: store.currentMarkdown(dot: dot))
                 }
+                .disabled(isEmpty)
             }
-            AppIconPicker()
-            Button("Clear Dot", systemImage: "trash", role: .destructive) {
-                isConfirmingClear = true
-            }
-            .disabled(store.isEmpty[dot])
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 17, weight: .semibold))
@@ -30,57 +46,15 @@ struct DotMenu: View {
                 // The glass style pads this out to 44 points, the height of the dot bar.
                 .frame(width: 30, height: 30)
         }
+        .menuOrder(.fixed)
         // The system's glass button, not a glass effect on the label: the menu grows out of it
         // and shrinks back into it. With a separate glass layer, closing the menu left a second,
         // broken rim around the button for a moment.
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
-        .confirmationDialog("Clear this dot?", isPresented: $isConfirmingClear, titleVisibility: .visible) {
-            Button("Clear", role: .destructive) {
-                store.clear(dot: dot)
-            }
-        } message: {
-            Text("Everything in this dot will be deleted.")
+        .sheet(isPresented: $isShowingSettings) {
+            SettingsView()
         }
-    }
-}
-
-/// The app icon, a ring like the dots', comes in every dot's colour, as Tot's does. Orange is
-/// the main icon; the others are alternate icons named after their colour.
-private struct AppIconPicker: View {
-    private static let mainColor = "Orange"
-    @State private var choice = Self.currentChoice
-
-    var body: some View {
-        Picker("App Icon", systemImage: "circle.circle", selection: $choice) {
-            ForEach(DotPalette.colors.indices, id: \.self) { index in
-                Text(DotPalette.colors[index].name).tag(index)
-            }
-        }
-        .pickerStyle(.menu)
-        .onChange(of: choice) { _, index in
-            guard index != Self.currentChoice else { return }
-            Task {
-                do {
-                    try await UIApplication.shared.setAlternateIconName(Self.iconName(for: index))
-                } catch {
-                    choice = Self.currentChoice
-                }
-            }
-        }
-    }
-
-    private static func iconName(for index: Int) -> String? {
-        let color = DotPalette.colors[index].name
-        return color == mainColor ? nil : "AppIcon-\(color)"
-    }
-
-    /// An alternate icon this version no longer has, such as the orange one from before orange
-    /// became the main icon, shows as the main icon.
-    private static var currentChoice: Int {
-        let name = UIApplication.shared.alternateIconName
-        return DotPalette.colors.indices.first { iconName(for: $0) == name }
-            ?? DotPalette.colors.indices.first { iconName(for: $0) == nil } ?? 0
     }
 }
 

@@ -17,10 +17,11 @@ struct TopBar: View {
     static let cornerRadius = DotSwitcher.height / 2 + margin
 
     var body: some View {
-        DotSwitcher(selection: $store.selection, highlighted: onScreen.page ?? store.selection)
+        let page = onScreen.page ?? store.selection
+        DotSwitcher(selection: $store.selection, highlighted: page)
             .frame(maxWidth: .infinity)
             .overlay(alignment: .trailing) {
-                MenuButton(showMenu: showMenu)
+                MenuButton(ink: DotPalette.colors[page].color, showMenu: showMenu)
             }
             .padding(.horizontal, Self.margin)
             .padding(.top, Self.margin)
@@ -31,6 +32,8 @@ struct TopBar: View {
 
 /// As tall as the dot bar, as on the phone, and of the same glass.
 private struct MenuButton: View {
+    /// The colour of the page on screen, which the phone's button takes from the tint.
+    let ink: Color
     let showMenu: (CGRect) -> Void
     @State private var frame = CGRect.zero
     private let size = DotSwitcher.height
@@ -41,7 +44,7 @@ private struct MenuButton: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 17 * DotSwitcher.scale, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(ink)
                 .frame(width: size, height: size)
                 .contentShape(.circle)
         }

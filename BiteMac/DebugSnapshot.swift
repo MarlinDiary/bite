@@ -25,7 +25,8 @@ enum DebugSnapshot {
             store.selection = dot
         }
         panel.showOnceRingIsPlaced()
-        // `-snapshotSelect start length` selects text; `-snapshotScroller` shows the indicator.
+        // `-snapshotSelect start length` selects text; `-snapshotScroller` shows the indicator;
+        // `-snapshotDetached` shows the panel as dragged away from the ring.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
             let page = panel.controllers[store.selection].textView
             if let index = arguments.firstIndex(of: "-snapshotSelect"), index + 2 < arguments.count,
@@ -41,18 +42,21 @@ enum DebugSnapshot {
                 dump(page, 0)
             }
             if arguments.contains("-snapshotInactive") {
-                // As when the panel is kept open and another window takes the keyboard.
-                panel.setKeepsOpenForSnapshot(true)
+                // As when the panel's been dragged away from the ring and another window takes the
+                // keyboard.
+                panel.placement.isDetached = true
                 let other = BitePanel(contentRect: NSRect(x: 0, y: 0, width: 60, height: 60), styleMask: [.borderless, .nonactivatingPanel],
                                       backing: .buffered, defer: false)
                 other.makeKeyAndOrderFront(nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     other.orderOut(nil)
-                    panel.setKeepsOpenForSnapshot(false)
                 }
             }
             if arguments.contains("-snapshotScroller") {
                 (page.enclosingScrollView as? PageScrollView)?.showIndicatorForSnapshot()
+            }
+            if arguments.contains("-snapshotDetached") {
+                panel.placement.isDetached = true
             }
         }
         if arguments.contains("-snapshotSettings") {
@@ -64,6 +68,11 @@ enum DebugSnapshot {
         if arguments.contains("-snapshotMenu") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 panel.showMenuForSnapshot()
+            }
+        }
+        if arguments.contains("-snapshotShare") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                panel.shareForSnapshot()
             }
         }
     }

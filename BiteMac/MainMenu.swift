@@ -63,7 +63,6 @@ enum MainMenu {
         }))
         main.addItem(submenu("Window", [
             item("Close", #selector(NSWindow.performClose(_:)), "w"),
-            item("Keep Window Open", #selector(PanelController.toggleKeepOpen(_:))),
         ]))
         return main
     }

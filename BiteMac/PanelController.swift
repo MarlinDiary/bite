@@ -4,8 +4,8 @@ import BiteKit
 
 /// The panel the ring in the menu bar opens, just below it: the dot bar over the page of the
 /// dot picked. It takes typing even while the system won't make Bite the active app, and goes
-/// away as soon as anything else is clicked, unless it's kept open. A swipe to another Space
-/// takes it along.
+/// away as soon as anything else is clicked. A swipe to another Space takes it along. Dragged by
+/// its top, it comes away from the ring and stays where it's put until it's closed.
 final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     let store: DotStore
     let controllers: [EditorController]
@@ -16,12 +16,12 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     private var scrollViews: [PageScrollView] = []
     /// The page mostly on screen while a swipe moves between two, which the dot bar follows.
     let onScreen = PageOnScreen()
+    let placement = PanelPlacement()
+    /// Set while the panel is put below the ring, which isn't a drag taking it away.
+    private var isPositioning = false
     private var topBar: NSHostingView<TopBar>?
     private var shownPage: Int?
     /// Kept open, the panel stays while other apps are used.
-    private var keepsOpen = UserDefaults.standard.bool(forKey: PanelController.keepsOpenKey) {
-        didSet { UserDefaults.standard.set(keepsOpen, forKey: Self.keepsOpenKey) }
-    }
     /// When the panel last went away because something else was clicked.
     private var hiddenByClickElsewhere: ContinuousClock.Instant?
     /// When the panel last lost the keyboard to something else, until it's known what: a click
@@ -37,7 +37,6 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     private var sharePicker: NSSharingServicePicker?
 
     static let topBarHeight = TopBar.height
-    private static let keepsOpenKey = "keepsPanelOpen"
     private static let sizeKey = "panelSize"
 
     /// A panel for a test leaves the app in use active, and hears neither the person's clicks nor
@@ -122,7 +121,9 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     private func addTopBar() {
         background.takesScroll = { [weak self] event in self?.takesScroll(event) ?? false }
-        let topBar = NSHostingView(rootView: TopBar(store: store, onScreen: onScreen) { [weak self] anchor in
+        let topBar = NSHostingView(rootView: TopBar(store: store, onScreen: onScreen, placement: placement) { [weak self] in
+            self?.hide()
+        } showMenu: { [weak self] anchor in
             self?.showMenu(below: anchor)
         })
         // The bar fits the panel; it never sizes the panel to fit itself.
@@ -316,7 +317,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     func show() {
         storeDidChange()
-        position()
+        if !placement.isDetached { position() }
         // Hidden to give the app in use back the keyboard (see `hide`).
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
         panel.makeKeyAndOrderFront(nil)
@@ -360,10 +361,12 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         }
     }
 
+    /// Closed, a panel dragged away from the ring goes back below it next time.
     func hide() {
         guard panel.isVisible else { return }
         store.saveNow()
         panel.orderOut(nil)
+        placement.isDetached = false
         statusItem?.isHighlighted = false
         stopHearingClicks()
         // Back to the app that was in use, unless another window of Bite's is. Bite gives it back by
@@ -376,7 +379,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     /// Another window of Bite's, Settings, is coming up in front.
     func hideForOtherWindow() {
-        guard !keepsOpen, panel.isVisible else { return }
+        guard !placement.isDetached, panel.isVisible else { return }
         store.saveNow()
         panel.orderOut(nil)
         statusItem?.isHighlighted = false
@@ -400,7 +403,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     func windowDidResignKey(_ notification: Notification) {
         guard panel.isVisible else { return }
         store.saveNow()
-        guard !keepsOpen else { return }
+        guard !placement.isDetached else { return }
         let lost = ContinuousClock.now
         if let clicked = clickedElsewhere, lost - clicked < Self.causeWindow {
             putAway()
@@ -420,8 +423,15 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     /// does the same (see `windowDidResignKey`).
     func clickedOutside() {
         clickedElsewhere = .now
-        guard !keepsOpen, panel.isVisible, !panel.isKeyWindow else { return }
+        guard !placement.isDetached, panel.isVisible, !panel.isKeyWindow else { return }
         putAway()
+    }
+
+    /// The panel is being dragged by its top: it comes away from the ring. AppKit says so only for
+    /// a drag, not for the panel put in place or resized.
+    func windowWillMove(_ notification: Notification) {
+        guard panel.isVisible, !isPositioning else { return }
+        placement.isDetached = true
     }
 
     /// The panel shows on every Space. Changed to just now, the Space took the keyboard, and the
@@ -445,7 +455,9 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
             if let visible = NSScreen.main?.visibleFrame {
                 frame.size.height = min(frame.height, visible.height - 16)
                 frame.origin = NSPoint(x: visible.maxX - frame.width - 12, y: visible.maxY - frame.height - 6)
+                isPositioning = true
                 panel.setFrame(frame, display: false)
+                isPositioning = false
             }
             return
         }
@@ -454,7 +466,9 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         frame.size.height = min(frame.height, visible.height - 16)
         frame.origin.x = min(max(ring.midX - frame.width / 2, visible.minX + 8), visible.maxX - frame.width - 8)
         frame.origin.y = max(min(ring.minY, visible.maxY) - frame.height - 6, visible.minY + 8)
+        isPositioning = true
         panel.setFrame(frame, display: false)
+        isPositioning = false
     }
 
     private static var savedSize: NSSize {
@@ -469,60 +483,88 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     // MARK: The menu
 
-    /// The "…" menu, which the ring's right click shows too.
+    /// The "…" menu: settings, the page's own commands, and quitting.
     func makeMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
         let dot = store.selection
         let hasText = !store.isEmpty[dot]
-        menu.addItem(item("Settings…", action: #selector(AppDelegate.showSettings(_:)), target: NSApp.delegate))
+        menu.addItem(settingsItem())
         menu.addItem(.separator())
-        menu.addItem(item("Copy Markdown", action: #selector(copyMarkdown), isEnabled: hasText))
-        menu.addItem(item("Copy Plain Text", action: #selector(copyPlainText), isEnabled: hasText))
+        menu.addItem(item("Copy Markdown", symbol: "doc.on.doc", action: #selector(copyMarkdown), isEnabled: hasText))
+        menu.addItem(item("Copy Plain Text", symbol: "doc.plaintext", action: #selector(copyPlainText), isEnabled: hasText))
         // Neither red nor asked about: the page is cleared as an edit, which undo brings back.
-        menu.addItem(item("Clear Text", action: #selector(clearText), isEnabled: hasText))
+        menu.addItem(item("Clear Text", symbol: "eraser", action: #selector(clearText), isEnabled: hasText))
         menu.addItem(.separator())
-        let picker = NSSharingServicePicker(items: [hasText ? store.currentMarkdown(dot: dot) : ""])
-        sharePicker = picker
-        let share = picker.standardShareMenuItem
-        share.title = "Share Text"
-        // A Mac's menus go without pictures.
-        share.image = nil
-        share.isEnabled = hasText
-        menu.addItem(share)
+        menu.addItem(item("Share Text", symbol: "square.and.arrow.up", action: #selector(shareText), isEnabled: hasText))
         menu.addItem(.separator())
-        let keepOpen = item("Keep Window Open", action: #selector(toggleKeepOpen(_:)))
-        keepOpen.state = keepsOpen ? .on : .off
-        menu.addItem(keepOpen)
-        menu.addItem(item("Quit Bite", action: #selector(NSApplication.terminate(_:)), target: NSApp))
+        menu.addItem(quitItem())
         return menu
     }
 
-    private func item(_ title: String, action: Selector, target: AnyObject? = nil, isEnabled: Bool = true) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+    /// The ring's right click: Bite's own commands, none of the page's.
+    func makeRingMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(settingsItem())
+        menu.addItem(.separator())
+        menu.addItem(quitItem())
+        return menu
+    }
+
+    private func settingsItem() -> NSMenuItem {
+        item("Settings…", symbol: "gearshape", key: ",", action: #selector(AppDelegate.showSettings(_:)), target: NSApp.delegate)
+    }
+
+    private func quitItem() -> NSMenuItem {
+        item("Quit Bite", symbol: "power", key: "q", action: #selector(NSApplication.terminate(_:)), target: NSApp)
+    }
+
+    /// With the phone's pictures, and the keys the same commands have in Bite's menus.
+    private func item(_ title: String, symbol: String, key: String = "", action: Selector, target: AnyObject? = nil,
+                      isEnabled: Bool = true) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = target ?? self
         item.isEnabled = isEnabled
+        show(symbol, on: item)
         return item
     }
 
-    #if DEBUG
-    /// Without saving it: the person's own choice stays as it was.
-    func setKeepsOpenForSnapshot(_ keepsOpen: Bool) {
-        let saved = UserDefaults.standard.object(forKey: Self.keepsOpenKey)
-        self.keepsOpen = keepsOpen
-        UserDefaults.standard.set(saved, forKey: Self.keepsOpenKey)
+    /// Since macOS 27, AppKit hides a menu item's picture unless it's asked to show it.
+    private func show(_ symbol: String, on item: NSMenuItem) {
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        if #available(macOS 27, *) {
+            item.preferredImageVisibility = .visible
+        }
     }
 
+    #if DEBUG
     func showMenuForSnapshot() {
-        guard let topBar else { return }
-        let size = DotSwitcher.height
-        showMenu(below: CGRect(x: topBar.bounds.maxX - TopBar.margin - size, y: TopBar.margin, width: size, height: size))
+        showMenu(below: menuButtonFrame)
+    }
+
+    func shareForSnapshot() {
+        shareText()
     }
     #endif
+
+    /// The "…" button, in the top bar.
+    private var menuButtonFrame: CGRect {
+        let size = DotSwitcher.height
+        return CGRect(x: (topBar?.bounds.maxX ?? 0) - TopBar.margin - size, y: TopBar.margin, width: size, height: size)
+    }
 
     private func showMenu(below anchor: CGRect) {
         guard let topBar else { return }
         makeMenu().popUp(positioning: nil, at: NSPoint(x: anchor.minX, y: anchor.maxY + 6), in: topBar)
+    }
+
+    /// The system's share picker, below the "…" button. The share item AppKit makes for a menu did
+    /// nothing from the panel's.
+    @objc private func shareText() {
+        guard let topBar else { return }
+        let picker = NSSharingServicePicker(items: [store.currentMarkdown(dot: store.selection)])
+        sharePicker = picker
+        picker.show(relativeTo: menuButtonFrame, of: topBar, preferredEdge: .maxY)
     }
 
     @objc private func copyMarkdown() {
@@ -538,10 +580,6 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         controllers[store.selection].focus()
     }
 
-    @objc func toggleKeepOpen(_ sender: Any?) {
-        keepsOpen.toggle()
-    }
-
     /// ⌘1 to ⌘7, from the Dots menu.
     @objc func selectDot(_ sender: NSMenuItem) {
         store.selection = sender.tag
@@ -549,8 +587,6 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(toggleKeepOpen(_:)):
-            menuItem.state = keepsOpen ? .on : .off
         case #selector(selectDot(_:)):
             menuItem.state = store.selection == menuItem.tag ? .on : .off
         default:
@@ -762,4 +798,10 @@ final class PageScrollView: NSScrollView {
 @Observable
 final class PageOnScreen {
     var page: Int?
+}
+
+/// Whether the panel has been dragged away from the ring, to stand on its own until it's closed.
+@Observable
+final class PanelPlacement {
+    var isDetached = false
 }

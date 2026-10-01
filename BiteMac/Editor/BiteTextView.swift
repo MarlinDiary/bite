@@ -123,7 +123,7 @@ final class BiteTextView: NSTextView {
         guard let layer else { return }
         // AppKit's highlight is drawn by a view of its own over this one's layers. Taken clear of
         // colour (see `configure`), it still went grey while the window wasn't key, as when the
-        // panel is kept open and another app is used.
+        // panel's dragged away from the ring and another app is used.
         for view in subviews where NSStringFromClass(type(of: view)) == "_NSTextSelectionView" && view.alphaValue != 0 {
             view.alphaValue = 0
         }

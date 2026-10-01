@@ -49,12 +49,28 @@ struct MacPanelTests {
         let menu = panel.makeMenu()
         let titles = menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
         #expect(titles == ["Settings…", "-", "Copy Markdown", "Copy Plain Text", "Clear Text", "-", "Share Text", "-",
-                           "Keep Window Open", "Quit Bite"])
+                           "Quit Bite"])
+        // The phone's pictures, which macOS hides unless asked, and the keys Bite's menus give the
+        // same commands.
+        for item in menu.items where !item.isSeparatorItem {
+            #expect(item.image != nil, "\(item.title)")
+            if #available(macOS 27, *) {
+                #expect(item.preferredImageVisibility == .visible, "\(item.title)")
+            }
+        }
+        #expect(menu.items.first { $0.title == "Settings…" }?.keyEquivalent == ",")
+        #expect(menu.items.first { $0.title == "Quit Bite" }?.keyEquivalent == "q")
         // Nothing in red, and nothing to copy, clear or share on an empty page.
         let hasText = !store.isEmpty[store.selection]
         for title in ["Copy Markdown", "Copy Plain Text", "Clear Text", "Share Text"] {
             #expect(menu.items.first { $0.title == title }?.isEnabled == hasText)
         }
+    }
+
+    /// The ring's right click has Bite's own commands, none of the page's.
+    @Test func theRingsMenuIsBitesOwn() {
+        let menu = panel().makeRingMenu()
+        #expect(menu.items.map { $0.isSeparatorItem ? "-" : $0.title } == ["Settings…", "-", "Quit Bite"])
     }
 
     /// The ring closes what it opened. The panel had the keyboard without Bite being the
@@ -109,6 +125,48 @@ struct MacPanelTests {
         panel.clickedOutside()
         #expect(!panel.isShown)
         other.orderOut(nil)
+    }
+
+    /// Dragged away from the ring, the panel stays where it's put, whatever's clicked, until it's
+    /// closed. Then it goes back below the ring.
+    @Test func aPanelDraggedAwayStaysUntilClosed() async {
+        let panel = panel()
+        panel.show()
+        let window = panel.windowForTesting
+        let belowTheRing = window.frame
+        panel.windowWillMove(Notification(name: NSWindow.willMoveNotification, object: window))
+        #expect(panel.placement.isDetached)
+        window.setFrameOrigin(NSPoint(x: belowTheRing.minX - 200, y: belowTheRing.minY - 150))
+        let other = otherWindow()
+        other.makeKeyAndOrderFront(nil)
+        panel.clickedOutside()
+        await wait(0.7)
+        #expect(panel.isShown)
+        // Shown again where it is, as when Bite is opened from Finder.
+        panel.show()
+        #expect(window.frame.origin == NSPoint(x: belowTheRing.minX - 200, y: belowTheRing.minY - 150))
+        // Its close button, the ring, Esc and Command-W all close it.
+        panel.hide()
+        #expect(!panel.isShown)
+        #expect(!panel.placement.isDetached)
+        panel.show()
+        #expect(window.frame.origin == belowTheRing.origin)
+        panel.hide()
+        other.orderOut(nil)
+    }
+
+    /// Put below the ring, or resized from its corner, the panel isn't being dragged away.
+    @Test func movedOrResizedInCodeItStaysWithTheRing() {
+        let panel = panel()
+        panel.show()
+        let window = panel.windowForTesting
+        var frame = window.frame
+        frame.origin.x -= 40
+        frame.size.height -= 30
+        window.setFrame(frame, display: false)
+        window.setFrameOrigin(NSPoint(x: frame.minX + 10, y: frame.minY + 10))
+        #expect(!panel.placement.isDetached)
+        panel.hide()
     }
 
     /// Nothing heard, as for Command-Tab on this Space: it goes a moment later.

@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = PanelController(store: store)
         let statusItem = StatusItemController()
         statusItem.onClick = { [weak panel] in panel?.toggle() }
-        statusItem.menu = { [weak panel] in panel?.makeMenu() ?? NSMenu() }
+        statusItem.menu = { [weak panel] in panel?.makeRingMenu() ?? NSMenu() }
         panel.statusItem = statusItem
         self.panel = panel
         self.statusItem = statusItem

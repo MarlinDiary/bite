@@ -19,6 +19,24 @@ struct MacMenuTests {
         #expect(other.markdown == "by")
     }
 
+    /// What an undo puts back, or a redo types again, is left with the caret after it, not
+    /// selected; a selection there before, as for a bold undone, stays.
+    @Test func undoAndRedoLeaveACaret() {
+        let editor = EditorHarness("a")
+        editor.moveCaret(line: 0)
+        editor.type("hello")
+        #expect(editor.textView.tryToPerform(Selector(("undo:")), with: nil))
+        #expect(editor.textView.tryToPerform(Selector(("redo:")), with: nil))
+        #expect(editor.markdown == "ahello")
+        #expect(editor.textView.selectedRange == NSRange(location: 6, length: 0))
+        let bold = EditorHarness("a word here")
+        bold.select(from: (0, 2), to: (0, 6))
+        #expect(bold.textView.tryToPerform(#selector(BiteTextView.toggleBold(_:)), with: nil))
+        let selected = bold.textView.selectedRange
+        #expect(bold.textView.tryToPerform(Selector(("undo:")), with: nil))
+        #expect(bold.textView.selectedRange == selected)
+    }
+
     @Test func formatMenuStylesTheSelection() {
         let editor = EditorHarness("a word here")
         editor.select(from: (0, 2), to: (0, 6))

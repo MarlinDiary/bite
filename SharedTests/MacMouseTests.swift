@@ -11,7 +11,11 @@ struct MacMouseTests {
         let editor = EditorHarness(markdown)
         editor.window.makeKeyAndOrderFront(nil)
         editor.window.makeFirstResponder(editor.textView)
-        if let manager = editor.textView.textLayoutManager { manager.ensureLayout(for: manager.documentRange) }
+        if let manager = editor.textView.textLayoutManager {
+            manager.ensureLayout(for: manager.documentRange)
+            // What's on screen, which the pointer finds its lines in, as in a window shown a while.
+            manager.textViewportLayoutController.layoutViewport()
+        }
         return editor
     }
 
@@ -151,6 +155,26 @@ struct MacMouseTests {
         // The same from in the text.
         drag(in: editor, from: point(of: 20, in: editor), through: [inFirstLine, NSPoint(x: 60, y: -30)])
         #expect(view.selectedRange == NSRange(location: 0, length: 20))
+    }
+
+    /// A press between two paragraphs goes into the nearer line, where it was along it. In the
+    /// half nearer the paragraph above, the caret went to the end of that line.
+    @Test func aPressBetweenParagraphsGoesIntoTheNearerLine() {
+        let editor = editor("First paragraph line here\nSecond paragraph line here")
+        let view = editor.textView
+        let above = point(of: 5, in: editor)
+        let below = point(of: 31, in: editor)
+        let height = view.firstRect(forCharacterRange: NSRange(location: 5, length: 1), actualRange: nil).height
+        let top = above.y + height / 2
+        let bottom = below.y - height / 2
+        for fraction in [0.1, 0.3] as [CGFloat] {
+            drag(in: editor, from: NSPoint(x: above.x, y: top + (bottom - top) * fraction), through: [])
+            #expect((4...6).contains(view.selectedRange.location) && view.selectedRange.length == 0, "at \(fraction)")
+        }
+        for fraction in [0.7, 0.9] as [CGFloat] {
+            drag(in: editor, from: NSPoint(x: above.x, y: top + (bottom - top) * fraction), through: [])
+            #expect((29...32).contains(view.selectedRange.location) && view.selectedRange.length == 0, "at \(fraction)")
+        }
     }
 
     /// In the text, AppKit's own selecting goes on as before.

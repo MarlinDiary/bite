@@ -619,16 +619,23 @@ final class BitePanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     /// A click or a key in the panel makes Bite the active app, which the system allows for what's
-    /// done in its window. Only the active app sets the pointer: until then it stayed an arrow
+    /// done in its window. Only the app in front sets the pointer: until then it stayed an arrow
     /// over the text, never the I-beam.
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
         case .leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown:
-            if activatesBite, !NSApp.isActive { NSApp.activate() }
+            if activatesBite, !Self.biteIsInFront { NSApp.activate() }
         default:
             break
         }
         super.sendEvent(event)
+    }
+
+    /// Whether Bite is the app in front, as the system has it. With the panel keyed, AppKit said
+    /// Bite was active while another app stayed in front, so it never asked to be, and the pointer
+    /// stayed that app's arrow.
+    private static var biteIsInFront: Bool {
+        NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
     }
 
     /// Bite may not be the active app while the panel has the keyboard, and then its menus don't

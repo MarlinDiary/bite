@@ -79,6 +79,9 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         for name in [NSNotification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange] {
             NotificationCenter.default.addObserver(self, selector: #selector(undoManagerDidChange), name: name, object: pageUndoManager)
         }
+        for name in [NSNotification.Name.NSUndoManagerWillUndoChange, .NSUndoManagerWillRedoChange] {
+            NotificationCenter.default.addObserver(self, selector: #selector(undoManagerWillChange), name: name, object: pageUndoManager)
+        }
         #endif
     }
 
@@ -1380,6 +1383,19 @@ final class EditorController: NSObject, EditorTextViewDelegate {
 
     @objc private func undoManagerDidChange(_ notification: Notification) {
         settleUnannouncedEdit()
+        // AppKit selects the text an undo puts back or a redo types again. It's left as a caret
+        // after it, as on the phone; a selection that was there before, as for a bold undone,
+        // stays.
+        let selection = textView.selectedRange
+        if selection.length > 0, selection != selectionBeforeUndo {
+            textView.setSelectedRange(NSRange(location: NSMaxRange(selection), length: 0))
+        }
+    }
+
+    private var selectionBeforeUndo: NSRange?
+
+    @objc private func undoManagerWillChange(_ notification: Notification) {
+        selectionBeforeUndo = textView.selectedRange
     }
     #endif
 

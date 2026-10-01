@@ -506,24 +506,29 @@ final class BiteTextView: NSTextView {
             editor?.toggleTodo(at: location)
             return
         }
-        if isBelowText(point), !hasMarkedText(), !event.modifierFlags.contains(.control) {
-            selectFromEnd(with: event)
+        if event.clickCount == 1, !hasMarkedText(), !event.modifierFlags.contains(.control),
+           isBelowText(point) || pointOnNearerLine(point) != nil {
+            trackSelection(from: event)
             return
         }
         super.mouseDown(with: event)
     }
 
-    /// Below the last line, where TextKit finds no text, AppKit did nothing with a press: the caret
-    /// stayed put, and a drag up into the text only moved it, selecting nothing. As in any Mac text
-    /// view, the press puts the caret at the end, a drag selects from there, and with Shift held
-    /// the selection runs on to the end.
-    private func selectFromEnd(with event: NSEvent) {
+    /// Where TextKit finds no line, AppKit did a press wrong. Below the last line it did nothing:
+    /// the caret stayed put, and a drag up into the text only moved it. Between two paragraphs, in
+    /// the half nearer the one above, it put the caret at the end of that line, wherever along it
+    /// the press was. Here, as in any Mac text view, the press puts the caret at the end below the
+    /// text and in the nearer line between paragraphs, a drag selects from there, and with Shift
+    /// held the selection runs on to it.
+    private func trackSelection(from event: NSEvent) {
         guard let editor else { return }
         window?.makeFirstResponder(self)
         let end = editor.allowedSelection(NSRange(location: (string as NSString).length, length: 0)).location
-        let anchor = event.modifierFlags.contains(.shift) ? selectedRange().location : end
-        var index = end
-        select(from: anchor, to: end, stillSelecting: true)
+        guard var index = dragIndex(at: convert(event.locationInWindow, from: nil), end: end) else { return }
+        let selection = selectedRange()
+        let anchor = !event.modifierFlags.contains(.shift) ? index
+            : index < selection.location ? NSMaxRange(selection) : selection.location
+        select(from: anchor, to: index, stillSelecting: true)
         while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             index = dragIndex(at: convert(next.locationInWindow, from: nil), end: end) ?? index
             let isUp = next.type == .leftMouseUp
@@ -533,22 +538,45 @@ final class BiteTextView: NSTextView {
         }
     }
 
-    /// Where a drag at `point` reaches, as AppKit's own drags do: above the page the start, below
-    /// the text the end, and between the page's top and the first line, that line. TextKit finds
-    /// nothing above the first line, and the drag let go of its selection there. Below the text
-    /// it isn't asked at all, as a point query there once didn't come back.
+    /// Where a press or drag at `point` reaches, as AppKit's own drags do: above the page the
+    /// start, below the text the end, between paragraphs the nearer line, and between the page's
+    /// top and the first line, that line. TextKit finds nothing above the first line, and a drag
+    /// let go of its selection there. Below the text it isn't asked at all, as a point query there
+    /// once didn't come back.
     private func dragIndex(at point: NSPoint, end: Int) -> Int? {
         if point.y < 0 { return 0 }
         if isBelowText(point) { return end }
-        var top = point.y
+        var target = pointOnNearerLine(point) ?? point
         if let layoutManager = textLayoutManager {
             layoutManager.enumerateTextLayoutFragments(from: layoutManager.documentRange.location, options: [.ensuresLayout]) { fragment in
-                top = max(point.y, fragment.layoutFragmentFrame.minY + textContainerOrigin.y + 1)
+                target.y = max(target.y, fragment.layoutFragmentFrame.minY + textContainerOrigin.y + 1)
                 return false
             }
         }
-        let index = characterIndexForInsertion(at: NSPoint(x: point.x, y: top))
+        let index = characterIndexForInsertion(at: target)
         return index == NSNotFound ? nil : index
+    }
+
+    /// `point` in the spacing between two paragraphs, moved into whichever of their lines is
+    /// nearer, where it was along it.
+    private func pointOnNearerLine(_ point: NSPoint) -> NSPoint? {
+        let y = point.y - textContainerOrigin.y
+        var textBottomAbove: CGFloat?
+        var nearer: CGFloat?
+        forEachLaidOutFragment { fragment in
+            let frame = fragment.layoutFragmentFrame
+            guard let first = fragment.textLineFragments.first, let last = fragment.textLineFragments.last else { return true }
+            let textTop = frame.minY + first.typographicBounds.minY
+            let textBottom = frame.minY + last.typographicBounds.maxY
+            if let above = textBottomAbove, y > above, y < textTop {
+                nearer = y - above < textTop - y ? above - 1 : textTop + 1
+                return false
+            }
+            if y <= textBottom { return false }
+            textBottomAbove = textBottom
+            return true
+        }
+        return nearer.map { NSPoint(x: point.x, y: $0 + textContainerOrigin.y) }
     }
 
     private func select(from anchor: Int, to index: Int, stillSelecting: Bool) {

@@ -26,6 +26,9 @@ final class BiteTextView: UITextView {
     var keyboardOverlap: CGFloat = 0 {
         didSet {
             guard abs(oldValue - keyboardOverlap) > 0.5 else { return }
+            // With the keyboard gone, no page is ready for it any more: where it comes back, the
+            // pages beside are readied again.
+            if keyboardOverlap == 0 { keepsKeyboardRoom = false }
             applyKeyboardInset()
             // Keep the caret clear of a keyboard that's coming up.
             if keyboardOverlap > oldValue, !isTracking {
@@ -42,8 +45,22 @@ final class BiteTextView: UITextView {
     /// to shrink in two steps and the second one, which ran outside any animation, made the
     /// text jump.
     private var wantedKeyboardOverlap: CGFloat {
-        isFirstResponder && !isResigning ? keyboardOverlap : 0
+        (isFirstResponder && !isResigning) || keepsKeyboardRoom ? keyboardOverlap : 0
     }
+
+    /// Set on a page beside the one being edited: readied to be swiped to (`arrive`), or just
+    /// swiped away from. It keeps its room for the keyboard, and so its place by the caret, so
+    /// a swipe to it has nothing left to do. The room still goes when the keyboard does.
+    private(set) var keepsKeyboardRoom = false {
+        didSet { wasScrolledSinceReady = false }
+    }
+
+    /// Set when a page ready for the keyboard is scrolled by hand before it takes it. It then
+    /// stays where it was scrolled to: taking the keyboard scrolled it back to the caret.
+    private var wasScrolledSinceReady = false
+    /// The selection as that page took the keyboard. UIKit scrolls to it then, and again once the
+    /// keyboard says it's up; neither happens until the selection changes.
+    private var selectionNotToScrollTo: NSRange?
 
     /// UIKit starts the keyboard's exit animation inside `resignFirstResponder`, while this view
     /// still reports being first responder.
@@ -61,25 +78,71 @@ final class BiteTextView: UITextView {
             self.updateInsets()
         }
         // Inside the keyboard's own animation the change rides along with it; otherwise give it
-        // one, so a shorter page slides into place instead of snapping.
+        // one, so a shorter page slides into place instead of snapping. A page off screen, one
+        // the keyboard has just moved away from, takes it at once: still running when a quick
+        // swipe brought the page back, the animation moved its text as it came in.
         if UIView.inheritedAnimationDuration > 0 {
             apply()
-        } else {
+        } else if isOnScreen {
             UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: apply)
+        } else {
+            UIView.performWithoutAnimation(apply)
         }
+    }
+
+    /// Whether any of the page shows: the pages beside it sit off screen in the pager.
+    private var isOnScreen: Bool {
+        guard let window else { return false }
+        return convert(bounds, to: window).intersects(window.bounds)
     }
 
     /// Called by the editor when the finger lifts at the end of a drag.
     func dragDidEnd() {
+        if keepsKeyboardRoom, !isFirstResponder { wasScrolledSinceReady = true }
         applyKeyboardInset()
     }
 
     @discardableResult
     override func becomeFirstResponder() -> Bool {
+        let keepsPlace = wasScrolledSinceReady && !isFirstResponder
         let became = super.becomeFirstResponder()
+        if became, keepsPlace { selectionNotToScrollTo = selectedRange }
         // Moving to this page with the keyboard already up: nothing else will tell it.
-        if became { applyKeyboardInset() }
+        if became {
+            keepsKeyboardRoom = false
+            applyKeyboardInset()
+        }
         return became
+    }
+
+    /// Puts a page about to be moved to with the keyboard up where editing it will scroll it,
+    /// before it's on screen: room made for the keyboard and the caret in view, all at once. The
+    /// page used to arrive where it was, often the top, and then scroll down to the caret.
+    func arrive() {
+        keepsKeyboardRoom = true
+        // Whatever was still moving the page, a scroll or a change of its room for the keyboard,
+        // stops where it is, so nothing is left to play out as it comes in.
+        layer.removeAllAnimations()
+        setContentOffset(contentOffset, animated: false)
+        UIView.performWithoutAnimation {
+            updateScrollIndicatorInsets()
+            if abs(insetKeyboardOverlap - keyboardOverlap) > 0.5 {
+                insetKeyboardOverlap = keyboardOverlap
+                updateInsets()
+            }
+            // Text not laid out yet has estimated heights, so the caret found far down is where
+            // it's estimated to be. Laid out where the page goes, it's where it really is.
+            for _ in 0..<3 {
+                layoutIfNeeded()
+                guard let target = caretScrollTarget() else { break }
+                setContentOffset(CGPoint(x: contentOffset.x, y: target), animated: false)
+            }
+        }
+    }
+
+    /// For the page giving the keyboard up to another: it's likely swiped back to.
+    func keepKeyboardRoom() {
+        keepsKeyboardRoom = true
     }
 
     @discardableResult
@@ -88,6 +151,7 @@ final class BiteTextView: UITextView {
         // elsewhere in the text. Left marked on a page no longer being edited, as when another
         // dot was picked, it went unsaved, and the next word composed there replaced it.
         if markedTextRange != nil { unmarkText() }
+        selectionNotToScrollTo = nil
         isResigning = true
         defer {
             isResigning = false
@@ -223,6 +287,10 @@ final class BiteTextView: UITextView {
     /// is laid out, so the text used to move in two steps. Instead, scroll once after layout, to
     /// where the caret actually is.
     override func scrollRectToVisible(_ rect: CGRect, animated: Bool) {
+        if let kept = selectionNotToScrollTo {
+            if isFirstResponder, kept == selectedRange { return }
+            selectionNotToScrollTo = nil
+        }
         if isFirstResponder, selectedRange.length == 0 {
             requestCaretScroll()
         } else {
@@ -239,13 +307,20 @@ final class BiteTextView: UITextView {
     /// above the keyboard rather than pressed against it.
     private func scrollCaretIntoView(animated: Bool) {
         // Never move the text while a finger is on it (scrolling, or dragging the keyboard away).
-        guard isFirstResponder, !isTracking, !isDragging, !isDecelerating,
-              let position = selectedTextRange?.end else { return }
+        guard isFirstResponder, !isTracking, !isDragging, !isDecelerating else { return }
         // No overlap yet with an on-screen keyboard means it's still on its way; its arrival
         // triggers the one scroll that's needed, instead of two in a row.
         if keyboardOverlap == 0, !HardwareKeyboard.isConnected { return }
+        guard let target = caretScrollTarget() else { return }
+        setContentOffset(CGPoint(x: contentOffset.x, y: target), animated: animated)
+    }
+
+    /// Where the page scrolls to for the caret to be in view (see `scrollCaretIntoView`), or nil
+    /// if it's in view where the page is.
+    private func caretScrollTarget() -> CGFloat? {
+        guard let position = selectedTextRange?.end else { return nil }
         let caret = caretRect(for: position)
-        guard !caret.isNull, !caret.isInfinite else { return }
+        guard !caret.isNull, !caret.isInfinite else { return nil }
         let visibleTop = contentOffset.y + topObstruction
         let visibleBottom = contentOffset.y + bounds.height - bottomObstruction
         let comfort = min(96, max(0, (visibleBottom - visibleTop) * 0.25))
@@ -259,8 +334,8 @@ final class BiteTextView: UITextView {
         }
         let maxOffset = max(-contentInset.top, contentSize.height + contentInset.bottom - bounds.height)
         target = min(max(target, -contentInset.top), maxOffset)
-        guard abs(target - contentOffset.y) > 0.5 else { return }
-        setContentOffset(CGPoint(x: contentOffset.x, y: target), animated: animated)
+        guard abs(target - contentOffset.y) > 0.5 else { return nil }
+        return target
     }
 
     /// TextKit gives an empty line's caret the line spacing on top, so it stood taller there

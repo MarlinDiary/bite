@@ -68,6 +68,8 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
     private var lastVisiblePage: Int?
     /// Set while a swipe settles, so the keyboard moves over once it lands.
     private var pageAwaitingFocus: Int?
+    /// Set while the keyboard waits to move over until the pager is let go of.
+    private var isWaitingToPassKeyboard = false
 
     override init() {
         super.init()
@@ -75,7 +77,16 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         scrollView.scrollsToTop = false
         scrollView.pageViews = controllers.map(\.textView)
         container.onKeyboardOverlapChange = { [weak self] overlap in
-            self?.controllers.forEach { $0.textView.keyboardOverlap = overlap }
+            guard let self else { return }
+            let isComingUp = overlap > 0 && self.controllers.first?.textView.keyboardOverlap == 0
+            self.controllers.forEach { $0.textView.keyboardOverlap = overlap }
+            // Once the keys are up; readying pages while they slide in could hold them up.
+            if isComingUp {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                    guard let self else { return }
+                    self.prepareNeighbors(of: self.scrollView.currentPage)
+                }
+            }
         }
         container.editingTextView = { [weak self] in
             self?.controllers.first { $0.textView.isFirstResponder }?.textView
@@ -100,14 +111,53 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
     /// Selection changed from SwiftUI (the dot bar).
     func show(page: Int) {
         guard page != scrollView.currentPage, controllers.indices.contains(page) else { return }
+        // Picked during a swipe, this page takes the keyboard, not the one the swipe was headed for.
+        pageAwaitingFocus = nil
         let moveKeyboard = keyboardIsUp
+        // The page shows up already where it will be edited, not scrolling there once it has.
+        if moveKeyboard { controllers[page].arrive() }
         haptics.prepare()
         isInSwiftUIUpdate = true
         scrollView.go(to: page)
         isInSwiftUIUpdate = false
         if moveKeyboard {
-            controllers[page].focus()
+            passKeyboard(to: page)
         }
+    }
+
+    /// Hands the keyboard to `page`. The page giving it up keeps its room for the keyboard, as
+    /// it's likely swiped back to, and the pages beside the new one are readied.
+    private func passKeyboard(to page: Int) {
+        controllers.first { $0.textView.isFirstResponder && $0.dot != page }?.textView.keepKeyboardRoom()
+        controllers[page].focus()
+        prepareNeighbors(of: page)
+    }
+
+    /// With the keyboard up, a page is made ready to be swiped to while it's still off screen
+    /// (see `EditorController.arrive`).
+    private func ready(_ page: Int) {
+        guard keyboardIsUp, controllers.indices.contains(page), !controllers[page].textView.isFirstResponder else { return }
+        controllers[page].arrive()
+    }
+
+    /// The pages beside `page`, readied once the current frame is done, while nothing moves. A
+    /// page can take several milliseconds, more than a frame, and done as a finger started to
+    /// drag, it made the page catch.
+    private func prepareNeighbors(of page: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.scrollView.isDragging, !self.scrollView.isDecelerating else { return }
+            self.ready(page - 1)
+            self.ready(page + 1)
+        }
+    }
+
+    /// The page a drag heads for: to the right for a finger moving left.
+    private func pageAhead(of page: Int, in scrollView: UIScrollView) -> Int? {
+        let pan = scrollView.panGestureRecognizer
+        let moved = pan.translation(in: scrollView).x
+        let heading = moved != 0 ? moved : pan.velocity(in: scrollView).x
+        guard heading != 0 else { return nil }
+        return page + (heading < 0 ? 1 : -1)
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -121,6 +171,10 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         }
         lastVisiblePage = page
         letPageScrollToTop(page)
+        // A drag carried on past the next page brings the one after it on screen.
+        if scrollView.isDragging, let ahead = pageAhead(of: page, in: scrollView) {
+            DispatchQueue.main.async { [weak self] in self?.ready(ahead) }
+        }
         if isInSwiftUIUpdate {
             // The jump from the dot bar lands in the middle of SwiftUI's update, which would drop
             // the change; pass it on right after.
@@ -132,21 +186,73 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         haptics.prepare()
+        // Only the page the drag heads for, and only if it isn't ready yet. Pulled past the first
+        // or last page there's none: readying the page behind made the rubber band catch.
+        if let ahead = pageAhead(of: self.scrollView.currentPage, in: scrollView),
+           controllers.indices.contains(ahead), !controllers[ahead].textView.keepsKeyboardRoom {
+            ready(ahead)
+        }
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { finishSwipe() }
     }
 
     func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
         let width = max(scrollView.bounds.width, 1)
         let page = min(max(Int((targetContentOffset.pointee.x / width).rounded()), 0), controllers.count - 1)
         guard page != self.scrollView.currentPage else { return }
-        if keyboardIsUp { pageAwaitingFocus = page }
+        if keyboardIsUp {
+            pageAwaitingFocus = page
+            // Flicked on again before this lands, the next page would be readied as the finger
+            // comes down. Now, as the page flies, it's done by then.
+            let beyond = page + (page > self.scrollView.currentPage ? 1 : -1)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.controllers.indices.contains(beyond),
+                      !self.controllers[beyond].textView.keepsKeyboardRoom else { return }
+                self.ready(beyond)
+            }
+        }
         self.scrollView.currentPage = page
         select?(page)
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        finishSwipe()
+    }
+
+    /// Passing the keyboard holds everything up for about a tenth of a second. A finger that
+    /// caught the pager as it bounced back from past the first or last page was held up with it,
+    /// and the pull it started caught, so the keyboard waits for the finger to let go.
+    private func finishSwipe() {
         guard let page = pageAwaitingFocus else { return }
+        guard isStill(showing: page) else {
+            waitToPassKeyboard()
+            return
+        }
         pageAwaitingFocus = nil
-        controllers[page].focus()
+        guard keyboardIsUp else { return }
+        passKeyboard(to: page)
+    }
+
+    /// Whether nothing moves and no finger is down: the pager rests on a page, and the page isn't
+    /// being scrolled either.
+    private func isStill(showing page: Int) -> Bool {
+        let views: [UIScrollView] = [scrollView, controllers[page].textView]
+        guard !views.contains(where: { $0.isTracking || $0.isDragging || $0.isDecelerating }) else { return false }
+        // Caught as it bounced back, the pager stops where it is and says it has come to rest.
+        let x = scrollView.contentOffset.x
+        return x > -0.5 && x < max(0, scrollView.contentSize.width - scrollView.bounds.width) + 0.5
+    }
+
+    /// Looks again in a moment: let go of without being dragged, the pager may not call back.
+    private func waitToPassKeyboard() {
+        guard !isWaitingToPassKeyboard else { return }
+        isWaitingToPassKeyboard = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.isWaitingToPassKeyboard = false
+            self?.finishSwipe()
+        }
     }
 }
 

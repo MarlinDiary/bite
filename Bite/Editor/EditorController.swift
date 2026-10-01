@@ -84,11 +84,21 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
     private var caretGoesToEnd = false
 
     func focus() {
-        if caretGoesToEnd {
-            caretGoesToEnd = false
-            textView.selectedRange = NSRange(location: max(0, storage.length - 1), length: 0)
-        }
+        placeCaretIfNew()
         textView.becomeFirstResponder()
+    }
+
+    /// Readies the page to be moved to with the keyboard up: it shows up scrolled to its caret,
+    /// which goes to the end the first time, as it will when the page is focused.
+    func arrive() {
+        placeCaretIfNew()
+        textView.arrive()
+    }
+
+    private func placeCaretIfNew() {
+        guard caretGoesToEnd else { return }
+        caretGoesToEnd = false
+        textView.selectedRange = NSRange(location: max(0, storage.length - 1), length: 0)
     }
 
     // MARK: UITextViewDelegate

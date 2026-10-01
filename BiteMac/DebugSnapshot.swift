@@ -10,8 +10,16 @@ enum DebugSnapshot {
         CommandLine.arguments.contains("-snapshot")
     }
 
-    /// `-snapshotDark` shows the dark appearance.
+    /// `-snapshotDark` shows the dark appearance, and `-snapshotGlass` the glass panel. The choices
+    /// in Settings are the run's own, never the person's.
     static func prepare() {
+        guard isRequested else { return }
+        let defaults = UserDefaults(suiteName: "BiteSnapshot")!
+        defaults.removePersistentDomain(forName: "BiteSnapshot")
+        Preferences.defaults = defaults
+        if CommandLine.arguments.contains("-snapshotGlass") {
+            Preferences.panelIsGlass = true
+        }
         if CommandLine.arguments.contains("-snapshotDark") {
             NSApp.appearance = NSAppearance(named: .darkAqua)
         }

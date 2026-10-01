@@ -79,6 +79,19 @@ struct SettingsTests {
         #expect(editor.textView.spellCheckingType == .no)
     }
     #else
+    /// The Mac's panel is a page unless Liquid Glass is chosen in Settings, and follows the choice
+    /// at once.
+    @Test func thePanelIsGlassOnlyWhenChosen() {
+        let store = DotStore(folder: FileManager.default.temporaryDirectory.appending(path: "BiteGlassTests-\(UUID().uuidString)"))
+        let panel = PanelController(store: store, forTesting: true)
+        #expect(!Preferences.panelIsGlass)
+        #expect(!panel.backgroundIsGlassForTesting)
+        Preferences.panelIsGlass = true
+        #expect(panel.backgroundIsGlassForTesting)
+        Preferences.panelIsGlass = false
+        #expect(!panel.backgroundIsGlassForTesting)
+    }
+
     /// Edit > Spelling > Check Spelling While Typing is the same choice, for every page.
     @Test func theEditMenusSpellingItemIsTheChoiceInSettings() {
         let editor = EditorHarness("a")

@@ -58,6 +58,7 @@ struct SettingsView: View {
     @State private var opensAtLogin = SMAppService.mainApp.status == .enabled
     @State private var syncsWithICloud = Preferences.syncsWithICloud
     @State private var checksSpelling = Preferences.checksSpelling
+    @State private var panelIsGlass = Preferences.panelIsGlass
     @State private var isConfirmingReset = false
 
     /// The switches are in the colour of the page on screen, as the rest of Bite is. The buttons
@@ -76,6 +77,8 @@ struct SettingsView: View {
                     .tint(pageColour)
             }
             Section {
+                Toggle("Glass Panel", isOn: $panelIsGlass)
+                    .tint(pageColour)
                 Toggle("Check Spelling", isOn: $checksSpelling)
                     .tint(pageColour)
             }
@@ -111,6 +114,9 @@ struct SettingsView: View {
         }
         .onChange(of: checksSpelling) {
             Preferences.checksSpelling = checksSpelling
+        }
+        .onChange(of: panelIsGlass) {
+            Preferences.panelIsGlass = panelIsGlass
         }
         // Spelling can be turned on and off from the Edit menu too.
         .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in

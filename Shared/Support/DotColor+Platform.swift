@@ -6,6 +6,15 @@ nonisolated enum PageTint {
     static func opacity(dark: Bool) -> CGFloat {
         dark ? 0.09 : 0.08
     }
+
+    /// On the Mac's glass panel, a little paler than on a page: stronger, it went muddy over the
+    /// frost.
+    static func glassOpacity(dark: Bool) -> CGFloat {
+        dark ? 0.09 : 0.07
+    }
+
+    /// How much of the page's own background lies over the Mac's glass, which made it thicker.
+    static let glassFrost: CGFloat = 0.4
 }
 
 nonisolated extension DotColor {

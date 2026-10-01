@@ -20,8 +20,16 @@ enum Preferences {
         set { set(newValue, forKey: checksSpellingKey) }
     }
 
+    /// On the Mac, whether the panel is a pane of Liquid Glass rather than a page. Off unless
+    /// turned on.
+    static var panelIsGlass: Bool {
+        get { defaults.bool(forKey: panelIsGlassKey) }
+        set { set(newValue, forKey: panelIsGlassKey) }
+    }
+
     private static let syncsWithICloudKey = "syncsWithICloud"
     private static let checksSpellingKey = "checksSpelling"
+    private static let panelIsGlassKey = "panelIsGlass"
 
     private static func set(_ value: Bool, forKey key: String) {
         guard defaults.object(forKey: key) as? Bool != value else { return }

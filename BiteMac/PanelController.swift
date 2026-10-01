@@ -304,6 +304,10 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     var windowForTesting: BitePanel {
         panel
     }
+
+    var backgroundIsGlassForTesting: Bool {
+        background.showsGlass
+    }
     #endif
 
     func toggle() {
@@ -657,6 +661,13 @@ final class PageBackgroundView: NSView {
         super.scrollWheel(with: event)
     }
     private let wash = NSView()
+    /// Chosen in Settings, the panel is thick frosted glass: what's behind it blurred, under the
+    /// page's own background partway and the page's colour. Otherwise it's a page. It stays as it
+    /// is while another app is in use. Liquid Glass, tried first, lost its tint then, and was thin.
+    private let glass = NSVisualEffectView()
+    /// Between the blur and the wash, the page's own background, partway, which makes the glass
+    /// thick: the material alone was thin, or grey.
+    private let frost = NSView()
 
     override var isFlipped: Bool { true }
 
@@ -666,16 +677,35 @@ final class PageBackgroundView: NSView {
         layer?.cornerRadius = TopBar.cornerRadius
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
-        layer?.borderWidth = 1
+        glass.material = .popover
+        glass.blendingMode = .behindWindow
+        glass.state = .active
+        glass.frame = bounds
+        glass.autoresizingMask = [.width, .height]
+        addSubview(glass)
+        frost.wantsLayer = true
+        frost.frame = bounds
+        frost.autoresizingMask = [.width, .height]
+        addSubview(frost)
         wash.wantsLayer = true
         wash.frame = bounds
         wash.autoresizingMask = [.width, .height]
         addSubview(wash)
         updateColors()
+        NotificationCenter.default.addObserver(self, selector: #selector(preferencesDidChange), name: Preferences.didChange, object: nil)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    var showsGlass: Bool { !glass.isHidden }
+
+    @objc private func preferencesDidChange() {
+        guard showsGlass != Preferences.panelIsGlass else { return }
+        updateColors()
+        // The shadow follows what's opaque.
+        window?.invalidateShadow()
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -684,10 +714,17 @@ final class PageBackgroundView: NSView {
     }
 
     private func updateColors() {
+        let isGlass = Preferences.panelIsGlass
+        glass.isHidden = !isGlass
+        frost.isHidden = !isGlass
+        layer?.borderWidth = isGlass ? 0 : 1
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+            let dark = effectiveAppearance.isDark
+            layer?.backgroundColor = isGlass ? nil : NSColor.textBackgroundColor.cgColor
+            frost.layer?.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(PageTint.glassFrost).cgColor
             layer?.borderColor = NSColor.separatorColor.cgColor
-            wash.layer?.backgroundColor = accent.withAlphaComponent(PageTint.opacity(dark: effectiveAppearance.isDark)).cgColor
+            let opacity = isGlass ? PageTint.glassOpacity(dark: dark) : PageTint.opacity(dark: dark)
+            wash.layer?.backgroundColor = accent.withAlphaComponent(opacity).cgColor
         }
     }
 }

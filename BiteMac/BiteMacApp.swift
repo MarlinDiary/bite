@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 
 /// Bite on the Mac lives in the menu bar: a ring there opens the seven dots in a panel below it.
 @main
@@ -16,6 +17,7 @@ enum BiteMacApp {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = DotStore()
+    private lazy var sync = PageSync(store: store)
     private var panel: PanelController?
     private var statusItem: StatusItemController?
 
@@ -31,6 +33,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panel = panel
         self.statusItem = statusItem
         NSApp.mainMenu = MainMenu.make()
+        if PageSync.runsHere {
+            sync.start()
+            // iCloud's pushes, which bring other devices' changes, come as notifications.
+            NSApp.registerForRemoteNotifications()
+            // iCloud's pushes come late or not at all, so while the panel is up it asks.
+            panel.onVisibleChange = { [weak self] visible in self?.sync.isOnScreen = visible }
+        }
         GlobalShortcut.shared.onPress = { [weak panel] in panel?.toggle() }
         GlobalShortcut.shared.registerSaved()
         // Opened for the first time, it shows where it went.
@@ -46,6 +55,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static let hasOpenedKey = "hasOpenedPanel"
+
+    func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        PageSync.log.info("Registered for iCloud's pushes")
+    }
+
+    func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        PageSync.log.error("Couldn't register for iCloud's pushes: \(error.localizedDescription)")
+    }
+
+    /// A push from iCloud, as another device changed a page: brought down at once.
+    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
+        Task { await sync.pushArrived() }
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         store.saveNow()

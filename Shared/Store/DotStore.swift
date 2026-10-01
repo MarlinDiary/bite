@@ -22,6 +22,11 @@ final class DotStore {
     @ObservationIgnored var reportPendingEdits: () -> Void = {}
     /// Set by the editors: empties a dot as an edit, which undo brings back.
     @ObservationIgnored var clearInEditor: ((Int) -> Void)?
+    /// Set by the editors: takes in a page as another device changed it, with the caret where it
+    /// was (see `EditorController.applyRemote`).
+    @ObservationIgnored var applyInEditor: ((Int, String) -> Void)?
+    /// Set by iCloud sync, which is told of every change made here.
+    @ObservationIgnored var onLocalChange: ((Int) -> Void)?
 
     private static let selectionKey = "selectedDot"
 
@@ -53,6 +58,21 @@ final class DotStore {
         markdown[dot] = newValue
         unsaved.insert(dot)
         scheduleSave()
+        onLocalChange?(dot)
+    }
+
+    /// A page as another device changed it, which iCloud brought.
+    func applyRemote(dot: Int, markdown newValue: String) {
+        guard markdown.indices.contains(dot), markdown[dot] != newValue else { return }
+        markdown[dot] = newValue
+        unsaved.insert(dot)
+        scheduleSave()
+        if let applyInEditor {
+            applyInEditor(dot, newValue)
+        } else {
+            isEmpty[dot] = Self.isBlank(newValue)
+            revisions[dot] += 1
+        }
     }
 
     func update(dot: Int, isEmpty empty: Bool) {
@@ -91,6 +111,7 @@ final class DotStore {
         revisions[dot] += 1
         unsaved.insert(dot)
         saveNow()
+        onLocalChange?(dot)
     }
 
     func saveNow() {

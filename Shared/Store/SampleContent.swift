@@ -1,8 +1,31 @@
+import BiteKit
+
 /// What the first four dots hold on first launch, so there's something to look at.
 enum SampleContent {
     static func markdown(for dot: Int) -> String {
+        #if os(macOS)
+        markdown(for: dot, onMac: true)
+        #else
+        markdown(for: dot, onMac: false)
+        #endif
+    }
+
+    /// Whether `markdown` is a dot's first-launch page as it came, on a phone or on a Mac.
+    static func isUntouched(_ markdown: String, dot: Int) -> Bool {
+        let page = normalized(markdown)
+        return [true, false].contains { onMac in
+            let sample = Self.markdown(for: dot, onMac: onMac)
+            return !sample.isEmpty && normalized(sample) == page
+        }
+    }
+
+    private static func normalized(_ markdown: String) -> String {
+        MarkdownSerializer.markdown(from: MarkdownParser.parse(markdown))
+    }
+
+    private static func markdown(for dot: Int, onMac: Bool) -> String {
         switch dot {
-        case 0: welcome
+        case 0: welcome(onMac: onMac)
         case 1: groceries
         case 2: planning
         case 3: snippets
@@ -10,15 +33,10 @@ enum SampleContent {
         }
     }
 
-    #if os(macOS)
-    private static let switching = "Click a dot up top, or press ⌘1 to ⌘7, to switch."
-    private static let ticking = "Click a checkbox to tick it off"
-    #else
-    private static let switching = "Swipe, or tap a dot up top to switch."
-    private static let ticking = "Tap a checkbox to tick it off"
-    #endif
-
-    private static let welcome = """
+    private static func welcome(onMac: Bool) -> String {
+        let switching = onMac ? "Click a dot up top, or press ⌘1 to ⌘7, to switch." : "Swipe, or tap a dot up top to switch."
+        let ticking = onMac ? "Click a checkbox to tick it off" : "Tap a checkbox to tick it off"
+        return """
     # Welcome to Bite
     Seven dots, seven pages for whatever you're juggling right now. \(switching)
     ## Markdown shortcuts, Notion style
@@ -33,6 +51,7 @@ enum SampleContent {
     > Everything is saved as Markdown, and copies out as Markdown too.
 
     """
+    }
 
     private static let groceries = """
     # Weekend groceries

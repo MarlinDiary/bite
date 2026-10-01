@@ -37,6 +37,9 @@ struct DotPager: UIViewRepresentable {
         store.reportPendingEdits = { [weak coordinator] in
             coordinator?.controllers.forEach { $0.reportPendingChange() }
         }
+        store.applyInEditor = { [weak coordinator] dot, markdown in
+            coordinator?.controllers[dot].applyRemote(markdown: markdown)
+        }
         store.clearInEditor = { [weak coordinator] dot in
             coordinator?.controllers[dot].clear()
         }

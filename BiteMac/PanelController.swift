@@ -72,6 +72,9 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         store.reportPendingEdits = { [weak self] in
             self?.controllers.forEach { $0.reportPendingChange() }
         }
+        store.applyInEditor = { [weak self] dot, markdown in
+            self?.controllers[dot].applyRemote(markdown: markdown)
+        }
         store.clearInEditor = { [weak self] dot in
             self?.controllers[dot].clear()
         }
@@ -315,9 +318,13 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         }
     }
 
+    /// Called as the panel comes up, and as it goes.
+    var onVisibleChange: (Bool) -> Void = { _ in }
+
     func show() {
         storeDidChange()
         if !placement.isDetached { position() }
+        onVisibleChange(true)
         // Hidden to give the app in use back the keyboard (see `hide`).
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
         panel.makeKeyAndOrderFront(nil)
@@ -366,6 +373,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         guard panel.isVisible else { return }
         store.saveNow()
         panel.orderOut(nil)
+        onVisibleChange(false)
         placement.isDetached = false
         statusItem?.isHighlighted = false
         stopHearingClicks()
@@ -382,6 +390,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         guard !placement.isDetached, panel.isVisible else { return }
         store.saveNow()
         panel.orderOut(nil)
+        onVisibleChange(false)
         statusItem?.isHighlighted = false
         stopHearingClicks()
     }
@@ -432,6 +441,11 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     func windowWillMove(_ notification: Notification) {
         guard panel.isVisible, !isPositioning else { return }
         placement.isDetached = true
+    }
+
+    /// Up but covered, or with the screen locked or asleep, the panel isn't on screen.
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        onVisibleChange(panel.isVisible && panel.occlusionState.contains(.visible))
     }
 
     /// The panel shows on every Space. Changed to just now, the Space took the keyboard, and the

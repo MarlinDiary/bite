@@ -112,6 +112,95 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     /// Set when a page is loaded, until its caret is first placed.
     private var caretGoesToEnd = false
 
+    /// Takes in the page as another device changed it. Only the lines that differ are replaced,
+    /// so the caret stays on the text it was on, and the page doesn't scroll. Undo starts over:
+    /// the system's own steps for typing know only where text was, and would have taken out
+    /// whatever had moved there.
+    func applyRemote(markdown: String) {
+        let incoming = MarkdownParser.parse(markdown).blocks
+        let new = incoming.isEmpty ? [Block()] : incoming
+        // Read back as Markdown first, so both sides' lines say what the parser says: a list item
+        // read from the page has the number it shows, and the parser gives none past the first.
+        let current = PageSnapshot(text: storage).markdown()
+        guard current != markdown else { return }
+        let old = MarkdownParser.parse(current).blocks
+        guard old != new else { return }
+        // What an input method was composing goes in as it stands, as when a page is loaded.
+        if textView.isComposing {
+            isApplyingEdit = true
+            textView.unmarkText()
+            isApplyingEdit = false
+        }
+        pendingEdit = nil
+        typingOverride = nil
+        var lines: [NSRange] = []
+        var position = 0
+        while position < storage.length {
+            let line = lineRange(at: position)
+            lines.append(line)
+            position = NSMaxRange(line)
+        }
+        // The lines both have at the start and the end stay as they are.
+        var range = NSRange(location: 0, length: storage.length)
+        var replacement = styledText(for: BiteDocument(blocks: new))
+        if lines.count == old.count {
+            var first = 0
+            while first < old.count, first < new.count, old[first] == new[first] { first += 1 }
+            var oldEnd = old.count, newEnd = new.count
+            while oldEnd > first, newEnd > first, old[oldEnd - 1] == new[newEnd - 1] {
+                oldEnd -= 1
+                newEnd -= 1
+            }
+            let start = first < lines.count ? lines[first].location : storage.length
+            range = NSRange(location: start, length: (oldEnd > first ? NSMaxRange(lines[oldEnd - 1]) : start) - start)
+            replacement = newEnd > first ? styledText(for: BiteDocument(blocks: Array(new[first..<newEnd]))) : NSMutableAttributedString()
+        }
+        let delta = replacement.length - range.length
+        // A caret in the lines that changed stays in them, as far along as they go, before the
+        // last one's line break.
+        func moved(_ location: Int) -> Int {
+            if location <= range.location { return location }
+            if location >= NSMaxRange(range) { return location + delta }
+            return min(location, range.location + max(0, replacement.length - 1))
+        }
+        let selection = textView.selectedRange
+        #if canImport(UIKit)
+        textView.inputDelegate?.textWillChange(textView)
+        #endif
+        isApplyingEdit = true
+        storage.beginEditing()
+        storage.replaceCharacters(in: range, with: replacement)
+        storage.endEditing()
+        isApplyingEdit = false
+        let start = moved(selection.location)
+        let moved = stepOverDivider(clamp(NSRange(location: start, length: max(0, moved(NSMaxRange(selection)) - start))))
+        // The text view moves the selection along with the text itself, but not always to the
+        // same place.
+        if moved != textView.selectedRange {
+            textView.selectedRange = moved
+        }
+        #if canImport(UIKit)
+        textView.inputDelegate?.textDidChange(textView)
+        #endif
+        let changed = NSRange(location: range.location, length: replacement.length)
+        ensureTrailingNewline()
+        restyle(changed)
+        updateStructure(around: changed)
+        updateTypingAttributes()
+        textView.undoManager?.removeAllActions()
+        // The page now reads as the Markdown that came in: there's nothing to report back.
+        pendingReport?.cancel()
+        pendingReport = nil
+        reportDeadline = nil
+        changeCount += 1
+        reportedCount = changeCount
+        let isEmpty = pageIsEmpty
+        if isEmpty != reportedEmpty {
+            reportedEmpty = isEmpty
+            onEmptyChange?(isEmpty)
+        }
+    }
+
     func focus() {
         placeCaretIfNew()
         #if canImport(UIKit)
@@ -1306,7 +1395,8 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     /// in the background is dropped if a newer one got there first.
     private var changeCount = 0
     private var reportedCount = 0
-    /// Typing that never pauses is still reported this often, so it's saved.
+    /// Typing that never pauses is still reported this often, so it's saved, and shows on the
+    /// other devices as it goes.
     private var reportDeadline: ContinuousClock.Instant?
 
     private func scheduleReport() {
@@ -1317,7 +1407,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
             onEmptyChange?(isEmpty)
         }
         let now = ContinuousClock.now
-        let deadline = reportDeadline ?? now + .seconds(2)
+        let deadline = reportDeadline ?? now + .seconds(1)
         reportDeadline = deadline
         pendingReport?.cancel()
         pendingReport = Task { [weak self] in

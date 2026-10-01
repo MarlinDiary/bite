@@ -33,6 +33,19 @@ enum DebugSnapshot {
                let start = Int(arguments[index + 1]), let length = Int(arguments[index + 2]) {
                 page.setSelectedRange(NSRange(location: start, length: length), affinity: .downstream, stillSelecting: true)
             }
+            // `-snapshotMarked TEXT` has an input method composing TEXT at the end of the page,
+            // underlined in the system's accent as Shuangpin asks.
+            if let index = arguments.firstIndex(of: "-snapshotMarked"), index + 1 < arguments.count {
+                page.window?.makeFirstResponder(page)
+                page.setSelectedRange(NSRange(location: page.string.utf16.count - 1, length: 0))
+                let text = arguments[index + 1]
+                let composing = NSAttributedString(string: text, attributes: [
+                    .underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: NSColor.controlAccentColor,
+                    .markedClauseSegment: 0,
+                ])
+                page.setMarkedText(composing, selectedRange: NSRange(location: text.utf16.count, length: 0),
+                                   replacementRange: NSRange(location: NSNotFound, length: 0))
+            }
             if arguments.contains("-snapshotLayers") {
                 func dump(_ view: NSView, _ depth: Int) {
                     let layers = (view.layer?.sublayers ?? []).map { "\(type(of: $0))" }.joined(separator: ",")
@@ -67,6 +80,31 @@ enum DebugSnapshot {
         capture(after: .seconds(arguments.contains("-snapshotScroller") ? 1.1 : 2))
         if arguments.contains("-snapshotMenu") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                // `-snapshotMenuDown N` moves the menu's highlight down N items, as the arrow key
+                // does: the keys wait in the queue for the menu to take them.
+                if let index = arguments.firstIndex(of: "-snapshotMenuDown"), index + 1 < arguments.count,
+                   let count = Int(arguments[index + 1]) {
+                    let arrow = String(UnicodeScalar(UInt16(NSDownArrowFunctionKey))!)
+                    for _ in 0..<count {
+                        if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                        windowNumber: 0, context: nil, characters: arrow,
+                                                        charactersIgnoringModifiers: arrow, isARepeat: false, keyCode: 125) {
+                            NSApp.postEvent(event, atStart: false)
+                        }
+                    }
+                    // `-snapshotMenuReturn` then chooses the highlighted item, and `-snapshotMenuEscape`
+                    // closes the menu, each with the key going down and back up.
+                    for (flag, key, code) in [("-snapshotMenuReturn", "\r", UInt16(36)), ("-snapshotMenuEscape", "\u{1b}", 53)]
+                    where arguments.contains(flag) {
+                        for type in [NSEvent.EventType.keyDown, .keyUp] {
+                            if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0,
+                                                            windowNumber: 0, context: nil, characters: key,
+                                                            charactersIgnoringModifiers: key, isARepeat: false, keyCode: code) {
+                                NSApp.postEvent(event, atStart: false)
+                            }
+                        }
+                    }
+                }
                 panel.showMenuForSnapshot()
             }
         }

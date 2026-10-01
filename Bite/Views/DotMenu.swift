@@ -7,7 +7,12 @@ import BiteKit
 struct DotMenu: View {
     let dot: Int
     @Environment(DotStore.self) private var store
+    #if DEBUG
+    /// `-showSettings` opens Settings as the app launches, for a picture of it.
+    @State private var isShowingSettings = CommandLine.arguments.contains("-showSettings")
+    #else
     @State private var isShowingSettings = false
+    #endif
 
     var body: some View {
         let isEmpty = store.isEmpty[dot]

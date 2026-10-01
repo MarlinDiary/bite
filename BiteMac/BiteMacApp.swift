@@ -16,7 +16,7 @@ enum BiteMacApp {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let store = DotStore()
+    private let store = DotStore(folder: AppDelegate.pagesFolder)
     private lazy var sync = PageSync(store: store)
     private var panel: PanelController?
     private var statusItem: StatusItemController?
@@ -56,6 +56,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private static let hasOpenedKey = "hasOpenedPanel"
 
+    /// Launched to take pictures of itself, the app keeps pages of its own, the first-launch ones,
+    /// away from the person's.
+    private static var pagesFolder: URL {
+        #if DEBUG
+        if DebugSnapshot.isRequested {
+            return FileManager.default.temporaryDirectory.appending(path: "BiteSnapshot-\(UUID().uuidString)", directoryHint: .isDirectory)
+        }
+        #endif
+        return DotStore.defaultFolder
+    }
+
     func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         PageSync.log.info("Registered for iCloud's pushes")
     }
@@ -81,6 +92,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showSettings(_ sender: Any?) {
         panel?.hideForOtherWindow()
-        SettingsWindowController.shared.show()
+        SettingsWindowController.shared.show(store: store)
     }
 }

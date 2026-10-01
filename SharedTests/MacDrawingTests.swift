@@ -56,5 +56,30 @@ struct MacDrawingTests {
         let block = try #require(editor.textView.codeBackgroundsForTesting.first)
         #expect(editor.textView.visibleRect.intersects(block))
     }
+
+    /// The pictures in Bite's menu rows are upright, as AppKit's are. Drawn into the row's
+    /// top-down coordinates without saying so, they came out upside down.
+    @Test func menuRowPicturesAreUpright() {
+        let item = MenuRow.item("Up", symbol: "arrow.up", action: #selector(NSText.copy(_:)), target: nil, tint: .systemRed)
+        guard let row = item.view, let rep = row.bitmapImageRepForCachingDisplay(in: row.bounds) else {
+            Issue.record("No row to draw")
+            return
+        }
+        row.cacheDisplay(in: row.bounds, to: rep)
+        // The picture's ink, left of the title: an arrow up has its head, and most of its ink, at
+        // the top.
+        let scale = CGFloat(rep.pixelsWide) / row.bounds.width
+        var weighted = 0.0
+        var total = 0.0
+        for x in 0..<Int(30 * scale) {
+            for y in 0..<rep.pixelsHigh {
+                let ink = Double(rep.colorAt(x: x, y: y)?.alphaComponent ?? 0)
+                weighted += Double(y) * ink
+                total += ink
+            }
+        }
+        #expect(total > 0)
+        #expect(weighted / total < Double(rep.pixelsHigh) / 2)
+    }
 }
 #endif

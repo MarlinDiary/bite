@@ -501,6 +501,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     func makeMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        menu.delegate = MenuRow.keyboard
         let dot = store.selection
         let hasText = !store.isEmpty[dot]
         menu.addItem(settingsItem())
@@ -519,6 +520,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     /// The ring's right click: Bite's own commands, none of the page's.
     func makeRingMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = MenuRow.keyboard
         menu.addItem(settingsItem())
         menu.addItem(.separator())
         menu.addItem(quitItem())
@@ -533,22 +535,15 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         item("Quit Bite", symbol: "power", key: "q", action: #selector(NSApplication.terminate(_:)), target: NSApp)
     }
 
-    /// With the phone's pictures, and the keys the same commands have in Bite's menus.
+    /// With the phone's pictures, the keys the same commands have in Bite's menus, and the page's
+    /// colour for the highlight (see `MenuRow`).
     private func item(_ title: String, symbol: String, key: String = "", action: Selector, target: AnyObject? = nil,
                       isEnabled: Bool = true) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
-        item.target = target ?? self
-        item.isEnabled = isEnabled
-        show(symbol, on: item)
-        return item
-    }
-
-    /// Since macOS 27, AppKit hides a menu item's picture unless it's asked to show it.
-    private func show(_ symbol: String, on item: NSMenuItem) {
-        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        if #available(macOS 27, *) {
-            item.preferredImageVisibility = .visible
-        }
+        // The light appearance's colour, deeper than the dark's, in both: the row's title turns
+        // white on it, as on AppKit's accent.
+        let tint = NSColor(hex: DotPalette.colors[store.selection].light)
+        return MenuRow.item(title, symbol: symbol, key: key, action: action, target: target ?? self, tint: tint,
+                            isEnabled: isEnabled)
     }
 
     #if DEBUG

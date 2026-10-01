@@ -5,11 +5,36 @@ import BiteKit
 /// Settings, from the "…" menu.
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(DotStore.self) private var store
+    @State private var syncsWithICloud = Preferences.syncsWithICloud
+    @State private var checksSpelling = Preferences.checksSpelling
+    @State private var isConfirmingReset = false
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Sync with iCloud", isOn: $syncsWithICloud)
+                } footer: {
+                    Text("Pages stay the same on every device signed in to your iCloud account.")
+                }
+                Section {
+                    Toggle("Check Spelling", isOn: $checksSpelling)
+                }
                 AppIconPicker()
+                Section {
+                    Button("Reset All Pages", role: .destructive) {
+                        isConfirmingReset = true
+                    }
+                    .confirmationDialog("Reset all pages?", isPresented: $isConfirmingReset, titleVisibility: .visible) {
+                        Button("Reset All Pages", role: .destructive) {
+                            store.resetAllPages()
+                            dismiss()
+                        }
+                    } message: {
+                        Text(PageReset.message)
+                    }
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -20,6 +45,12 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+        .onChange(of: syncsWithICloud) {
+            Preferences.syncsWithICloud = syncsWithICloud
+        }
+        .onChange(of: checksSpelling) {
+            Preferences.checksSpelling = checksSpelling
         }
     }
 }

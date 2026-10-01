@@ -189,6 +189,9 @@ final class BiteTextView: UITextView {
         // correction the keyboard had lined up also went in on any tap of the format bar.
         autocorrectionType = .no
         inlinePredictionType = .no
+        spellCheckingType = checkedSpelling
+        NotificationCenter.default.addObserver(self, selector: #selector(preferencesDidChange),
+                                               name: Preferences.didChange, object: nil)
         // Smart delete tidies the spaces around a deleted word, and deleted more than it said it
         // would: emptying the last line of a code block took the line break with it, so the line
         // was gone and typing went into the line below.
@@ -411,12 +414,23 @@ final class BiteTextView: UITextView {
         markedTextRange != nil
     }
 
+    /// Spelling is checked only if Settings says so, and never in code.
+    private var checkedSpelling: UITextSpellCheckingType {
+        Preferences.checksSpelling && !isTypingCode ? .yes : .no
+    }
+
+    @objc private func preferencesDidChange() {
+        guard spellCheckingType != checkedSpelling else { return }
+        spellCheckingType = checkedSpelling
+        if isFirstResponder, markedTextRange == nil { reloadInputViews() }
+    }
+
     /// Code is typed as it is: no curly quotes, capitals or spelling marks. The keyboard only
     /// picks up the change when told to, so it's told only when the caret moves into code or out.
     var isTypingCode = false {
         didSet {
             guard isTypingCode != oldValue else { return }
-            spellCheckingType = isTypingCode ? .no : .default
+            spellCheckingType = checkedSpelling
             smartQuotesType = isTypingCode ? .no : .default
             autocapitalizationType = isTypingCode ? .none : .sentences
             if isFirstResponder, markedTextRange == nil { reloadInputViews() }

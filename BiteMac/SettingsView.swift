@@ -1,22 +1,41 @@
 import AppKit
 import SwiftUI
 import ServiceManagement
+import BiteKit
 
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
 
-    func show() {
-        let window = window ?? makeWindow()
+    func show(store: DotStore) {
+        let window = window ?? makeWindow(store: store)
         self.window = window
-        if !window.isVisible { window.center() }
+        if !window.isVisible { centre(window) }
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }
 
-    private func makeWindow() -> NSWindow {
-        let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView()))
+    /// In the middle of the screen in use, the one with the pointer, below its menu bar and above
+    /// its Dock. AppKit's `center()` puts a window higher than the middle.
+    private func centre(_ window: NSWindow) {
+        // Sized first: SwiftUI sizes the window only once it's laid out, and centred before, the
+        // window's corner went in the middle.
+        if let content = window.contentViewController?.view {
+            window.setContentSize(content.fittingSize)
+        }
+        let pointer = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }) ?? NSScreen.main else {
+            window.center()
+            return
+        }
+        let area = screen.visibleFrame
+        let size = window.frame.size
+        window.setFrameOrigin(NSPoint(x: (area.midX - size.width / 2).rounded(), y: (area.midY - size.height / 2).rounded()))
+    }
+
+    private func makeWindow(store: DotStore) -> NSWindow {
+        let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(store: store)))
         window.title = "Settings"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
@@ -34,19 +53,70 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 }
 
 struct SettingsView: View {
+    let store: DotStore
     @State private var shortcut = GlobalShortcut.shared.saved
     @State private var opensAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var syncsWithICloud = Preferences.syncsWithICloud
+    @State private var checksSpelling = Preferences.checksSpelling
+    @State private var isConfirmingReset = false
+
+    /// The switches are in the colour of the page on screen, as the rest of Bite is. The buttons
+    /// stay as the Mac's are.
+    private var pageColour: Color {
+        DotPalette.colors[store.selection].color
+    }
 
     var body: some View {
         Form {
-            LabeledContent("Open Bite") {
-                ShortcutRecorder(shortcut: $shortcut)
+            Section {
+                LabeledContent("Open Bite") {
+                    ShortcutRecorder(shortcut: $shortcut)
+                }
+                Toggle("Open at Login", isOn: $opensAtLogin)
+                    .tint(pageColour)
             }
-            Toggle("Open at Login", isOn: $opensAtLogin)
+            Section {
+                Toggle("Check Spelling", isOn: $checksSpelling)
+                    .tint(pageColour)
+            }
+            Section {
+                Toggle("Sync with iCloud", isOn: $syncsWithICloud)
+                    .tint(pageColour)
+            } footer: {
+                Text("Pages stay the same on every device signed in to your iCloud account.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Section {
+                LabeledContent("Reset All Pages") {
+                    Button("Reset…", role: .destructive) {
+                        isConfirmingReset = true
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .frame(width: 400)
         .fixedSize()
+        .alert("Reset all pages?", isPresented: $isConfirmingReset) {
+            Button("Reset All Pages", role: .destructive) {
+                store.resetAllPages()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(PageReset.message)
+        }
+        .onChange(of: syncsWithICloud) {
+            Preferences.syncsWithICloud = syncsWithICloud
+        }
+        .onChange(of: checksSpelling) {
+            Preferences.checksSpelling = checksSpelling
+        }
+        // Spelling can be turned on and off from the Edit menu too.
+        .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
+            checksSpelling = Preferences.checksSpelling
+            syncsWithICloud = Preferences.syncsWithICloud
+        }
         .onChange(of: shortcut) {
             GlobalShortcut.shared.saved = shortcut
         }

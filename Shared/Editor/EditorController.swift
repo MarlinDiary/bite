@@ -62,6 +62,10 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         #else
         textView.insertionPointColor = accent
         textView.selectionColor = PlatformColor.adaptive(accent, alpha: 0.22, darkAlpha: 0.32)
+        // What an input method composes with no look of its own is lit as the selection is, not in
+        // AppKit's yellow, and keeps the colours of a heading or code. The Chinese ones bring their
+        // own underline (see `BiteTextView.setMarkedText`).
+        textView.markedTextAttributes = [.backgroundColor: textView.selectionColor]
         #endif
         textView.textLayoutManager?.delegate = layoutDelegate
         textView.codeBackgroundColor = theme.codeBackground

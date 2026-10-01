@@ -45,8 +45,10 @@ final class BiteTextView: NSTextView {
         isAutomaticLinkDetectionEnabled = false
         isAutomaticDataDetectionEnabled = false
         inlinePredictionType = .no
+        // Selecting text brought up Writing Tools' button over it, which Bite has no use for.
+        writingToolsBehavior = .none
         isGrammarCheckingEnabled = false
-        isContinuousSpellCheckingEnabled = true
+        isContinuousSpellCheckingEnabled = Preferences.checksSpelling
         // Smart delete tidies the spaces around a deleted word and took more than it said, as on
         // the phone.
         smartInsertDeleteEnabled = false
@@ -61,6 +63,42 @@ final class BiteTextView: NSTextView {
         selectedTextAttributes = [.backgroundColor: NSColor.clear]
         NotificationCenter.default.addObserver(self, selector: #selector(textDidProcessEditing),
                                                name: NSTextStorage.didProcessEditingNotification, object: textStorage)
+        NotificationCenter.default.addObserver(self, selector: #selector(preferencesDidChange),
+                                               name: Preferences.didChange, object: nil)
+    }
+
+    /// Spelling is checked as Settings says, on every page at once.
+    @objc private func preferencesDidChange() {
+        let checks = Preferences.checksSpelling
+        if isContinuousSpellCheckingEnabled != checks { isContinuousSpellCheckingEnabled = checks }
+    }
+
+    /// Edit > Spelling > Check Spelling While Typing is the choice in Settings, for every page.
+    override func toggleContinuousSpellChecking(_ sender: Any?) {
+        Preferences.checksSpelling.toggle()
+    }
+
+    /// What an input method is composing shows in the page's colour. Chinese input methods ask
+    /// for an underline in the system's accent: it's drawn in the caret's colour, and any
+    /// highlight one asks for in the selection's (see `inPageColour`).
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        super.setMarkedText(Self.inPageColour(string, underline: insertionPointColor, highlight: selectionColor),
+                            selectedRange: selectedRange, replacementRange: replacementRange)
+    }
+
+    /// `string` as an input method gave it, with its underlines in `underline`, its highlights in
+    /// `highlight`, and the page's own colours for the text.
+    static func inPageColour(_ string: Any, underline: NSColor, highlight: NSColor) -> Any {
+        guard let text = string as? NSAttributedString else { return string }
+        let recoloured = NSMutableAttributedString(attributedString: text)
+        let whole = NSRange(location: 0, length: recoloured.length)
+        recoloured.removeAttribute(.foregroundColor, range: whole)
+        for (key, colour) in [(NSAttributedString.Key.underlineColor, underline), (.backgroundColor, highlight)] {
+            recoloured.enumerateAttribute(key, in: whole) { value, range, _ in
+                if value != nil { recoloured.addAttribute(key, value: colour, range: range) }
+            }
+        }
+        return recoloured
     }
 
     /// Whether an input method is still composing text (marked text).
@@ -425,11 +463,72 @@ final class BiteTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if let location = todoLocation(at: convert(event.locationInWindow, from: nil)) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let location = todoLocation(at: point) {
             editor?.toggleTodo(at: location)
             return
         }
+        if isBelowText(point), !hasMarkedText(), !event.modifierFlags.contains(.control) {
+            selectFromEnd(with: event)
+            return
+        }
         super.mouseDown(with: event)
+    }
+
+    /// Below the last line, where TextKit finds no text, AppKit did nothing with a press: the caret
+    /// stayed put, and a drag up into the text only moved it, selecting nothing. As in any Mac text
+    /// view, the press puts the caret at the end, a drag selects from there, and with Shift held
+    /// the selection runs on to the end.
+    private func selectFromEnd(with event: NSEvent) {
+        guard let editor else { return }
+        window?.makeFirstResponder(self)
+        let end = editor.allowedSelection(NSRange(location: (string as NSString).length, length: 0)).location
+        let anchor = event.modifierFlags.contains(.shift) ? selectedRange().location : end
+        var index = end
+        select(from: anchor, to: end, stillSelecting: true)
+        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            index = dragIndex(at: convert(next.locationInWindow, from: nil), end: end) ?? index
+            let isUp = next.type == .leftMouseUp
+            select(from: anchor, to: index, stillSelecting: !isUp)
+            if isUp { break }
+            autoscroll(with: next)
+        }
+    }
+
+    /// Where a drag at `point` reaches, as AppKit's own drags do: above the page the start, below
+    /// the text the end, and between the page's top and the first line, that line. TextKit finds
+    /// nothing above the first line, and the drag let go of its selection there. Below the text
+    /// it isn't asked at all, as a point query there once didn't come back.
+    private func dragIndex(at point: NSPoint, end: Int) -> Int? {
+        if point.y < 0 { return 0 }
+        if isBelowText(point) { return end }
+        var top = point.y
+        if let layoutManager = textLayoutManager {
+            layoutManager.enumerateTextLayoutFragments(from: layoutManager.documentRange.location, options: [.ensuresLayout]) { fragment in
+                top = max(point.y, fragment.layoutFragmentFrame.minY + textContainerOrigin.y + 1)
+                return false
+            }
+        }
+        let index = characterIndexForInsertion(at: NSPoint(x: point.x, y: top))
+        return index == NSNotFound ? nil : index
+    }
+
+    private func select(from anchor: Int, to index: Int, stillSelecting: Bool) {
+        let range = NSRange(location: min(anchor, index), length: abs(index - anchor))
+        setSelectedRanges([NSValue(range: range)], affinity: index < anchor ? .upstream : .downstream, stillSelecting: stillSelecting)
+    }
+
+    /// Whether `point` is below the page's last line.
+    private func isBelowText(_ point: NSPoint) -> Bool {
+        guard let layoutManager = textLayoutManager else { return false }
+        var bottom: CGFloat?
+        layoutManager.enumerateTextLayoutFragments(from: layoutManager.documentRange.endLocation,
+                                                   options: [.reverse, .ensuresLayout]) { fragment in
+            bottom = fragment.layoutFragmentFrame.maxY
+            return false
+        }
+        guard let bottom else { return false }
+        return point.y > bottom + textContainerOrigin.y
     }
 
     /// An arrow over checkboxes, which are clicked rather than typed in.

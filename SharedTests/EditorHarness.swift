@@ -38,8 +38,16 @@ final class EditorHarness {
         #endif
     }()
 
+    /// The tests' own choices in Settings, never the person's, starting from none.
+    static let privatePreferences: Void = {
+        let defaults = UserDefaults(suiteName: "BiteTests")!
+        defaults.removePersistentDomain(forName: "BiteTests")
+        Preferences.defaults = defaults
+    }()
+
     init(_ markdown: String = "") {
         Self.privateClipboard
+        Self.privatePreferences
         controller = EditorController(dot: 0, accent: .systemRed)
         let frame = CGRect(x: 0, y: 0, width: 402, height: 874)
         #if canImport(UIKit)

@@ -50,14 +50,12 @@ struct MacPanelTests {
         let titles = menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
         #expect(titles == ["Settings…", "-", "Copy Markdown", "Copy Plain Text", "Clear Text", "-", "Share Text", "-",
                            "Quit Bite"])
-        // The phone's pictures, which macOS hides unless asked, and the keys Bite's menus give the
-        // same commands.
+        // Rows of Bite's own, with the phone's pictures and the page's colour for the highlight,
+        // chosen from the keyboard too; and the keys Bite's menus give the same commands.
         for item in menu.items where !item.isSeparatorItem {
-            #expect(item.image != nil, "\(item.title)")
-            if #available(macOS 27, *) {
-                #expect(item.preferredImageVisibility == .visible, "\(item.title)")
-            }
+            #expect(item.view is MenuRow, "\(item.title)")
         }
+        #expect(menu.delegate === MenuRow.keyboard)
         #expect(menu.items.first { $0.title == "Settings…" }?.keyEquivalent == ",")
         #expect(menu.items.first { $0.title == "Quit Bite" }?.keyEquivalent == "q")
         // Nothing in red, and nothing to copy, clear or share on an empty page.
@@ -71,6 +69,8 @@ struct MacPanelTests {
     @Test func theRingsMenuIsBitesOwn() {
         let menu = panel().makeRingMenu()
         #expect(menu.items.map { $0.isSeparatorItem ? "-" : $0.title } == ["Settings…", "-", "Quit Bite"])
+        #expect(menu.items.allSatisfy { $0.isSeparatorItem || $0.view is MenuRow })
+        #expect(menu.delegate === MenuRow.keyboard)
     }
 
     /// The ring closes what it opened. The panel had the keyboard without Bite being the

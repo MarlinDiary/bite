@@ -69,9 +69,11 @@ final class PageSync: CKSyncEngineDelegate {
         }
     }
 
-    /// Not in the app the tests run in, which would sync the person's own pages from there.
+    /// Not in the app the tests run in, which would sync the person's own pages from there, nor in
+    /// one launched to take pictures of itself (`-snapshot`).
     static var runsHere: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+            && !CommandLine.arguments.contains("-snapshot")
     }
 
     init(store: DotStore, folder: URL = DotStore.defaultFolder) {
@@ -80,8 +82,28 @@ final class PageSync: CKSyncEngineDelegate {
         saved = (try? JSONDecoder().decode(Saved.self, from: Data(contentsOf: fileURL))) ?? Saved()
     }
 
+    /// As the app launches: from then on it syncs while Settings says to, and stops and starts
+    /// again as that's turned off and on.
     func start() {
-        guard engine == nil else { return }
+        guard preferencesObserver == nil else { return }
+        preferencesObserver = NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil,
+                                                                     queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.followPreferences() }
+        }
+        followPreferences()
+    }
+
+    private var preferencesObserver: (any NSObjectProtocol)?
+
+    private func followPreferences() {
+        if Preferences.syncsWithICloud, engine == nil {
+            startEngine()
+        } else if !Preferences.syncsWithICloud, engine != nil {
+            stopEngine()
+        }
+    }
+
+    private func startEngine() {
         let engine = CKSyncEngine(CKSyncEngine.Configuration(database: container.privateCloudDatabase,
                                                              stateSerialization: saved.engineState, delegate: self))
         self.engine = engine
@@ -96,6 +118,21 @@ final class PageSync: CKSyncEngineDelegate {
             sendUnsentPages()
         }
         if isOnScreen { checkForChanges() }
+    }
+
+    /// Turned off in Settings, nothing more goes up or comes down. What this device and iCloud
+    /// last agreed stays, so that turned on again, both sides' changes since are merged.
+    private func stopEngine() {
+        checkTask?.cancel()
+        checkTask = nil
+        sendTask?.cancel()
+        sendTask = nil
+        sendsAgain = false
+        checkToken = nil
+        store.onLocalChange = nil
+        engine = nil
+        Self.log.info("Stopped")
+        save()
     }
 
     /// Pages changed since they last went up, or that never have, go up now.
@@ -148,6 +185,8 @@ final class PageSync: CKSyncEngineDelegate {
             var moreComing = true
             while moreComing {
                 let changes = try await container.privateCloudDatabase.recordZoneChanges(inZoneWith: zoneID, since: checkToken)
+                // Sync turned off in Settings while iCloud was asked.
+                guard self.engine === engine else { return Self.checkInterval }
                 for case .success(let modification) in changes.modificationResultsByID.values
                     where !isOlderThanAgreed(modification.record) {
                     tookNew = took(modification.record, engine: engine) || tookNew
@@ -218,6 +257,8 @@ final class PageSync: CKSyncEngineDelegate {
     // MARK: The engine
 
     func handleEvent(_ event: CKSyncEngine.Event, syncEngine: CKSyncEngine) async {
+        // One stopped in Settings may still be finishing what it was doing.
+        guard syncEngine === engine else { return }
         callsFromTheEngine += 1
         defer { callsFromTheEngine -= 1 }
         switch event {
@@ -265,6 +306,7 @@ final class PageSync: CKSyncEngineDelegate {
 
     func nextRecordZoneChangeBatch(_ context: CKSyncEngine.SendChangesContext, syncEngine: CKSyncEngine) async
         -> CKSyncEngine.RecordZoneChangeBatch? {
+        guard syncEngine === engine else { return nil }
         callsFromTheEngine += 1
         defer { callsFromTheEngine -= 1 }
         // The pages as last reported: typing since goes in the next send, once the editors report

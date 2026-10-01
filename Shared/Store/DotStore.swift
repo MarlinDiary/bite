@@ -114,6 +114,23 @@ final class DotStore {
         onLocalChange?(dot)
     }
 
+    /// Every page as it came on first launch: the samples on the first four, the rest empty. Undo
+    /// can't bring them back, so Settings asks first. It goes to iCloud as any change made here does.
+    func resetAllPages() {
+        // Typing from a moment ago goes in first, so it can't come back after.
+        reportPendingEdits()
+        for dot in markdown.indices {
+            let sample = SampleContent.markdown(for: dot)
+            guard markdown[dot] != sample else { continue }
+            markdown[dot] = sample
+            isEmpty[dot] = Self.isBlank(sample)
+            revisions[dot] += 1
+            unsaved.insert(dot)
+            onLocalChange?(dot)
+        }
+        saveNow()
+    }
+
     func saveNow() {
         reportPendingEdits()
         saveTask?.cancel()

@@ -510,21 +510,15 @@ final class BiteTextView: UITextView {
         didSet { setNeedsLayout() }
     }
 
-    /// The code blocks on screen, from the laid-out lines, a screen's height beyond either edge
-    /// included. A block that runs on further is drawn on past that, square there, so its
-    /// rounded end never shows early.
+    /// The code blocks on screen. A block that runs on past the screen is drawn on a screen's
+    /// height further, square there, so its rounded end never shows early.
     private func updateCodeBackgrounds() {
-        guard let layoutManager = textLayoutManager else { return }
         if layer.sublayers?.first !== codeBackgrounds {
             layer.insertSublayer(codeBackgrounds, at: 0)
         }
-        let visibleTop = contentOffset.y - textContainerInset.top - bounds.height
-        let visibleBottom = contentOffset.y - textContainerInset.top + 2 * bounds.height
-        let start = layoutManager.textLayoutFragment(for: CGPoint(x: 1, y: max(0, visibleTop)))?.rangeInElement.location
         var blocks: [(frame: CGRect, roundTop: Bool, roundBottom: Bool)] = []
         var open: (frame: CGRect, roundTop: Bool)?
-        layoutManager.enumerateTextLayoutFragments(from: start ?? layoutManager.documentRange.location, options: []) { fragment in
-            guard fragment.layoutFragmentFrame.minY < visibleBottom else { return false }
+        forEachLineOnScreen { fragment in
             guard let line = fragment as? BlockLayoutFragment, line.block.kind == .code else { return true }
             var frame = line.codeBackgroundFrame
             if let block = open {
@@ -568,6 +562,30 @@ final class BiteTextView: UITextView {
         }
         CATransaction.commit()
     }
+
+    /// The lines on screen, top to bottom, until `body` returns false. UIKit lays out what's on
+    /// screen, after `super.layoutSubviews()`. Most lines past that have no layout yet and lie at
+    /// the top of the page: a code block further down was drawn there, over the first line. And
+    /// asked for the line at a point past the last one, TextKit guesses at the layout there, and
+    /// on the Mac it once never returned. So it's only asked about the top of the screen, within
+    /// the text.
+    private func forEachLineOnScreen(_ body: (NSTextLayoutFragment) -> Bool) {
+        guard let layoutManager = textLayoutManager else { return }
+        let textHeight = layoutManager.usageBoundsForTextContainer.maxY
+        let top = min(max(0, contentOffset.y - textContainerInset.top), max(0, textHeight - 1))
+        let bottom = contentOffset.y - textContainerInset.top + bounds.height
+        let start = layoutManager.textLayoutFragment(for: CGPoint(x: 1, y: top))?.rangeInElement.location
+        layoutManager.enumerateTextLayoutFragments(from: start ?? layoutManager.documentRange.location, options: []) { fragment in
+            fragment.state != .none && fragment.layoutFragmentFrame.minY < bottom && body(fragment)
+        }
+    }
+
+    #if DEBUG
+    /// The code blocks' backgrounds as drawn, in the view's coordinates.
+    var codeBackgroundsForTesting: [CGRect] {
+        (codeBackgrounds.sublayers ?? []).compactMap { $0 as? CAShapeLayer }.filter { !$0.isHidden }.compactMap { $0.path?.boundingBox }
+    }
+    #endif
 
     // MARK: Selection
 
@@ -633,16 +651,22 @@ final class BiteTextView: UITextView {
 
     // MARK: Checkboxes
 
-    /// The start of the to-do line whose checkbox is under `point`, if any.
+    /// The start of the to-do line whose checkbox is under `point`, if any. A touch is always on
+    /// screen, so the line is looked for among those (see `forEachLineOnScreen`).
     func todoLocation(at point: CGPoint) -> Int? {
-        guard let layoutManager = textLayoutManager,
-              let contentStorage = layoutManager.textContentManager as? NSTextContentStorage else { return nil }
         let containerPoint = CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top)
-        let probe = CGPoint(x: max(containerPoint.x, 1), y: containerPoint.y)
-        guard let fragment = layoutManager.textLayoutFragment(for: probe) as? BlockLayoutFragment,
-              fragment.block.kind == .todo,
-              fragment.checkboxFrame.insetBy(dx: -12, dy: -9).contains(containerPoint) else { return nil }
-        return contentStorage.offset(from: contentStorage.documentRange.location, to: fragment.rangeInElement.location)
+        var line: BlockLayoutFragment?
+        forEachLineOnScreen { fragment in
+            guard fragment.layoutFragmentFrame.minY <= containerPoint.y else { return false }
+            if containerPoint.y < fragment.layoutFragmentFrame.maxY {
+                line = fragment as? BlockLayoutFragment
+                return false
+            }
+            return true
+        }
+        guard let line, line.block.kind == .todo,
+              line.checkboxFrame.insetBy(dx: -12, dy: -9).contains(containerPoint) else { return nil }
+        return contentStorage.offset(from: contentStorage.documentRange.location, to: line.rangeInElement.location)
     }
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {

@@ -1,11 +1,22 @@
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import CoreText
-import UniformTypeIdentifiers
 import BiteKit
 
+#if canImport(UIKit)
+typealias EditorTextViewDelegate = UITextViewDelegate & UITextDragDelegate & UITextDropDelegate
+#else
+typealias EditorTextViewDelegate = NSTextViewDelegate
+#endif
+
 /// Runs one dot's text view: loads Markdown into it, applies the Notion-style input rules from
-/// `InputRules`, keeps the display attributes in sync and reports every change as Markdown.
-final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, UITextDropDelegate {
+/// `InputRules`, keeps the display attributes in sync and reports every change as Markdown. The
+/// same code runs UIKit's text view on the phone and AppKit's on a Mac; where the two differ is
+/// marked `#if canImport(UIKit)`.
+final class EditorController: NSObject, EditorTextViewDelegate {
     let dot: Int
     let textView = BiteTextView()
     /// The page as Markdown, once typing pauses. Worked out off the main thread.
@@ -16,7 +27,7 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
 
     private let theme: EditorTheme
     private let layoutDelegate: BlockLayoutDelegate
-    /// The user's edit in flight, from `shouldChangeTextIn` until `textViewDidChange`.
+    /// The user's edit in flight, from `shouldChange(_:to:)` until `textChanged()`.
     private var pendingEdit: PendingEdit?
     /// Inline style for the next typed character, set right after an inline shortcut fires so
     /// typing continues in plain text.
@@ -27,10 +38,16 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
     /// Set while the selection is being moved off the final newline or a divider.
     private var isMovingSelection = false
 
+    #if canImport(UIKit)
     private var storage: NSTextStorage { textView.textStorage }
+    #else
+    private var storage: NSTextStorage { textView.textStorage! }
+    /// Each page has its own undo, as on the phone; the window's would mix up all seven.
+    private let pageUndoManager = UndoManager()
+    #endif
     private var string: NSString { storage.mutableString }
 
-    init(dot: Int, accent: UIColor) {
+    init(dot: Int, accent: PlatformColor) {
         self.dot = dot
         theme = EditorTheme(accent: accent)
         layoutDelegate = BlockLayoutDelegate(theme: theme)
@@ -38,21 +55,33 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         textView.configure()
         textView.editor = self
         textView.delegate = self
+        #if canImport(UIKit)
         textView.textDragDelegate = self
         textView.textDropDelegate = self
-        textView.textLayoutManager?.delegate = layoutDelegate
         textView.tintColor = accent
+        #else
+        textView.insertionPointColor = accent
+        textView.selectionColor = PlatformColor.adaptive(accent, alpha: 0.22, darkAlpha: 0.32)
+        #endif
+        textView.textLayoutManager?.delegate = layoutDelegate
         textView.codeBackgroundColor = theme.codeBackground
         // Before the text storage fixes its attributes, which stretches the edited range to whole
         // paragraphs: afterwards it no longer says where the new text is.
-        NotificationCenter.default.addObserver(self, selector: #selector(textStorageWillProcessEditing),
+        NotificationCenter.default.addObserver(self, selector: #selector(storageWillProcessEditing),
                                                name: NSTextStorage.willProcessEditingNotification, object: storage)
+        #if !canImport(UIKit)
+        // AppKit undoes its own typing without telling the delegate. The change is put right as
+        // soon as the undo is done, as on the phone, rather than a moment later.
+        for name in [NSNotification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange] {
+            NotificationCenter.default.addObserver(self, selector: #selector(undoManagerDidChange), name: name, object: pageUndoManager)
+        }
+        #endif
     }
 
     func load(markdown: String) {
         // What an input method was composing goes with the text it was in. Committed as an edit,
         // it was reported after Clear had emptied the page, and the dot showed a full page.
-        if textView.markedTextRange != nil {
+        if textView.isComposing {
             isApplyingEdit = true
             textView.unmarkText()
             isApplyingEdit = false
@@ -85,15 +114,21 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
 
     func focus() {
         placeCaretIfNew()
+        #if canImport(UIKit)
         textView.becomeFirstResponder()
+        #else
+        textView.window?.makeFirstResponder(textView)
+        #endif
     }
 
+    #if canImport(UIKit)
     /// Readies the page to be moved to with the keyboard up: it shows up scrolled to its caret,
     /// which goes to the end the first time, as it will when the page is focused.
     func arrive() {
         placeCaretIfNew()
         textView.arrive()
     }
+    #endif
 
     private func placeCaretIfNew() {
         guard caretGoesToEnd else { return }
@@ -101,16 +136,18 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         textView.selectedRange = NSRange(location: max(0, storage.length - 1), length: 0)
     }
 
-    // MARK: UITextViewDelegate
+    // MARK: The text view's own edits
 
-    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+    /// Asked before the text view changes the text itself: typing, backspace, Return, Tab, an
+    /// input method, cut. Returns false where the editor makes the change instead.
+    func shouldChange(_ range: NSRange, to text: String) -> Bool {
         guard !isApplyingEdit else { return true }
         // UIKit's undo and redo put back text with the attributes it had; stamping it with the
         // line's style, as for typing, turned a restored bold word plain.
         if let undoManager = textView.undoManager, undoManager.isUndoing || undoManager.isRedoing { return true }
         let edited = NSRange(location: range.location, length: (text as NSString).length)
         // Never touch text while an input method is still composing it (marked text).
-        guard textView.markedTextRange == nil else {
+        guard !textView.isComposing else {
             recordPendingEdit(replacing: range, composing: true)
             return true
         }
@@ -158,8 +195,9 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         return true
     }
 
-    func textViewDidChange(_ textView: UITextView) {
-        guard !isApplyingEdit, textView.markedTextRange == nil else { return }
+    /// The text view changed the text, after `shouldChange` let it.
+    func textChanged() {
+        guard !isApplyingEdit, !textView.isComposing else { return }
         var changed = textView.selectedRange
         // UIKit said it made this change, so it's put right here rather than as a change it made
         // on its own.
@@ -183,8 +221,8 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         if let joinedLine { registerRedoOfJoin(lineAt: joinedLine) }
     }
 
-    func textViewDidChangeSelection(_ textView: UITextView) {
-        guard !isApplyingEdit, textView.markedTextRange == nil else { return }
+    func selectionChanged() {
+        guard !isApplyingEdit, !textView.isComposing else { return }
         // A tap put the caret somewhere.
         caretGoesToEnd = false
         let clamped = stepOverDivider(clamp(textView.selectedRange))
@@ -203,6 +241,19 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         updateTypingAttributes()
     }
 
+    #if canImport(UIKit)
+    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        shouldChange(range, to: text)
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        textChanged()
+    }
+
+    func textViewDidChangeSelection(_ textView: UITextView) {
+        selectionChanged()
+    }
+
     func textViewDidBeginEditing(_ textView: UITextView) {
         let bar = FormatBar.shared
         bar.editor = self
@@ -213,6 +264,64 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         textView.dragDidEnd()
     }
+    #else
+    func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
+        // No text means a change of attributes alone, from AppKit's font panel and the like. A
+        // page's look comes from its lines and styles, so those go through the editor too.
+        guard let replacementString else { return false }
+        return shouldChange(affectedCharRange, to: replacementString)
+    }
+
+    func textDidChange(_ notification: Notification) {
+        textChanged()
+    }
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+        selectionChanged()
+    }
+
+    func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRange oldSelectedCharRange: NSRange,
+                  toCharacterRange newSelectedCharRange: NSRange) -> NSRange {
+        allowedSelection(newSelectedCharRange)
+    }
+
+    /// Where the selection may be: never past the final newline, and a caret never on a divider.
+    /// The text view asks every time the selection is set, a drag that's still selecting
+    /// included, so the selection is never anywhere else, not even for a moment.
+    func allowedSelection(_ range: NSRange) -> NSRange {
+        guard !isApplyingEdit, !textView.isComposing, storage.length > 0 else { return range }
+        return stepOverDivider(clamp(range))
+    }
+
+    func undoManager(for view: NSTextView) -> UndoManager? {
+        pageUndoManager
+    }
+
+    /// Code is no prose, so spelling isn't checked in it.
+    func textView(_ view: NSTextView, didCheckTextIn range: NSRange, types checkingTypes: NSTextCheckingTypes,
+                  options: [NSSpellChecker.OptionKey: Any], results: [NSTextCheckingResult], orthography: NSOrthography,
+                  wordCount: Int) -> [NSTextCheckingResult] {
+        results.filter { result in
+            let location = result.range.location
+            guard location < storage.length else { return true }
+            return block(of: lineRange(at: location)).kind != .code && !inlineStyle(at: location).contains(.code)
+        }
+    }
+
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        switch commandSelector {
+        case #selector(NSResponder.insertBacktab(_:)):
+            perform(.outdent)
+            return true
+        case #selector(NSResponder.insertLineBreak(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
+            // A page is made of lines, with no breaks inside one: these are Return too.
+            textView.insertNewline(nil)
+            return true
+        default:
+            return false
+        }
+    }
+    #endif
 
     // MARK: Typed text
 
@@ -642,7 +751,7 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
     /// lost its marked text: the letters spelled so far stayed in the text without the input
     /// method being told it was done with them.
     private func finishComposing() {
-        guard textView.markedTextRange != nil else { return }
+        guard textView.isComposing else { return }
         textView.unmarkText()
     }
 
@@ -672,7 +781,12 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         case .strikethrough: toggleInline(.strikethrough)
         case .outdent: changeIndent(by: -1)
         case .indent: changeIndent(by: 1)
-        case .dismiss: textView.resignFirstResponder()
+        case .dismiss:
+            #if canImport(UIKit)
+            textView.resignFirstResponder()
+            #else
+            textView.window?.makeFirstResponder(nil)
+            #endif
         }
     }
 
@@ -735,17 +849,16 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         let line = lineRange(at: location)
         guard block(of: line).kind == .todo else { return }
         setBlocks(of: [line]) { $0.isChecked.toggle() }
+        #if canImport(UIKit)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
     }
 
     // MARK: Clipboard
 
-    /// Bite's own copies carry their Markdown under this type as well.
-    static let markdownPasteboardType = "com.chenyeni.bite.markdown"
-
     /// The Markdown of a copy made in Bite, while the pasteboard still holds it.
     static var copiedMarkdown: String? {
-        UIPasteboard.general.data(forPasteboardType: markdownPasteboardType).flatMap { String(data: $0, encoding: .utf8) }
+        Clipboard.markdown
     }
 
     /// Copies the selection as Markdown, so it pastes cleanly anywhere. Code on its own copies as
@@ -756,13 +869,10 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         guard selection.length > 0 else { return }
         let copied = copiedText(in: selection)
         guard let code = copied.code else {
-            UIPasteboard.general.string = copied.markdown
+            Clipboard.string = copied.markdown
             return
         }
-        UIPasteboard.general.items = [[
-            UTType.utf8PlainText.identifier: code,
-            Self.markdownPasteboardType: Data(copied.markdown.utf8),
-        ]]
+        Clipboard.set(code, markdown: copied.markdown)
     }
 
     /// `range` as Markdown, and code on its own as just the code. Part of a line, with no line
@@ -843,6 +953,7 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
 
     // MARK: Drag and drop
 
+    #if canImport(UIKit)
     /// Where the text being dragged out of this page is, and what it was, while the drag lasts.
     private var dragged: (range: NSRange, text: String)?
 
@@ -883,6 +994,7 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
                            with operation: UIDropOperation) {
         dragged = nil
     }
+    #endif
 
     /// Text dragged within the page moves as if cut and pasted where it's dropped, and one undo
     /// puts it back. Whole lines move as lines: dropped at the start of a line they go in above
@@ -966,9 +1078,14 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
                 controller.replace(linesAfter, with: previous, selection: previousSelection)
             }
         }
+        #if canImport(UIKit)
         // Tell the keyboard the text changed under it, so autocorrect and predictions work from
         // the new text rather than what was typed before the shortcut.
         textView.inputDelegate?.textWillChange(textView)
+        #else
+        // Typing after this starts an undo step of its own, not one with the typing before it.
+        textView.breakUndoCoalescing()
+        #endif
         isApplyingEdit = true
         storage.beginEditing()
         storage.replaceCharacters(in: range, with: replacement)
@@ -978,7 +1095,9 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         // it was, though the line under it may have become a divider, as when lines were
         // dragged to where the caret was.
         textView.selectedRange = stepOverDivider(clamp(selection))
+        #if canImport(UIKit)
         textView.inputDelegate?.textDidChange(textView)
+        #endif
         contentDidChange(in: replacedRange)
         tellKeyboardOnceItsDone()
     }
@@ -1010,15 +1129,17 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
     /// look again when that edit was a "no" to what it asked: after a backspace joined a line
     /// back up, the next letter came out capitalized. So it's told again when it's done.
     private func tellKeyboardOnceItsDone() {
+        #if canImport(UIKit)
         guard textView.isFirstResponder, !keyboardNeedsTelling else { return }
         keyboardNeedsTelling = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             keyboardNeedsTelling = false
-            guard textView.isFirstResponder, textView.markedTextRange == nil else { return }
+            guard textView.isFirstResponder, !textView.isComposing else { return }
             textView.inputDelegate?.selectionWillChange(textView)
             textView.inputDelegate?.selectionDidChange(textView)
         }
+        #endif
     }
 
     private func setBlocks(of lines: [NSRange], _ change: (inout BlockAttributes) -> Void) {
@@ -1117,7 +1238,7 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         }
     }
 
-    @objc private func textStorageWillProcessEditing(_ notification: Notification) {
+    @objc private func storageWillProcessEditing(_ notification: Notification) {
         guard storage.editedMask.contains(.editedCharacters) else { return }
         let edited = storage.editedRange
         let delta = storage.changeInLength
@@ -1134,7 +1255,7 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
     /// Restyles, and reports, text UIKit changed on its own. Text still being composed, or
     /// being rewritten by Writing Tools, is left until that's done.
     private func settleUnannouncedEdit() {
-        guard let edit = unannouncedEdit, !isApplyingEdit, textView.markedTextRange == nil,
+        guard let edit = unannouncedEdit, !isApplyingEdit, !textView.isComposing,
               !textView.isWritingToolsActive else { return }
         unannouncedEdit = nil
         ensureTrailingNewline()
@@ -1155,9 +1276,19 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         contentDidChange(in: clampToPage(edit.range))
     }
 
+    #if canImport(UIKit)
     func textViewWritingToolsDidEnd(_ textView: UITextView) {
         settleUnannouncedEdit()
     }
+    #else
+    func textViewWritingToolsDidEnd(_ textView: NSTextView) {
+        settleUnannouncedEdit()
+    }
+
+    @objc private func undoManagerDidChange(_ notification: Notification) {
+        settleUnannouncedEdit()
+    }
+    #endif
 
     private func clampToPage(_ range: NSRange) -> NSRange {
         let location = min(max(0, range.location), storage.length)
@@ -1353,7 +1484,7 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
     private func slantTextWithoutItalics(in range: NSRange, of text: NSMutableAttributedString) {
         (text.string as NSString).enumerateSubstrings(in: range, options: .byComposedCharacterSequences) { character, characterRange, _, _ in
             guard let character, let scalar = character.unicodeScalars.first, EditorTheme.lacksItalics(scalar),
-                  let base = text.attribute(.font, at: characterRange.location, effectiveRange: nil) as? UIFont else { return }
+                  let base = text.attribute(.font, at: characterRange.location, effectiveRange: nil) as? PlatformFont else { return }
             text.addAttribute(.font, value: self.obliqueFont(for: character, base: base), range: characterRange)
         }
     }
@@ -1404,14 +1535,14 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
         return text
     }
 
-    private var obliqueFonts: [String: UIFont] = [:]
+    private var obliqueFonts: [String: PlatformFont] = [:]
 
-    private func obliqueFont(for character: String, base: UIFont) -> UIFont {
+    private func obliqueFont(for character: String, base: PlatformFont) -> PlatformFont {
         let fallback = CTFontCreateForString(base as CTFont, character as CFString, CFRange(location: 0, length: (character as NSString).length))
         let key = "\(CTFontCopyPostScriptName(fallback)) \(CTFontGetSize(fallback))"
         if let font = obliqueFonts[key] { return font }
         var slant = CGAffineTransform(a: 1, b: 0, c: EditorTheme.italicSlant, d: 1, tx: 0, ty: 0)
-        let font = CTFontCreateCopyWithAttributes(fallback, CTFontGetSize(fallback), &slant, nil) as UIFont
+        let font = CTFontCreateCopyWithAttributes(fallback, CTFontGetSize(fallback), &slant, nil) as PlatformFont
         obliqueFonts[key] = font
         return font
     }
@@ -1539,15 +1670,17 @@ final class EditorController: NSObject, UITextViewDelegate, UITextDragDelegate, 
     }
 
     private func updateTypingAttributes() {
-        guard storage.length > 0, textView.markedTextRange == nil else { return }
+        guard storage.length > 0, !textView.isComposing else { return }
         let selection = clamp(textView.selectedRange)
         let block = block(of: lineRange(at: selection.location))
         let inline = typingStyle(at: selection.location)
         textView.typingAttributes = typingAttributes(atLineOf: selection.location, inline: inline)
         textView.isTypingCode = block.kind == .code || inline.contains(.code)
+        #if canImport(UIKit)
         if FormatBar.shared.editor === self {
             FormatBar.shared.refresh()
         }
+        #endif
     }
 
     /// Everything text typed into the line at `location` gets: the line's own and derived

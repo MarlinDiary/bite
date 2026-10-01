@@ -1,4 +1,8 @@
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import BiteKit
 
 nonisolated extension NSAttributedString.Key {
@@ -80,32 +84,39 @@ nonisolated enum RunPosition: Int, Sendable {
 /// Fonts, colours and spacing for the editor. Display attributes are always derived from the
 /// block and inline attributes through here, never stored on their own.
 nonisolated struct EditorTheme: @unchecked Sendable {
-    let accent: UIColor
-    let bodyFont = UIFont.systemFont(ofSize: 17)
-    let heading1Font = UIFont.systemFont(ofSize: 28, weight: .bold)
-    let heading2Font = UIFont.systemFont(ofSize: 22, weight: .bold)
-    let heading3Font = UIFont.systemFont(ofSize: 19, weight: .semibold)
-    let codeFont = UIFont.monospacedSystemFont(ofSize: 14.5, weight: .regular)
-    let numberFont = UIFont.monospacedDigitSystemFont(ofSize: 16, weight: .semibold)
+    /// Every size here is a phone's, times this. A Mac's point is larger on screen than a phone's,
+    /// so the same text is set smaller there.
+    #if os(macOS)
+    static let scale: CGFloat = 15.0 / 17.0
+    #else
+    static let scale: CGFloat = 1
+    #endif
+
+    let accent: PlatformColor
+    let bodyFont = PlatformFont.systemFont(ofSize: 17 * Self.scale)
+    let heading1Font = PlatformFont.systemFont(ofSize: 28 * Self.scale, weight: .bold)
+    let heading2Font = PlatformFont.systemFont(ofSize: 22 * Self.scale, weight: .bold)
+    let heading3Font = PlatformFont.systemFont(ofSize: 19 * Self.scale, weight: .semibold)
+    let codeFont = PlatformFont.monospacedSystemFont(ofSize: 14.5 * Self.scale, weight: .regular)
+    let numberFont = PlatformFont.monospacedDigitSystemFont(ofSize: 16 * Self.scale, weight: .semibold)
 
     /// Room between a list line's indent and its text, where the marker is drawn.
-    let markerWidth: CGFloat = 28
-    let indentStep: CGFloat = 24
-    let quoteIndent: CGFloat = 18
-    let codeInset: CGFloat = 14
-    let codePadding: CGFloat = 9
+    let markerWidth: CGFloat = 28 * Self.scale
+    let indentStep: CGFloat = 24 * Self.scale
+    let quoteIndent: CGFloat = 18 * Self.scale
+    let codeInset: CGFloat = 14 * Self.scale
+    let codePadding: CGFloat = 9 * Self.scale
 
-    init(accent: UIColor) {
+    private var scale: CGFloat { Self.scale }
+
+    init(accent: PlatformColor) {
         self.accent = accent
     }
 
     /// A deeper shade of the page's own wash, where a neutral grey looked like a dull film over
     /// the coloured pages. See-through, over the wash.
-    var codeBackground: UIColor {
-        let accent = accent
-        return UIColor { traits in
-            accent.resolvedColor(with: traits).withAlphaComponent(traits.userInterfaceStyle == .dark ? 0.10 : 0.09)
-        }
+    var codeBackground: PlatformColor {
+        .adaptive(accent, alpha: 0.09, darkAlpha: 0.10)
     }
 
     /// The slant given to italic text in scripts whose fonts have no italic, close to the angle
@@ -141,7 +152,7 @@ nonisolated struct EditorTheme: @unchecked Sendable {
         let isDone = block.kind == .todo && block.isChecked
         if inline.contains(.strikethrough) || isDone {
             attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
-            attributes[.strikethroughColor] = UIColor.secondaryLabel
+            attributes[.strikethroughColor] = PlatformColor.secondaryText
         }
         if inline.contains(.code), block.kind != .code {
             attributes[.backgroundColor] = accent.withAlphaComponent(0.12)
@@ -149,69 +160,64 @@ nonisolated struct EditorTheme: @unchecked Sendable {
         return attributes
     }
 
-    private func font(for kind: BlockKind, inline: InlineStyle) -> UIFont {
+    private func font(for kind: BlockKind, inline: InlineStyle) -> PlatformFont {
         if kind == .code { return codeFont }
-        let base: UIFont = switch kind {
+        let base: PlatformFont = switch kind {
         case .heading1: heading1Font
         case .heading2: heading2Font
         case .heading3, .heading4, .heading5, .heading6: heading3Font
         default: bodyFont
         }
         if inline.contains(.code) {
-            return UIFont.monospacedSystemFont(ofSize: base.pointSize * 0.88, weight: inline.contains(.bold) ? .semibold : .regular)
+            return PlatformFont.monospacedSystemFont(ofSize: base.pointSize * 0.88, weight: inline.contains(.bold) ? .semibold : .regular)
         }
-        var traits = base.fontDescriptor.symbolicTraits
-        if inline.contains(.bold) { traits.insert(.traitBold) }
-        if inline.contains(.italic) { traits.insert(.traitItalic) }
-        guard traits != base.fontDescriptor.symbolicTraits,
-              let descriptor = base.fontDescriptor.withSymbolicTraits(traits) else { return base }
-        return UIFont(descriptor: descriptor, size: base.pointSize)
+        return base.adding(bold: inline.contains(.bold), italic: inline.contains(.italic))
     }
 
-    private func foregroundColor(for block: BlockAttributes, inline: InlineStyle) -> UIColor {
-        if block.kind == .todo, block.isChecked { return .secondaryLabel }
+    private func foregroundColor(for block: BlockAttributes, inline: InlineStyle) -> PlatformColor {
+        if block.kind == .todo, block.isChecked { return .secondaryText }
         if inline.contains(.code), block.kind != .code { return accent }
-        return .label
+        return .primaryText
     }
 
     private func paragraphStyle(for block: BlockAttributes, runPosition: RunPosition) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        style.lineSpacing = 4
-        style.paragraphSpacing = 8
+        style.lineSpacing = 4 * scale
+        style.paragraphSpacing = 8 * scale
         switch block.kind {
         case .paragraph:
             break
         case .heading1:
-            style.lineSpacing = 2
-            style.paragraphSpacingBefore = 14
-            style.paragraphSpacing = 6
+            style.lineSpacing = 2 * scale
+            style.paragraphSpacingBefore = 14 * scale
+            style.paragraphSpacing = 6 * scale
         case .heading2:
-            style.lineSpacing = 2
-            style.paragraphSpacingBefore = 10
-            style.paragraphSpacing = 6
+            style.lineSpacing = 2 * scale
+            style.paragraphSpacingBefore = 10 * scale
+            style.paragraphSpacing = 6 * scale
         case .heading3, .heading4, .heading5, .heading6:
-            style.lineSpacing = 2
-            style.paragraphSpacingBefore = 6
-            style.paragraphSpacing = 4
+            style.lineSpacing = 2 * scale
+            style.paragraphSpacingBefore = 6 * scale
+            style.paragraphSpacing = 4 * scale
         case .bullet, .ordered, .todo:
             let x = listTextX(indent: block.indent)
             style.firstLineHeadIndent = x
             style.headIndent = x
-            style.paragraphSpacing = 6
+            style.paragraphSpacing = 6 * scale
         case .quote:
             style.firstLineHeadIndent = quoteIndent
             style.headIndent = quoteIndent
-            style.paragraphSpacing = 6
+            style.paragraphSpacing = 6 * scale
         case .code:
             style.firstLineHeadIndent = codeInset
             style.headIndent = codeInset
             style.tailIndent = -codeInset
-            style.lineSpacing = 2
-            style.paragraphSpacingBefore = runPosition.isFirst ? 14 : 0
-            style.paragraphSpacing = runPosition.isLast ? 14 : 0
+            style.lineSpacing = 2 * scale
+            style.paragraphSpacingBefore = runPosition.isFirst ? 14 * scale : 0
+            style.paragraphSpacing = runPosition.isLast ? 14 * scale : 0
         case .divider:
-            style.paragraphSpacingBefore = 4
-            style.paragraphSpacing = 10
+            style.paragraphSpacingBefore = 4 * scale
+            style.paragraphSpacing = 10 * scale
         }
         return style
     }

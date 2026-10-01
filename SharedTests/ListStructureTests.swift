@@ -1,5 +1,9 @@
 import Testing
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import BiteKit
 @testable import Bite
 
@@ -75,7 +79,7 @@ struct ClipboardTests {
         let editor = EditorHarness("```swift\nlet a = 1\nlet b = 2\n```")
         editor.selectAll()
         editor.controller.copySelection()
-        #expect(UIPasteboard.general.string == "let a = 1\nlet b = 2")
+        #expect(Clipboard.string == "let a = 1\nlet b = 2")
         #expect(EditorController.copiedMarkdown == "```swift\nlet a = 1\nlet b = 2\n```")
     }
 
@@ -94,7 +98,7 @@ struct ClipboardTests {
         editor.controller.copySelection()
         editor.select(from: (1, 0), to: (1, 4))
         editor.controller.copySelection()
-        #expect(UIPasteboard.general.string == "text")
+        #expect(Clipboard.string == "text")
         #expect(EditorController.copiedMarkdown == nil)
     }
 
@@ -102,7 +106,7 @@ struct ClipboardTests {
         let editor = EditorHarness("1. a\n2. b\n3. c")
         editor.select(from: (1, 0), to: (2, 1))
         editor.controller.copySelection()
-        #expect(UIPasteboard.general.string == "2. b\n3. c")
+        #expect(Clipboard.string == "2. b\n3. c")
     }
 }
 
@@ -113,7 +117,7 @@ struct JoinedLineTests {
         let text = editor.textView.text as NSString
         var location = 0
         for _ in 0..<line { location = NSMaxRange(text.paragraphRange(for: NSRange(location: location, length: 0))) }
-        return editor.textView.textStorage.attribute(.biteOrdinal, at: location, effectiveRange: nil) as? Int
+        return editor.storage.attribute(.biteOrdinal, at: location, effectiveRange: nil) as? Int
     }
 
     /// The user's report: 1–4, Return, backspace to go back up to 4, type. The 4 turned to 0.
@@ -154,7 +158,7 @@ struct JoinedLineTests {
         editor.backspace()
         editor.backspace()
         editor.type("x", separateEvents: true)
-        let storage = editor.textView.textStorage
+        let storage = editor.storage
         #expect(storage.attribute(.biteShownStyle, at: storage.length - 2, effectiveRange: nil) as? String == NumberStyle.letters.rawValue)
         #expect(editor.markdown == "a. one\nb. twox")
     }
@@ -164,7 +168,7 @@ struct JoinedLineTests {
         editor.moveCaret(line: 2, column: 0)
         editor.backspace()
         editor.type("z", separateEvents: true)
-        let storage = editor.textView.textStorage
+        let storage = editor.storage
         let positions = [0, 4, storage.length - 2].map { storage.attribute(.biteRunPosition, at: $0, effectiveRange: nil) as? Int }
         #expect(positions == [RunPosition.first.rawValue, RunPosition.last.rawValue, RunPosition.last.rawValue])
     }
@@ -174,16 +178,20 @@ struct JoinedLineTests {
         let editor = EditorHarness("**bold**")
         editor.moveCaret(line: 0)
         editor.type("\n", separateEvents: true)
-        let storage = editor.textView.textStorage
-        let font = storage.attribute(.font, at: storage.length - 1, effectiveRange: nil) as? UIFont
+        let storage = editor.storage
+        let font = storage.attribute(.font, at: storage.length - 1, effectiveRange: nil) as? PlatformFont
+        #if canImport(UIKit)
         #expect(font?.fontDescriptor.symbolicTraits.contains(.traitBold) == false)
+        #else
+        #expect(font?.fontDescriptor.symbolicTraits.contains(.bold) == false)
+        #endif
     }
 
     @Test func strikethroughOverLinesLeavesTheLineBreaks() {
         let editor = EditorHarness("ab\ncd")
         editor.selectAll()
         editor.controller.perform(.strikethrough)
-        let storage = editor.textView.textStorage
+        let storage = editor.storage
         #expect(storage.attribute(.strikethroughStyle, at: 2, effectiveRange: nil) == nil)
         #expect(editor.markdown == "~~ab~~\n~~cd~~")
     }

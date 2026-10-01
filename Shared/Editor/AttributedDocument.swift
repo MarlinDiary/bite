@@ -1,4 +1,4 @@
-import UIKit
+import Foundation
 import BiteKit
 
 /// Converts between `BiteDocument` and the attributed text inside the editor.

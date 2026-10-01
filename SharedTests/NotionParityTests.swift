@@ -1,5 +1,9 @@
 import Testing
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import BiteKit
 @testable import Bite
 
@@ -255,6 +259,7 @@ struct NotionKeyTests {
         #expect(editor.caret == (editor.textView.text as NSString).range(of: "b").location)
     }
 
+    #if canImport(UIKit)
     /// With a hardware keyboard, for what's typed next.
     @Test func commandBWorksAtTheCaret() {
         let editor = EditorHarness("a")
@@ -262,6 +267,7 @@ struct NotionKeyTests {
         let bold = #selector(UIResponderStandardEditActions.toggleBoldface(_:))
         #expect(editor.textView.canPerformAction(bold, withSender: UIKeyCommand(input: "b", modifierFlags: .command, action: bold)))
     }
+    #endif
 
     /// Down to an empty page and back, with no stray space left from the shortcut.
     @Test func undoAndRedoAllTheWay() {
@@ -309,7 +315,7 @@ struct LongPageTests {
     @Test func deepNestingLeavesRoomForText() {
         let markdown = (0..<14).map { String(repeating: "  ", count: $0) + "- l\($0)" }.joined(separator: "\n")
         let editor = EditorHarness(markdown)
-        let storage = editor.textView.textStorage
+        let storage = editor.storage
         var widest: CGFloat = 0
         var location = 0
         for line in editor.textView.text.components(separatedBy: "\n").dropLast() {
@@ -317,7 +323,12 @@ struct LongPageTests {
             widest = max(widest, style?.headIndent ?? 0)
             location += (line as NSString).length + 1
         }
-        #expect(widest < editor.textView.textContainer.size.width / 2)
+        #if canImport(UIKit)
+        let width = editor.textView.textContainer.size.width
+        #else
+        let width = editor.textView.textContainer?.size.width ?? 0
+        #endif
+        #expect(widest < width / 2)
         #expect(editor.indent(line: 13) == 13)
     }
 
@@ -382,7 +393,7 @@ struct LetteredListTests {
 
     @Test func theItemsShowTheirLetters() {
         let editor = EditorHarness("a. one\nb. two")
-        let storage = editor.textView.textStorage
+        let storage = editor.storage
         #expect(storage.attribute(.biteShownStyle, at: 4, effectiveRange: nil) as? String == NumberStyle.letters.rawValue)
         #expect(storage.attribute(.biteOrdinal, at: 4, effectiveRange: nil) as? Int == 2)
     }
@@ -418,7 +429,7 @@ struct LetteredListTests {
         let editor = EditorHarness("a. one\nb. two\nc. three")
         editor.select(from: (1, 0), to: (2, 5))
         editor.controller.copySelection()
-        #expect(UIPasteboard.general.string == "b. two\nc. three")
+        #expect(Clipboard.string == "b. two\nc. three")
     }
 
     @Test func pastingALetteredList() {

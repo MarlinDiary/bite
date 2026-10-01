@@ -1,5 +1,9 @@
 import Testing
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import BiteKit
 @testable import Bite
 
@@ -103,14 +107,14 @@ struct PartOfALineCopyTests {
         let editor = EditorHarness("- **banana** split")
         editor.select(from: (0, 0), to: (0, 6))
         editor.controller.copySelection()
-        #expect(UIPasteboard.general.string == "**banana**")
+        #expect(Clipboard.string == "**banana**")
     }
 
     @Test func aHeadingsTextCopiesAsText() {
         let editor = EditorHarness("# Title")
         editor.select(from: (0, 0), to: (0, 5))
         editor.controller.copySelection()
-        #expect(UIPasteboard.general.string == "Title")
+        #expect(Clipboard.string == "Title")
     }
 
     @Test func itPastesIntoASentence() {
@@ -118,7 +122,7 @@ struct PartOfALineCopyTests {
         editor.select(from: (0, 0), to: (0, 3))
         editor.controller.copySelection()
         editor.moveCaret(line: 1, column: 4)
-        editor.controller.paste(UIPasteboard.general.string ?? "")
+        editor.controller.paste(Clipboard.string ?? "")
         #expect(editor.markdown == "- [ ] buy milk\nget buysome please")
     }
 
@@ -128,7 +132,7 @@ struct PartOfALineCopyTests {
         editor.controller.copySelection()
         editor.moveCaret(line: 0)
         editor.type("\n")
-        editor.controller.paste(UIPasteboard.general.string ?? "")
+        editor.controller.paste(Clipboard.string ?? "")
         #expect(editor.markdown == "# 1. not a list\n1\\. not a list")
     }
 }
@@ -141,7 +145,7 @@ struct UnannouncedEditTests {
         let editor = EditorHarness("- apple\nplain")
         var reported: [String] = []
         editor.controller.onChange = { reported.append($0) }
-        let storage = editor.textView.textStorage
+        let storage = editor.storage
         storage.replaceCharacters(in: NSRange(location: 1, length: 3), with: "PPL")
         for _ in 0..<100 where reported.isEmpty {
             try? await Task.sleep(for: .milliseconds(50))
@@ -153,7 +157,7 @@ struct UnannouncedEditTests {
         let editor = EditorHarness("- apple\nplain")
         var reported: [String] = []
         editor.controller.onChange = { reported.append($0) }
-        let storage = editor.textView.textStorage
+        let storage = editor.storage
         let heading = NSAttributedString(string: "big ", attributes: BlockAttributes(kind: .heading1).dictionary)
         storage.insert(heading, at: ("apple\n" as NSString).length)
         for _ in 0..<100 where reported.isEmpty {
@@ -169,7 +173,7 @@ struct WholeLineCopyTests {
         let editor = EditorHarness("- apple\nplain")
         editor.select(from: (0, 0), to: (1, 0))
         editor.controller.copySelection()
-        #expect(UIPasteboard.general.string == "- apple")
+        #expect(Clipboard.string == "- apple")
     }
 }
 
@@ -182,7 +186,7 @@ struct EditsWhileComposingTests {
         editor.moveCaret(line: 0)
         editor.startComposing("ni")
         editor.controller.perform(.bullet)
-        #expect(editor.textView.markedTextRange == nil)
+        #expect(!editor.textView.isComposing)
         #expect(editor.markdown == "- abni")
         editor.compose(["h"], commit: "\u{597D}")
         #expect(editor.markdown == "- abni\u{597D}")
@@ -201,7 +205,7 @@ struct EditsWhileComposingTests {
         editor.moveCaret(line: 0)
         editor.startComposing("ni")
         editor.controller.toggleTodo(at: 0)
-        #expect(editor.textView.markedTextRange == nil)
+        #expect(!editor.textView.isComposing)
         #expect(editor.markdown == "- [x] abni")
     }
 
@@ -213,7 +217,7 @@ struct EditsWhileComposingTests {
         editor.moveCaret(line: 0)
         editor.startComposing("ni")
         editor.controller.load(markdown: "")
-        #expect(editor.textView.markedTextRange == nil)
+        #expect(!editor.textView.isComposing)
         #expect(empty.isEmpty)
         editor.type("!")
         #expect(editor.markdown == "!")
@@ -229,13 +233,12 @@ struct SwitchingPagesWhileComposingTests {
         var reported: [String] = []
         one.controller.onChange = { reported.append($0) }
         let two = EditorController(dot: 1, accent: .systemBlue)
-        two.textView.frame = one.window.bounds
-        one.window.addSubview(two.textView)
+        one.addPage(two)
         two.load(markdown: "two")
         one.moveCaret(line: 0)
         one.startComposing("ni")
         two.focus()
-        #expect(one.textView.markedTextRange == nil)
+        #expect(!one.textView.isComposing)
         for _ in 0..<100 where reported.isEmpty {
             try? await Task.sleep(for: .milliseconds(50))
         }
@@ -308,7 +311,7 @@ struct CaretAfterDroppingADividerTests {
         #expect(editor.markdown == "t\n- h\n---\nu\np")
         let caret = editor.textView.selectedRange.location
         let line = (editor.textView.text as NSString).paragraphRange(for: NSRange(location: caret, length: 0))
-        let kind = AttributedDocument.document(from: editor.textView.textStorage, in: line).blocks.first?.kind
+        let kind = AttributedDocument.document(from: editor.storage, in: line).blocks.first?.kind
         #expect(kind != .divider, "caret at \(caret) in \(text)")
     }
 }

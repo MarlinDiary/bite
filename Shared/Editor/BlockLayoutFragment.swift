@@ -1,4 +1,8 @@
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import CoreText
 import BiteKit
 
@@ -65,6 +69,9 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
     var runPosition = RunPosition.single
     var theme = EditorTheme(accent: .systemBlue)
 
+    /// The marks below are drawn at a phone's size, times this (see `EditorTheme.scale`).
+    private var scale: CGFloat { EditorTheme.scale }
+
     private var containerWidth: CGFloat {
         textLayoutManager?.textContainer?.size.width ?? layoutFragmentFrame.width
     }
@@ -96,8 +103,8 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
 
     /// The checkbox, in text-container coordinates, for drawing and hit-testing.
     var checkboxFrame: CGRect {
-        let size: CGFloat = 19
-        let x = theme.listTextX(indent: block.indent) - size - 7
+        let size = 19 * scale
+        let x = theme.listTextX(indent: block.indent) - size - 7 * scale
         return CGRect(x: x, y: layoutFragmentFrame.minY + markerCenterY - size / 2, width: size, height: size)
     }
 
@@ -126,12 +133,12 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
     }
 
     /// The font of a line holding nothing but its newline.
-    static func fontOfEmptyLine(_ line: NSTextLineFragment) -> UIFont? {
+    static func fontOfEmptyLine(_ line: NSTextLineFragment) -> PlatformFont? {
         let range = line.characterRange
         let text = line.attributedString
         guard range.length == 1, range.location < text.length,
               (text.string as NSString).character(at: range.location) == 0x0A else { return nil }
-        return text.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont
+        return text.attribute(.font, at: range.location, effectiveRange: nil) as? PlatformFont
     }
 
     private var firstBaseline: CGFloat {
@@ -157,37 +164,40 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
     // MARK: Drawing
 
     private func drawBullet(at point: CGPoint, in context: CGContext) {
-        let centerX = contextX(theme.listTextX(indent: block.indent) - 15, point)
+        let centerX = contextX(theme.listTextX(indent: block.indent) - 15 * scale, point)
         let centerY = point.y + markerCenterY
         context.saveGState()
         let color = theme.accent.cgColor
         switch block.indent % 3 {
         case 0:
+            let radius = 3.25 * scale
             context.setFillColor(color)
-            context.fillEllipse(in: CGRect(x: centerX - 3.25, y: centerY - 3.25, width: 6.5, height: 6.5))
+            context.fillEllipse(in: CGRect(x: centerX - radius, y: centerY - radius, width: 2 * radius, height: 2 * radius))
         case 1:
+            let radius = 3 * scale
             context.setStrokeColor(color)
-            context.setLineWidth(1.5)
-            context.strokeEllipse(in: CGRect(x: centerX - 3, y: centerY - 3, width: 6, height: 6))
+            context.setLineWidth(1.5 * scale)
+            context.strokeEllipse(in: CGRect(x: centerX - radius, y: centerY - radius, width: 2 * radius, height: 2 * radius))
         default:
+            let half = 2.75 * scale
             context.setFillColor(color)
-            context.fill(CGRect(x: centerX - 2.75, y: centerY - 2.75, width: 5.5, height: 5.5))
+            context.fill(CGRect(x: centerX - half, y: centerY - half, width: 2 * half, height: 2 * half))
         }
         context.restoreGState()
     }
 
     /// How far a number may reach into the page margin, left of the text container.
-    private static let numberOverhang: CGFloat = 14
+    private static let numberOverhang: CGFloat = 14 * EditorTheme.scale
 
     private func drawNumber(at point: CGPoint, in context: CGContext) {
         let text = ListNumbering.label(for: ordinal, indent: block.indent, style: numberStyle)
-        let right = theme.listTextX(indent: block.indent) - 7
+        let right = theme.listTextX(indent: block.indent) - 7 * scale
         var line = numberLine(text, font: theme.numberFont)
         // A list can start at any number, and one like 2026. would run off the screen, so a
         // number too long for the room left of it is set smaller, on the same baseline.
         let room = right + Self.numberOverhang
         if line.width > room {
-            line = numberLine(text, font: theme.numberFont.withSize(theme.numberFont.pointSize * room / line.width))
+            line = numberLine(text, font: theme.numberFont.resized(to: theme.numberFont.pointSize * room / line.width))
         }
         context.saveGState()
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
@@ -196,7 +206,7 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
         context.restoreGState()
     }
 
-    private func numberLine(_ text: String, font: UIFont) -> (line: CTLine, width: CGFloat) {
+    private func numberLine(_ text: String, font: PlatformFont) -> (line: CTLine, width: CGFloat) {
         let label = NSAttributedString(string: text, attributes: [
             .font: font,
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): theme.accent.cgColor,
@@ -216,7 +226,7 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
         let color = theme.accent.cgColor
         context.saveGState()
         if block.isChecked {
-            context.addPath(CGPath(roundedRect: rect, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil))
+            context.addPath(CGPath(roundedRect: rect, cornerWidth: 5.5 * scale, cornerHeight: 5.5 * scale, transform: nil))
             context.setFillColor(color)
             context.fillPath()
             let check = CGMutablePath()
@@ -224,16 +234,16 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
             check.addLine(to: CGPoint(x: rect.minX + rect.width * 0.44, y: rect.minY + rect.height * 0.70))
             check.addLine(to: CGPoint(x: rect.minX + rect.width * 0.75, y: rect.minY + rect.height * 0.33))
             context.addPath(check)
-            context.setStrokeColor(UIColor.white.cgColor)
-            context.setLineWidth(2.1)
+            context.setStrokeColor(PlatformColor.white.cgColor)
+            context.setLineWidth(2.1 * scale)
             context.setLineCap(.round)
             context.setLineJoin(.round)
             context.strokePath()
         } else {
-            let inset = rect.insetBy(dx: 0.8, dy: 0.8)
-            context.addPath(CGPath(roundedRect: inset, cornerWidth: 5, cornerHeight: 5, transform: nil))
+            let inset = rect.insetBy(dx: 0.8 * scale, dy: 0.8 * scale)
+            context.addPath(CGPath(roundedRect: inset, cornerWidth: 5 * scale, cornerHeight: 5 * scale, transform: nil))
             context.setStrokeColor(color)
-            context.setLineWidth(1.6)
+            context.setLineWidth(1.6 * scale)
             context.strokePath()
         }
         context.restoreGState()
@@ -244,9 +254,9 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
     private func drawQuoteBar(at point: CGPoint, in context: CGContext) {
         let top = runPosition.isFirst ? firstBaseline - theme.bodyFont.ascender - 1 : -0.5
         let bottom = runPosition.isLast ? lastBaseline - theme.bodyFont.descender + 1 : layoutFragmentFrame.height + 0.5
-        let rect = CGRect(x: contextX(2, point), y: point.y + top, width: 3, height: bottom - top)
+        let rect = CGRect(x: contextX(2 * scale, point), y: point.y + top, width: 3 * scale, height: bottom - top)
         context.saveGState()
-        context.addPath(Self.roundedPath(rect, radius: 1.5, roundTop: runPosition.isFirst, roundBottom: runPosition.isLast))
+        context.addPath(Self.roundedPath(rect, radius: 1.5 * scale, roundTop: runPosition.isFirst, roundBottom: runPosition.isLast))
         context.setFillColor(theme.accent.cgColor)
         context.fillPath()
         context.restoreGState()
@@ -254,7 +264,7 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
 
     private func drawDivider(at point: CGPoint, in context: CGContext) {
         context.saveGState()
-        context.setFillColor(UIColor.separator.cgColor)
+        context.setFillColor(PlatformColor.separatorLine.cgColor)
         context.fill(CGRect(x: contextX(0, point), y: point.y + markerCenterY - 0.5, width: containerWidth, height: 1))
         context.restoreGState()
     }

@@ -1,5 +1,9 @@
 import Testing
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 @testable import Bite
 
 /// Typing as a Notion user expects, case by case. Characters typed by Chinese keyboards are
@@ -58,10 +62,18 @@ struct BlockShortcutEdgeTests {
         let editor = EditorHarness("```\nx\n```\ntext")
         editor.moveCaret(line: 0)
         #expect(editor.textView.isTypingCode)
+        #if canImport(UIKit)
         #expect(editor.textView.smartQuotesType == .no)
+        #else
+        #expect(!editor.textView.isAutomaticQuoteSubstitutionEnabled)
+        #endif
         editor.moveCaret(line: 1)
         #expect(!editor.textView.isTypingCode)
+        #if canImport(UIKit)
         #expect(editor.textView.smartQuotesType == .default)
+        #else
+        #expect(editor.textView.isAutomaticQuoteSubstitutionEnabled == NSSpellChecker.isAutomaticQuoteSubstitutionEnabled)
+        #endif
     }
 
     @Test func quoteFromAChineseKeyboard() {
@@ -151,7 +163,7 @@ struct InputMethodEdgeTests {
         editor.selectAll()
         editor.compose(["n", "ni"], commit: "x")
         #expect(editor.markdown == "- x")
-        #expect(editor.textView.markedTextRange == nil)
+        #expect(!editor.textView.isComposing)
     }
 
     @Test func composingInANestedItemAfterReturn() {

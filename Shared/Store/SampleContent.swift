@@ -10,9 +10,17 @@ enum SampleContent {
         }
     }
 
+    #if os(macOS)
+    private static let switching = "Click a dot up top, or press ⌘1 to ⌘7, to switch."
+    private static let ticking = "Click a checkbox to tick it off"
+    #else
+    private static let switching = "Swipe, or tap a dot up top to switch."
+    private static let ticking = "Tap a checkbox to tick it off"
+    #endif
+
     private static let welcome = """
     # Welcome to Bite
-    Seven dots, seven pages for whatever you're juggling right now. Swipe, or tap a dot up top to switch.
+    Seven dots, seven pages for whatever you're juggling right now. \(switching)
     ## Markdown shortcuts, Notion style
     - Type `#` and a space at the start of a line for a heading
     - `-` and a space for a list, `1.` and a space for a numbered list
@@ -20,7 +28,7 @@ enum SampleContent {
     - `>` and a space for a quote
     - `---` for a divider, three backticks for a code block
     - Wrap text in `**` for **bold**, `*` for *italic*, `~~` for ~~strikethrough~~, backticks for `code`
-    - Tap a checkbox to tick it off
+    - \(ticking)
 
     > Everything is saved as Markdown, and copies out as Markdown too.
 

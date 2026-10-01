@@ -14,8 +14,18 @@ struct DotSwitcher: View {
     /// The dot under the finger while one is down on the bar.
     @State private var touchedDot: Int?
 
-    private let dotWidth: CGFloat = 30
-    private let inset: CGFloat = 8
+    /// Every size here is a phone's, times this. A Mac's controls are smaller than a phone's,
+    /// which are made for a finger: there the bar is 30 points tall, as a toolbar's controls are.
+    #if os(macOS)
+    static let scale: CGFloat = 30.0 / 44.0
+    #else
+    static let scale: CGFloat = 1
+    #endif
+    static let height = 44 * scale
+
+    private let dotWidth = 30 * scale
+    private let inset = 8 * scale
+    private var scale: CGFloat { Self.scale }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -23,7 +33,7 @@ struct DotSwitcher: View {
                 let isSelected = highlighted == dot
                 let hasContent = !store.isEmpty[dot]
                 DotIndicator(ink: hasContent ? DotPalette.colors[dot] : DotPalette.empty, isSelected: isSelected)
-                    .frame(width: dotWidth, height: 44)
+                    .frame(width: dotWidth, height: Self.height)
                     // The dot under the finger dims a little, as one piece, instantly.
                     .compositingGroup()
                     .opacity(touchedDot == dot ? 0.72 : 1)
@@ -79,10 +89,10 @@ private struct DotIndicator: View {
             if isSelected {
                 Circle().fill(shading)
             } else {
-                Circle().strokeBorder(shading, lineWidth: 3)
+                Circle().strokeBorder(shading, lineWidth: 3 * DotSwitcher.scale)
             }
         }
-        .frame(width: 18, height: 18)
+        .frame(width: 18 * DotSwitcher.scale, height: 18 * DotSwitcher.scale)
         .transaction { $0.animation = nil }
     }
 }

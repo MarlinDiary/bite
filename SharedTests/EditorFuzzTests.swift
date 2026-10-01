@@ -1,6 +1,10 @@
 import Foundation
 import Testing
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import BiteKit
 @testable import Bite
 
@@ -105,7 +109,7 @@ struct EditorFuzzTests {
 
     /// What's wrong with the page, if anything.
     static func problems(in editor: EditorHarness) -> [String] {
-        let storage = editor.textView.textStorage
+        let storage = editor.storage
         let string = storage.string as NSString
         var problems: [String] = []
         guard storage.length > 0, string.character(at: storage.length - 1) == 0x0A else { return ["no final newline"] }
@@ -183,7 +187,7 @@ struct EditorFuzzTests {
                 var rangeA = NSRange(), rangeB = NSRange()
                 let a = storage.attributes(at: index, effectiveRange: &rangeA)
                 let b = fresh.attributes(at: index, effectiveRange: &rangeB)
-                let fontA = a[.font] as? UIFont, fontB = b[.font] as? UIFont
+                let fontA = a[.font] as? PlatformFont, fontB = b[.font] as? PlatformFont
                 if fontA?.fontName != fontB?.fontName || fontA?.pointSize != fontB?.pointSize {
                     problems.append("font at \(index): \(fontA?.fontName ?? "-") \(fontA?.pointSize ?? 0), fresh \(fontB?.fontName ?? "-") \(fontB?.pointSize ?? 0)")
                 }
@@ -194,7 +198,7 @@ struct EditorFuzzTests {
                 }
                 if (a[.strikethroughStyle] as? Int ?? 0) != (b[.strikethroughStyle] as? Int ?? 0) { problems.append("strikethrough at \(index)") }
                 if (a[.backgroundColor] == nil) != (b[.backgroundColor] == nil) { problems.append("inline code background at \(index)") }
-                if (a[.foregroundColor] as? UIColor) != (b[.foregroundColor] as? UIColor) { problems.append("text color at \(index)") }
+                if (a[.foregroundColor] as? PlatformColor) != (b[.foregroundColor] as? PlatformColor) { problems.append("text color at \(index)") }
                 index = min(NSMaxRange(rangeA), NSMaxRange(rangeB))
             }
         }
@@ -204,7 +208,7 @@ struct EditorFuzzTests {
 
     /// What would come out differently if the page were saved and opened again.
     static func savingProblems(in editor: EditorHarness) -> [String] {
-        let storage = editor.textView.textStorage
+        let storage = editor.storage
         let shown = AttributedDocument.document(from: storage).blocks
         let markdown = MarkdownSerializer.markdown(from: BiteDocument(blocks: shown))
         let saved = MarkdownParser.parse(markdown).blocks
@@ -262,7 +266,7 @@ struct EditorFuzzTests {
         var log = ["page \(page.debugDescription)"]
         for _ in 0..<steps {
             let lines = editor.textView.text.components(separatedBy: "\n").dropLast()
-            let length = max(0, editor.textView.textStorage.length - 1)
+            let length = max(0, editor.storage.length - 1)
             switch random.int(0...16) {
             case 0...3:
                 let text = random.pick(typed)
@@ -436,8 +440,13 @@ struct UIKitLostUndoTests {
             editor.undo()
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.001))
         }
+        #if canImport(UIKit)
         // The typed "> " stays, as it would in any text view; the line isn't split.
         #expect(editor.markdown == "- ab> \n1. cd")
+        #else
+        // AppKit keeps every step, so undo goes all the way back.
+        #expect(editor.markdown == "1. ab\n2. cd")
+        #endif
         #expect(EditorFuzzTests.problems(in: editor).isEmpty)
     }
 }

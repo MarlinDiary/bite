@@ -19,11 +19,11 @@ struct DotMenu: View {
             }
             Section {
                 Button("Copy Markdown", systemImage: "doc.on.doc") {
-                    UIPasteboard.general.string = store.currentMarkdown(dot: dot)
+                    Clipboard.string = store.currentMarkdown(dot: dot)
                 }
                 .disabled(isEmpty)
                 Button("Copy Plain Text", systemImage: "doc.plaintext") {
-                    UIPasteboard.general.string = store.currentPlainText(dot: dot)
+                    Clipboard.string = store.currentPlainText(dot: dot)
                 }
                 .disabled(isEmpty)
                 // Neither red nor asked about: the page is cleared as an edit, which undo brings

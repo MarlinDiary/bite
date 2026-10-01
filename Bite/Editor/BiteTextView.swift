@@ -406,6 +406,11 @@ final class BiteTextView: UITextView {
         max(keyboardOverlap, safeBottom)
     }
 
+    /// Whether an input method is still composing text (marked text).
+    var isComposing: Bool {
+        markedTextRange != nil
+    }
+
     /// Code is typed as it is: no curly quotes, capitals or spelling marks. The keyboard only
     /// picks up the change when told to, so it's told only when the caret moves into code or out.
     var isTypingCode = false {
@@ -428,7 +433,7 @@ final class BiteTextView: UITextView {
     }
 
     override func paste(_ sender: Any?) {
-        guard let editor, let text = EditorController.copiedMarkdown ?? UIPasteboard.general.string else {
+        guard let editor, let text = Clipboard.markdown ?? Clipboard.string else {
             super.paste(sender)
             return
         }

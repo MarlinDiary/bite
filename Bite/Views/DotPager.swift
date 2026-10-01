@@ -60,7 +60,7 @@ struct DotPager: UIViewRepresentable {
 }
 
 final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
-    let controllers = DotPalette.colors.indices.map { EditorController(dot: $0, accent: DotPalette.colors[$0].uiColor) }
+    let controllers = DotPalette.colors.indices.map { EditorController(dot: $0, accent: DotPalette.colors[$0].platformColor) }
     let container = PagerContainerView()
     var scrollView: PagerScrollView { container.scrollView }
     var select: ((Int) -> Void)?

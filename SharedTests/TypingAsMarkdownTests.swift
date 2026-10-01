@@ -1,5 +1,9 @@
 import Testing
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import BiteKit
 @testable import Bite
 
@@ -8,7 +12,7 @@ import BiteKit
 @MainActor
 struct TypingAsMarkdownTests {
     private func runs(_ editor: EditorHarness) -> [InlineRun] {
-        AttributedDocument.document(from: editor.textView.textStorage).blocks.first?.runs ?? []
+        AttributedDocument.document(from: editor.storage).blocks.first?.runs ?? []
     }
 
     // MARK: Inline code holds no emphasis
@@ -139,7 +143,7 @@ struct TypingAsMarkdownTests {
         editor.type("999999999. a\nb\nc")
         let saved = editor.markdown
         editor.controller.load(markdown: saved)
-        let document = AttributedDocument.document(from: editor.textView.textStorage)
+        let document = AttributedDocument.document(from: editor.storage)
         #expect(document.blocks.map(\.kind) == [.ordered, .ordered, .ordered])
         #expect(editor.textView.text == "a\nb\nc\n")
         #expect(editor.markdown == saved)
@@ -148,7 +152,7 @@ struct TypingAsMarkdownTests {
     @Test func aTaskWithATabIsATask() {
         let editor = EditorHarness()
         editor.controller.paste("- [x]\titem")
-        let block = AttributedDocument.document(from: editor.textView.textStorage).blocks.first
+        let block = AttributedDocument.document(from: editor.storage).blocks.first
         #expect(block?.kind == .todo)
         #expect(block?.isChecked == true)
         #expect(editor.markdown == "- [x] item")

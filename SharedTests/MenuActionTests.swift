@@ -1,5 +1,9 @@
 import Testing
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 @testable import Bite
 
 /// What the "…" menu does to a page.
@@ -25,7 +29,7 @@ struct MenuActionTests {
     @Test func clearedWithTheKeyboardDownItStillComesBack() {
         let editor = EditorHarness(page)
         let before = editor.markdown
-        editor.textView.resignFirstResponder()
+        editor.endEditing()
         editor.controller.clear()
         #expect(editor.markdown == "")
         editor.controller.focus()

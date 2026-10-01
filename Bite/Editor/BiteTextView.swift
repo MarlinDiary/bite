@@ -610,10 +610,30 @@ final class BiteTextView: UITextView {
     /// too; UIKit counts the spacing above a line as part of its row, so cutting the whole row
     /// made the notch reach above a quote's bar but not below it. The right edge stays straight.
     /// The rectangle holding the start, where the start handle sits, begins in the text already.
+    /// Below a start partway along its line, nothing left of it is lit above the next line's text:
+    /// UIKit's row there took in the spacing above it from the left edge, a strip under the part
+    /// of the first line not selected, and beside a checkbox the room above it did too.
     override func selectionRects(for range: UITextRange) -> [UITextSelectionRect] {
         let rects = super.selectionRects(for: beforeFinalNewline(range))
         guard let layoutManager = textLayoutManager else { return rects }
-        return rects.flatMap { selectionRect -> [UITextSelectionRect] in
+        let start = rects.first(where: \.containsStart)?.rect
+        var textTop: CGFloat?
+        // Where the next line's text is, below the spacing UIKit counts as part of its row: the
+        // line after the start's in its paragraph, or the next paragraph's first.
+        if let start, start.minX > textContainerInset.left + 0.5, rects.contains(where: { $0.rect.minY >= start.maxY - 0.5 }),
+           let location = contentStorage.location(contentStorage.documentRange.location, offsetBy: offset(from: beginningOfDocument, to: range.start)),
+           let fragment = layoutManager.textLayoutFragment(for: location) {
+            let inFragment = contentStorage.offset(from: fragment.rangeInElement.location, to: location)
+            let lines = fragment.textLineFragments
+            let index = lines.firstIndex { NSLocationInRange(inFragment, $0.characterRange) } ?? lines.count - 1
+            if index + 1 < lines.count {
+                textTop = fragment.layoutFragmentFrame.minY + lines[index + 1].typographicBounds.minY + textContainerInset.top
+            } else if let next = layoutManager.textLayoutFragment(for: fragment.rangeInElement.endLocation), next !== fragment,
+                      let line = next.textLineFragments.first {
+                textTop = next.layoutFragmentFrame.minY + line.typographicBounds.minY + textContainerInset.top
+            }
+        }
+        let notched = rects.flatMap { selectionRect -> [UITextSelectionRect] in
             let rect = selectionRect.rect
             guard !rect.isNull, !rect.isEmpty, !selectionRect.containsStart,
                   let fragment = layoutManager.textLayoutFragment(for: CGPoint(x: 1, y: rect.midY - textContainerInset.top)) as? BlockLayoutFragment,
@@ -623,6 +643,10 @@ final class BiteTextView: UITextView {
             let span = fragment.markerSpan
             let top = hasMarker(lineBefore: line) ? rect.minY : max(rect.minY, span.minY + textContainerInset.top)
             let bottom = hasMarker(lineAfter: line) ? rect.maxY : min(rect.maxY, span.maxY + textContainerInset.top)
+            // The row below the start: what's lit above its marker counts as above its text.
+            if let start, let current = textTop, abs(rect.minY - start.maxY) < 1, !hasMarker(lineBefore: line) {
+                textTop = max(current, span.minY + textContainerInset.top)
+            }
             var parts: [UITextSelectionRect] = []
             if top > rect.minY {
                 parts.append(SelectionRect(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: top - rect.minY), like: selectionRect, holdsEnd: false))
@@ -634,6 +658,21 @@ final class BiteTextView: UITextView {
                 parts.append(SelectionRect(CGRect(x: rect.minX, y: bottom, width: rect.width, height: rect.maxY - bottom), like: selectionRect, holdsEnd: false))
             }
             return parts
+        }
+        guard let start, let textTop else { return notched }
+        return notched.flatMap { selectionRect -> [UITextSelectionRect] in
+            let rect = selectionRect.rect
+            guard !selectionRect.containsStart, rect.minX < start.minX, rect.minY < textTop else { return [selectionRect] }
+            var pieces: [UITextSelectionRect] = []
+            let left = max(rect.minX, start.minX)
+            if rect.maxX > left {
+                pieces.append(SelectionRect(CGRect(x: left, y: rect.minY, width: rect.maxX - left, height: min(rect.maxY, textTop) - rect.minY),
+                                            like: selectionRect, holdsEnd: rect.maxY <= textTop))
+            }
+            if rect.maxY > textTop {
+                pieces.append(SelectionRect(CGRect(x: rect.minX, y: textTop, width: rect.width, height: rect.maxY - textTop), like: selectionRect))
+            }
+            return pieces
         }
     }
 

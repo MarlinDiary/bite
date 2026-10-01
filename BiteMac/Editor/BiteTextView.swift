@@ -211,6 +211,8 @@ final class BiteTextView: NSTextView {
         func lineFrame(_ index: Int) -> CGRect? {
             rows[index].location.flatMap { layoutManager.textLayoutFragment(for: $0) }?.layoutFragmentFrame
         }
+        // Where the selection starts, when that's partway along its first line.
+        let partialStart = !runsOnAbove && rows.count > 1 && rows[0].frame.minX > 0.5 ? rows[0].frame.minX : nil
         for index in rows.indices {
             let row = rows[index].frame
             if index > 0 || runsOnAbove {
@@ -230,29 +232,60 @@ final class BiteTextView: NSTextView {
                 rows[index].frame.size.height = bottom - rows[index].frame.minY
             }
         }
-        return rows.flatMap { notched($0.frame, at: $0.location, layoutManager: layoutManager, contentStorage: contentStorage) }
+        return rows.indices.flatMap { index in
+            notched(rows[index].frame, at: rows[index].location, below: index == 1 ? partialStart : nil,
+                    layoutManager: layoutManager, contentStorage: contentStorage)
+        }
     }
 
-    /// `row`, which starts at `location`, with the room beside a marker left out.
-    private func notched(_ row: CGRect, at location: NSTextLocation?, layoutManager: NSTextLayoutManager,
-                         contentStorage: NSTextContentStorage) -> [CGRect] {
-        guard let location, let fragment = layoutManager.textLayoutFragment(for: location) as? BlockLayoutFragment,
-              let textStart = fragment.textStartAfterMarker, row.minX < textStart else { return [row] }
-        let line = contentStorage.offset(from: contentStorage.documentRange.location, to: fragment.rangeInElement.location)
-        let span = fragment.markerSpan
-        let top = hasMarker(lineBefore: line) ? row.minY : max(row.minY, span.minY)
-        let bottom = hasMarker(lineAfter: line) ? row.maxY : min(row.maxY, span.maxY)
-        var parts: [CGRect] = []
-        if top > row.minY {
-            parts.append(CGRect(x: row.minX, y: row.minY, width: row.width, height: top - row.minY))
+    /// `row`, which starts at `location`, with the room beside a marker left out. Below a first row
+    /// that starts at `start`, partway along its line, nothing left of `start` is lit above where
+    /// this row's own text is: neither the spacing it takes in above nor the room above a marker.
+    /// Lit from the left edge, they made a strip under the part of the first line not selected.
+    private func notched(_ row: CGRect, at location: NSTextLocation?, below start: CGFloat?,
+                         layoutManager: NSTextLayoutManager, contentStorage: NSTextContentStorage) -> [CGRect] {
+        let fragment = location.flatMap { layoutManager.textLayoutFragment(for: $0) }
+        var parts = [row]
+        // Where the row's own text is: TextKit counts the spacing above a line as part of its row.
+        var textTop = row.minY
+        if let fragment, let location {
+            let offset = contentStorage.offset(from: fragment.rangeInElement.location, to: location)
+            let lines = fragment.textLineFragments
+            if let line = lines.first(where: { NSLocationInRange(offset, $0.characterRange) }) ?? lines.first {
+                textTop = max(textTop, fragment.layoutFragmentFrame.minY + line.typographicBounds.minY)
+            }
         }
-        if bottom > top, row.maxX > textStart {
-            parts.append(CGRect(x: textStart, y: top, width: row.maxX - textStart, height: bottom - top))
+        if let fragment = fragment as? BlockLayoutFragment, let textStart = fragment.textStartAfterMarker, row.minX < textStart {
+            let line = contentStorage.offset(from: contentStorage.documentRange.location, to: fragment.rangeInElement.location)
+            let span = fragment.markerSpan
+            let markerAbove = hasMarker(lineBefore: line)
+            let top = markerAbove ? row.minY : max(row.minY, span.minY)
+            let bottom = hasMarker(lineAfter: line) ? row.maxY : min(row.maxY, span.maxY)
+            parts = []
+            if top > row.minY {
+                parts.append(CGRect(x: row.minX, y: row.minY, width: row.width, height: top - row.minY))
+            }
+            if bottom > top, row.maxX > textStart {
+                parts.append(CGRect(x: textStart, y: top, width: row.maxX - textStart, height: bottom - top))
+            }
+            if row.maxY > bottom {
+                parts.append(CGRect(x: row.minX, y: bottom, width: row.width, height: row.maxY - bottom))
+            }
+            if !markerAbove { textTop = max(textTop, span.minY) }
         }
-        if row.maxY > bottom {
-            parts.append(CGRect(x: row.minX, y: bottom, width: row.width, height: row.maxY - bottom))
+        guard let start else { return parts }
+        return parts.flatMap { part -> [CGRect] in
+            guard part.minX < start, part.minY < textTop else { return [part] }
+            var pieces: [CGRect] = []
+            let left = max(part.minX, start)
+            if part.maxX > left {
+                pieces.append(CGRect(x: left, y: part.minY, width: part.maxX - left, height: min(part.maxY, textTop) - part.minY))
+            }
+            if part.maxY > textTop {
+                pieces.append(CGRect(x: part.minX, y: textTop, width: part.width, height: part.maxY - textTop))
+            }
+            return pieces
         }
-        return parts
     }
 
     /// Whether the line before, or after, the one starting at `location` has a marker or bar of
@@ -278,6 +311,11 @@ final class BiteTextView: NSTextView {
     /// The selection's highlight as drawn, in the view's coordinates.
     var selectionHighlightForTesting: CGRect? {
         selectionHighlight.path?.boundingBox
+    }
+
+    /// Whether the selection's highlight takes in `point`, in the view's coordinates.
+    func selectionHighlightContainsForTesting(_ point: CGPoint) -> Bool {
+        selectionHighlight.path?.contains(point) ?? false
     }
 
     /// The code blocks' backgrounds as drawn, in the view's coordinates.

@@ -81,5 +81,38 @@ struct MacDrawingTests {
         #expect(total > 0)
         #expect(weighted / total < Double(rep.pixelsHigh) / 2)
     }
+
+    /// Where character `location` is drawn, in the text view.
+    private func frame(of location: Int, in editor: EditorHarness) -> CGRect {
+        let view = editor.textView
+        let onScreen = view.firstRect(forCharacterRange: NSRange(location: location, length: 1), actualRange: nil)
+        let inWindow = editor.window.convertFromScreen(onScreen)
+        return view.convert(inWindow, from: nil)
+    }
+
+    /// A selection starting partway along a line lights nothing left of its start above the next
+    /// line's text: the spacing between them went from the left edge, a strip under the part of
+    /// the line not selected, and beside a checkbox the room above it did too.
+    @Test(arguments: ["Plain first line here\nThe second line", "# Bite's List\n- [ ] Mac one\n- [ ] two"])
+    func aSelectionStartingPartwayLightsNothingLeftOfItsStart(_ page: String) throws {
+        let editor = EditorHarness(page)
+        let view = editor.textView
+        view.layoutSubtreeIfNeeded()
+        let firstLine = (view.string as NSString).range(of: "\n").location
+        let start = firstLine - 4
+        view.setSelectedRange(NSRange(location: start, length: view.string.utf16.count - 1 - start))
+        view.layoutSubtreeIfNeeded()
+        let startFrame = frame(of: start, in: editor)
+        // The second line's last character, "e" or "o", where its text is.
+        let secondLine = NSMaxRange((view.string as NSString).paragraphRange(for: NSRange(location: firstLine + 1, length: 0))) - 2
+        let secondFrame = frame(of: secondLine, in: editor)
+        let gap = (startFrame.maxY + secondFrame.minY) / 2
+        #expect(secondFrame.minY > startFrame.maxY)
+        // Left of the start, between the lines: unlit. Right of it: lit, the shape still one.
+        #expect(!view.selectionHighlightContainsForTesting(CGPoint(x: startFrame.minX - 30, y: gap)))
+        #expect(view.selectionHighlightContainsForTesting(CGPoint(x: startFrame.minX + 10, y: gap)))
+        // The second line itself is lit where its text is.
+        #expect(view.selectionHighlightContainsForTesting(CGPoint(x: secondFrame.midX, y: secondFrame.midY)))
+    }
 }
 #endif

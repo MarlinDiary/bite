@@ -27,6 +27,10 @@ enum DebugSnapshot {
         panel.showOnceRingIsPlaced()
         // `-snapshotSelect start length` selects text; `-snapshotScroller` shows the indicator;
         // `-snapshotDetached` shows the panel as dragged away from the ring.
+        // `-snapshotPage MARKDOWN` puts MARKDOWN, with "\n" for line breaks, on the page shown.
+        if let index = arguments.firstIndex(of: "-snapshotPage"), index + 1 < arguments.count {
+            panel.controllers[store.selection].load(markdown: arguments[index + 1].replacingOccurrences(of: "\\n", with: "\n"))
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
             let page = panel.controllers[store.selection].textView
             if let index = arguments.firstIndex(of: "-snapshotSelect"), index + 2 < arguments.count,

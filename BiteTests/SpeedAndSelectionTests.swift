@@ -21,6 +21,31 @@ struct FinalNewlineSelectionTests {
         #expect(textView.selectionRects(for: withNewline).map(\.rect) == textView.selectionRects(for: withoutNewline).map(\.rect))
     }
 
+    /// A selection starting partway along a line lights nothing left of its start above the next
+    /// line's text: UIKit's row there took in the spacing above from the left edge, a strip under
+    /// the part of the line not selected, and beside a checkbox the room above it did too.
+    @Test(arguments: ["Plain first line here\nThe second line", "# Bite's List\n- [ ] Mac one\n- [ ] two"])
+    func aSelectionStartingPartwayLightsNothingLeftOfItsStart(_ page: String) {
+        let editor = EditorHarness(page)
+        let textView = editor.textView
+        textView.layoutIfNeeded()
+        let text = textView.text as NSString
+        let firstLine = text.range(of: "\n").location
+        let start = textView.position(from: textView.beginningOfDocument, offset: firstLine - 4)!
+        let range = textView.textRange(from: start, to: textView.position(from: textView.beginningOfDocument, offset: text.length - 1)!)!
+        let rects = textView.selectionRects(for: range).map(\.rect).filter { !$0.isEmpty }
+        let startRect = textView.caretRect(for: start)
+        // The second line's last character, where its text is.
+        let secondLine = NSMaxRange(text.paragraphRange(for: NSRange(location: firstLine + 1, length: 0))) - 2
+        let second = textView.caretRect(for: textView.position(from: textView.beginningOfDocument, offset: secondLine)!)
+        let gap = (startRect.maxY + second.minY) / 2
+        func lit(_ point: CGPoint) -> Bool { rects.contains { $0.contains(point) } }
+        #expect(second.minY > startRect.maxY - 1)
+        #expect(!lit(CGPoint(x: startRect.minX - 30, y: gap)))
+        #expect(lit(CGPoint(x: startRect.minX + 10, y: gap)))
+        #expect(lit(CGPoint(x: second.minX - 2, y: second.midY)))
+    }
+
     @Test func aPointBelowTheTextLandsAtTheEndOfTheLastLine() {
         let editor = EditorHarness("ab\ncd")
         let textView = editor.textView

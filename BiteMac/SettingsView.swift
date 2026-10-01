@@ -10,6 +10,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let window = window ?? makeWindow()
         self.window = window
         if !window.isVisible { window.center() }
+        if NSApp.isHidden { NSApp.unhideWithoutActivation() }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }
@@ -23,10 +24,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         return window
     }
 
-    /// Back to the app that was in use, as Bite has no other window to be in.
+    /// Back to the app that was in use, as Bite has no other window to be in. Bite gives it back
+    /// by hiding: told to deactivate, it stayed active with nothing on screen.
     func windowWillClose(_ notification: Notification) {
         if !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeKey && $0 !== window }) {
-            NSApp.deactivate()
+            NSApp.hide(nil)
         }
     }
 }

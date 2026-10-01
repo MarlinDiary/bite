@@ -5,10 +5,26 @@ import BiteKit
 @testable import Bite
 
 /// The panel the menu bar ring opens. A store of the tests' own leaves the app's pages alone.
+/// One at a time: which window has the keyboard is the whole app's, and a test waiting a moment
+/// found the keyboard back with its panel as another test's window went.
 @MainActor
+@Suite(.serialized)
 struct MacPanelTests {
     private func store() -> DotStore {
         DotStore(folder: FileManager.default.temporaryDirectory.appending(path: "BitePanelTests-\(UUID().uuidString)"))
+    }
+
+    private func panel(_ store: DotStore? = nil) -> PanelController {
+        PanelController(store: store ?? self.store(), forTesting: true)
+    }
+
+    private func otherWindow() -> BitePanel {
+        BitePanel(contentRect: NSRect(x: 0, y: 0, width: 80, height: 80), styleMask: [.borderless, .nonactivatingPanel],
+                  backing: .buffered, defer: false)
+    }
+
+    private func wait(_ seconds: Double) async {
+        try? await Task.sleep(for: .seconds(seconds))
     }
 
     /// Esc in the text goes past AppKit's completions, up to the panel, which puts itself away.
@@ -29,7 +45,7 @@ struct MacPanelTests {
 
     @Test func theMenuIsLaidOutAsOnThePhone() {
         let store = store()
-        let panel = PanelController(store: store)
+        let panel = panel(store)
         let menu = panel.makeMenu()
         let titles = menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
         #expect(titles == ["Settings…", "-", "Copy Markdown", "Copy Plain Text", "Clear Text", "-", "Share Text", "-",
@@ -44,7 +60,7 @@ struct MacPanelTests {
     /// The ring closes what it opened. The panel had the keyboard without Bite being the
     /// active app, and a second click opened it again instead.
     @Test func theRingClosesWhatItOpened() {
-        let panel = PanelController(store: store())
+        let panel = panel()
         panel.toggle()
         #expect(panel.isShown)
         panel.toggle()
@@ -54,13 +70,55 @@ struct MacPanelTests {
     /// Clicking anything else puts the panel away, and the click on the ring that does it is the
     /// one that closes it, not one that opens it again.
     @Test func clickingElsewherePutsItAway() {
-        let panel = PanelController(store: store())
+        let panel = panel()
         panel.show()
-        let other = BitePanel(contentRect: NSRect(x: 0, y: 0, width: 80, height: 80),
-                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let other = otherWindow()
+        panel.clickedOutside()
         other.makeKeyAndOrderFront(nil)
         #expect(!panel.isShown)
         panel.toggle()
+        #expect(!panel.isShown)
+        other.orderOut(nil)
+    }
+
+    /// The keyboard can go before the click that took it is heard.
+    @Test func theKeyboardGoingBeforeTheClickIsHeard() {
+        let panel = panel()
+        panel.show()
+        let other = otherWindow()
+        other.makeKeyAndOrderFront(nil)
+        #expect(panel.isShown)
+        panel.clickedOutside()
+        #expect(!panel.isShown)
+        other.orderOut(nil)
+    }
+
+    /// A swipe to another Space takes the keyboard, and the panel, there too, stays. In either
+    /// order: the Space changing, then the keyboard going, or the other way round. A click
+    /// elsewhere puts it away after all.
+    @Test(arguments: [true, false])
+    func aSwipeToAnotherSpaceKeepsItOpen(spaceFirst: Bool) async {
+        let panel = panel()
+        panel.show()
+        let other = otherWindow()
+        if spaceFirst { panel.activeSpaceDidChange() }
+        other.makeKeyAndOrderFront(nil)
+        if !spaceFirst { panel.activeSpaceDidChange() }
+        await wait(0.7)
+        #expect(panel.isShown)
+        panel.clickedOutside()
+        #expect(!panel.isShown)
+        other.orderOut(nil)
+    }
+
+    /// Nothing heard, as for Command-Tab on this Space: it goes a moment later.
+    @Test func withNothingHeardItGoesAMomentLater() async {
+        let panel = panel()
+        panel.show()
+        let other = otherWindow()
+        other.makeKeyAndOrderFront(nil)
+        #expect(panel.isShown)
+        await wait(0.7)
         #expect(!panel.isShown)
         other.orderOut(nil)
     }
@@ -75,7 +133,7 @@ struct MacPanelTests {
     /// still reach the page.
     @Test func shortcutsReachThePage() throws {
         let store = store()
-        let panel = PanelController(store: store)
+        let panel = panel(store)
         panel.show()
         defer { panel.hide() }
         let page = panel.controllers[store.selection]
@@ -90,7 +148,7 @@ struct MacPanelTests {
     /// Esc, typed in the page, puts the panel away.
     @Test func escapeTypedInThePage() throws {
         let store = store()
-        let panel = PanelController(store: store)
+        let panel = panel(store)
         panel.show()
         let window = panel.windowForTesting
         #expect(window.firstResponder === panel.controllers[store.selection].textView)
@@ -106,12 +164,13 @@ struct MacPanelTests {
         defer { UserDefaults.standard.set(original, forKey: "selectedDot") }
         let store = store()
         store.selection = 1
-        let panel = PanelController(store: store)
+        let panel = panel(store)
         let pages = panel.controllers.map { $0.textView.enclosingScrollView }
         let width = try #require(pages[1]?.superview?.bounds.width)
         panel.showSwipe(page: 1, offset: -0.3 * width)
         #expect(pages[1]?.frame.minX == -0.3 * width)
-        #expect(pages[2]?.frame.minX == 0.7 * width)
+        // A page's width on from the offset, which at some widths isn't 0.7 of it to the last bit.
+        #expect(abs((pages[2]?.frame.minX ?? 0) - 0.7 * width) < 0.001)
         #expect(pages.indices.filter { pages[$0]?.isHidden == false } == [1, 2])
         #expect(panel.onScreen.page == nil)
         panel.showSwipe(page: 1, offset: -0.6 * width)
@@ -129,7 +188,7 @@ struct MacPanelTests {
         defer { UserDefaults.standard.set(original, forKey: "selectedDot") }
         let store = store()
         store.selection = 0
-        let panel = PanelController(store: store)
+        let panel = panel(store)
         let pages = panel.controllers.map { $0.textView.enclosingScrollView }
         panel.showSwipe(page: 0, offset: 30)
         #expect(pages.indices.filter { pages[$0]?.isHidden == false } == [0])
@@ -141,7 +200,7 @@ struct MacPanelTests {
     /// Picking a dot shows its page, and only its page.
     @Test func eachDotShowsItsOwnPage() {
         let store = store()
-        let panel = PanelController(store: store)
+        let panel = panel(store)
         let pages = panel.controllers.map { $0.textView.enclosingScrollView }
         #expect(pages.filter { $0?.isHidden == false }.count == 1)
         #expect(pages[store.selection]?.isHidden == false)

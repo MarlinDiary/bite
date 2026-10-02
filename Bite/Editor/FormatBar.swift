@@ -14,7 +14,10 @@ final class FormatBar: UIView {
         super.init(frame: CGRect(x: 0, y: 0, width: 390, height: Self.height))
         backgroundColor = .clear
 
-        let glass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+        // Interactive, as the dot bar is: the glass swells under a finger and springs back.
+        let effect = UIGlassEffect(style: .regular)
+        effect.isInteractive = true
+        let glass = UIVisualEffectView(effect: effect)
         glass.translatesAutoresizingMaskIntoConstraints = false
         glass.cornerConfiguration = .capsule()
         addSubview(glass)

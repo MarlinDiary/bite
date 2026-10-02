@@ -85,10 +85,6 @@ struct SettingsView: View {
             Section {
                 Toggle("Sync with iCloud", isOn: $syncsWithICloud)
                     .tint(pageColour)
-            } footer: {
-                Text("Pages stay the same on every device signed in to your iCloud account.")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Section {
                 LabeledContent("Reset All Pages") {

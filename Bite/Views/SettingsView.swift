@@ -16,8 +16,6 @@ struct SettingsView: View {
             Form {
                 Section {
                     Toggle("Sync with iCloud", isOn: $syncsWithICloud)
-                } footer: {
-                    Text("Pages stay the same on every device signed in to your iCloud account.")
                 }
                 Section {
                     Toggle("Check Spelling", isOn: $checksSpelling)

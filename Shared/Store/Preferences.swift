@@ -27,9 +27,17 @@ enum Preferences {
         set { set(newValue, forKey: panelIsGlassKey) }
     }
 
+    /// On the phone, whether a checkbox clicks under the finger as it's ticked, and the dot bar
+    /// ticks as a finger slides along it. On unless turned off.
+    static var playsHaptics: Bool {
+        get { defaults.object(forKey: playsHapticsKey) as? Bool ?? true }
+        set { set(newValue, forKey: playsHapticsKey) }
+    }
+
     private static let syncsWithICloudKey = "syncsWithICloud"
     private static let checksSpellingKey = "checksSpelling"
     private static let panelIsGlassKey = "panelIsGlass"
+    private static let playsHapticsKey = "playsHaptics"
 
     private static func set(_ value: Bool, forKey key: String) {
         guard defaults.object(forKey: key) as? Bool != value else { return }

@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Environment(DotStore.self) private var store
     @State private var syncsWithICloud = Preferences.syncsWithICloud
     @State private var checksSpelling = Preferences.checksSpelling
+    @State private var playsHaptics = Preferences.playsHaptics
     @State private var isConfirmingReset = false
 
     var body: some View {
@@ -20,6 +21,7 @@ struct SettingsView: View {
                 }
                 Section {
                     Toggle("Check Spelling", isOn: $checksSpelling)
+                    Toggle("Haptics", isOn: $playsHaptics)
                 }
                 AppIconPicker()
                 Section {
@@ -51,6 +53,9 @@ struct SettingsView: View {
         }
         .onChange(of: checksSpelling) {
             Preferences.checksSpelling = checksSpelling
+        }
+        .onChange(of: playsHaptics) {
+            Preferences.playsHaptics = playsHaptics
         }
     }
 }

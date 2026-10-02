@@ -21,6 +21,47 @@ struct SettingsTests {
         #expect(!Preferences.checksSpelling)
     }
 
+    @Test func hapticsAreOnUntilTurnedOff() {
+        #expect(Preferences.playsHaptics)
+        Preferences.playsHaptics = false
+        #expect(!Preferences.playsHaptics)
+        Preferences.playsHaptics = true
+        #expect(Preferences.playsHaptics)
+    }
+
+    #if canImport(UIKit)
+    /// A tapped checkbox clicks as it's ticked and gives softly as it's unticked, unless Settings
+    /// turns haptics off.
+    @Test func aCheckboxClicksAsItsTicked() throws {
+        let editor = EditorHarness("text\n- [ ] task")
+        let view = editor.textView
+        view.layoutIfNeeded()
+        let layoutManager = try #require(view.textLayoutManager)
+        var checkbox: CGRect?
+        layoutManager.enumerateTextLayoutFragments(from: layoutManager.documentRange.location, options: [.ensuresLayout]) { fragment in
+            if let line = fragment as? BlockLayoutFragment, line.block.kind == .todo {
+                checkbox = line.checkboxFrame
+                return false
+            }
+            return true
+        }
+        let frame = try #require(checkbox)
+        let point = CGPoint(x: frame.midX + view.textContainerInset.left, y: frame.midY + view.textContainerInset.top)
+
+        view.tapCheckboxForTesting(at: point)
+        #expect(editor.markdown == "text\n- [x] task")
+        view.tapCheckboxForTesting(at: point)
+        #expect(editor.markdown == "text\n- [ ] task")
+        #expect(view.checkboxHapticsForTesting == [true, false])
+
+        Preferences.playsHaptics = false
+        defer { Preferences.playsHaptics = true }
+        view.tapCheckboxForTesting(at: point)
+        #expect(editor.markdown == "text\n- [x] task")
+        #expect(view.checkboxHapticsForTesting == [true, false])
+    }
+    #endif
+
     /// Every page follows at once, and the change is told to whatever follows it.
     @Test func spellingIsCheckedOnEveryPageOnlyWhenChosen() async {
         let editors = [EditorHarness("a"), EditorHarness("b")]

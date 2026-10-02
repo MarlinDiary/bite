@@ -884,9 +884,50 @@ final class BiteTextView: UITextView {
     }
 
     @objc private func handleCheckboxTap(_ recognizer: UITapGestureRecognizer) {
-        guard let location = todoLocation(at: recognizer.location(in: self)) else { return }
-        editor?.toggleTodo(at: location)
+        tapCheckbox(at: recognizer.location(in: self))
     }
+
+    private func tapCheckbox(at point: CGPoint) {
+        guard let location = todoLocation(at: point), let isChecked = editor?.toggleTodo(at: location) else { return }
+        playCheckboxHaptic(isChecked: isChecked, at: point)
+    }
+
+    /// A box clicks crisply under the finger as it's ticked, and gives softly as it's unticked.
+    /// It was the lightest tap there is, either way, and easily missed.
+    private lazy var tickHaptic = UIImpactFeedbackGenerator(style: .rigid, view: self)
+    private lazy var untickHaptic = UIImpactFeedbackGenerator(style: .soft, view: self)
+
+    private func playCheckboxHaptic(isChecked: Bool, at point: CGPoint) {
+        guard Preferences.playsHaptics else { return }
+        #if DEBUG
+        checkboxHapticsForTesting.append(isChecked)
+        #endif
+        if isChecked {
+            tickHaptic.impactOccurred(intensity: 0.9, at: point)
+        } else {
+            untickHaptic.impactOccurred(intensity: 0.7, at: point)
+        }
+    }
+
+    /// Ready as a finger lands on a checkbox, so the click comes as it lifts and not a moment
+    /// later.
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if Preferences.playsHaptics, let touch = touches.first, todoLocation(at: touch.location(in: self)) != nil {
+            tickHaptic.prepare()
+            untickHaptic.prepare()
+        }
+        super.touchesBegan(touches, with: event)
+    }
+
+    #if DEBUG
+    /// Each checkbox click played, true for a tick.
+    var checkboxHapticsForTesting: [Bool] = []
+
+    /// As a tap on the checkbox at `point` does.
+    func tapCheckboxForTesting(at point: CGPoint) {
+        tapCheckbox(at: point)
+    }
+    #endif
 }
 
 /// A selection rectangle in another place, otherwise like UIKit's own. A piece cut off above or

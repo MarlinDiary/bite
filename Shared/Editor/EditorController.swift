@@ -945,14 +945,14 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         replace(selection, with: replacement, selection: selection)
     }
 
-    func toggleTodo(at location: Int) {
+    /// Ticks or unticks the to-do at `location`, and says which: nil if there's no to-do there.
+    @discardableResult
+    func toggleTodo(at location: Int) -> Bool? {
         finishComposing()
         let line = lineRange(at: location)
-        guard block(of: line).kind == .todo else { return }
+        guard block(of: line).kind == .todo else { return nil }
         setBlocks(of: [line]) { $0.isChecked.toggle() }
-        #if canImport(UIKit)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        #endif
+        return block(of: lineRange(at: location)).isChecked
     }
 
     // MARK: Clipboard

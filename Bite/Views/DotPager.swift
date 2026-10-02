@@ -214,7 +214,7 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         let page = min(max(Int((scrollView.contentOffset.x / width).rounded()), 0), controllers.count - 1)
         guard page != lastVisiblePage else { return }
         // The first position is where the pager starts, not a change.
-        if lastVisiblePage != nil {
+        if lastVisiblePage != nil, Preferences.playsHaptics {
             haptics.selectionChanged()
         }
         lastVisiblePage = page

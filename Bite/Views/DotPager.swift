@@ -101,6 +101,11 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         container.editingTextView = { [weak self] in
             self?.controllers.first { $0.textView.isFirstResponder }?.textView
         }
+        for controller in controllers {
+            controller.onWritingToolsChange = { [weak self] isAtWork in
+                self?.container.isWritingToolsAtWork = isAtWork
+            }
+        }
     }
 
     /// Tapping the status bar scrolls to the top only when a single scroll view on screen asks
@@ -312,6 +317,30 @@ final class PagerContainerView: UIView {
     var onKeyboardOverlapChange: ((CGFloat) -> Void)?
     /// The editor that has the keyboard, if any. The bar only ever shows for one.
     var editingTextView: () -> UITextView? = { nil }
+    /// Set while Writing Tools is at work on the page being edited. It brings controls of its own,
+    /// so the bar slides down into the keys meanwhile. Writing Tools puts its panel where the keys
+    /// were, and once it's done the keys come back up from the bottom of the screen; the bar waits
+    /// for them there and rises with them. Back at once, it slid up onto the panel as the panel
+    /// went, and then sat high above the keys while they came up.
+    var isWritingToolsAtWork = false {
+        didSet {
+            guard isWritingToolsAtWork != oldValue else { return }
+            if isWritingToolsAtWork {
+                keysWhenWritingToolsEnded = nil
+                UIView.animate(withDuration: 0.25) { self.placeBar() }
+                return
+            }
+            keysWhenWritingToolsEnded = keys
+            // Keys that don't come back, or come back just as tall, give no sign.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, !self.isWritingToolsAtWork, self.keysWhenWritingToolsEnded != nil else { return }
+                self.keysWhenWritingToolsEnded = nil
+                UIView.animate(withDuration: 0.25) { self.placeBar() }
+            }
+        }
+    }
+    /// How tall the keys stood as Writing Tools finished, until they change: the bar waits for them.
+    private var keysWhenWritingToolsEnded: CGFloat?
     private let keyboardProbe = UIView()
     /// Its bottom edge is the top of the keys, and it clips the bar, so a bar sliding into the
     /// keyboard never shows through the keyboard's translucent top.
@@ -361,13 +390,40 @@ final class PagerContainerView: UIView {
     /// comes or goes.
     override func layoutSubviews() {
         super.layoutSubviews()
-        let keys = max(0, keyboardProbe.frame.height)
+        placeBar()
+    }
+
+    /// How tall the keys stand over the bottom of this view.
+    private var keys: CGFloat {
+        #if DEBUG
+        if let keysForTesting { return keysForTesting }
+        #endif
+        return max(0, keyboardProbe.frame.height)
+    }
+
+    #if DEBUG
+    /// Keys of this height, in place of the system keyboard's, which tests don't have.
+    var keysForTesting: CGFloat?
+
+    /// Where the bar's track is: its bottom edge is the top of the keys the bar rides on.
+    var barTrackFrameForTesting: CGRect { barTrack.frame }
+    #endif
+
+    /// Puts the bar on top of the keys, or away, and reports how much of this view they cover.
+    private func placeBar() {
+        let keys = self.keys
+        if let ended = keysWhenWritingToolsEnded, abs(keys - ended) > 0.5 {
+            keysWhenWritingToolsEnded = nil
+        }
+        // While Writing Tools is at work, and until the keys come back after it, the bar waits
+        // at the bottom of the screen (see `isWritingToolsAtWork`).
+        let barKeys = isWritingToolsAtWork || keysWhenWritingToolsEnded != nil ? 0 : keys
         let editor = editingTextView()
         // On-screen keys stand well over 120 points. A hardware keyboard leaves no keys, or only a
         // short strip, and the bar stays away. Keys dragged partway down still carry it.
-        if editor == nil || keys == 0 {
+        if editor == nil || barKeys == 0 {
             barRidesOnKeys = false
-        } else if keys > 120 {
+        } else if barKeys > 120 {
             barRidesOnKeys = true
         } else if editor?.isTracking != true {
             barRidesOnKeys = false
@@ -377,10 +433,10 @@ final class PagerContainerView: UIView {
         // one. The bar stays on top of the keys all the way down; only once they're nearly gone
         // does it slide in after them, so both leave the screen together.
         let trackHeight = FormatBar.height + trackHeadroom
-        let track = CGRect(x: 0, y: bounds.height - keys - trackHeight, width: bounds.width, height: trackHeight)
+        let track = CGRect(x: 0, y: bounds.height - barKeys - trackHeight, width: bounds.width, height: trackHeight)
         if barTrack.frame != track { barTrack.frame = track }
-        moveBar(keysFrom: laidOutKeys, to: keys)
-        laidOutKeys = keys
+        moveBar(keysFrom: laidOutKeys, to: barKeys)
+        laidOutKeys = barKeys
 
         formatBar.accessibilityElementsHidden = !barRidesOnKeys
         let overlap = keys + FormatBar.height - barSink

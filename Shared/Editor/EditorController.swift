@@ -23,6 +23,11 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     var onChange: ((_ markdown: String) -> Void)?
     /// Whether the page is empty, as soon as that changes: the dot bar shows it.
     var onEmptyChange: ((_ isEmpty: Bool) -> Void)?
+    #if canImport(UIKit)
+    /// Whether Writing Tools is at work on the page, as it starts and once it's done: the format
+    /// bar keeps out of its way.
+    var onWritingToolsChange: ((_ isAtWork: Bool) -> Void)?
+    #endif
     var loadedRevision = -1
 
     private let theme: EditorTheme
@@ -1373,7 +1378,14 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     }
 
     #if canImport(UIKit)
+    func textViewWritingToolsWillBegin(_ textView: UITextView) {
+        self.textView.writingToolsWillBegin()
+        onWritingToolsChange?(true)
+    }
+
     func textViewWritingToolsDidEnd(_ textView: UITextView) {
+        self.textView.writingToolsDidEnd()
+        onWritingToolsChange?(false)
         settleUnannouncedEdit()
     }
     #else

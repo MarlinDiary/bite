@@ -70,3 +70,77 @@ struct FormatBarStateTests {
         #expect(editor.markdown == "```\nxy\n```")
     }
 }
+
+/// Where the bar sits while a page is edited: on top of the keys, unless something else needs
+/// the room there.
+@MainActor
+struct FormatBarPlacementTests {
+    /// The pages in a window, the first being edited, over keys `keys` tall.
+    private func editingPager(keys: CGFloat) -> (pager: DotPagerCoordinator, page: EditorController, window: UIWindow) {
+        let pager = DotPagerCoordinator()
+        let frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        let window: UIWindow
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+            window = UIWindow(windowScene: scene)
+        } else {
+            window = UIWindow(frame: frame)
+        }
+        window.frame = frame
+        pager.container.frame = window.bounds
+        window.addSubview(pager.container)
+        EditorHarness.show(window)
+        pager.container.keysForTesting = keys
+        let page = pager.controllers[0]
+        page.load(markdown: "Some words to rewrite")
+        page.focus()
+        pager.container.layoutIfNeeded()
+        return (pager, page, window)
+    }
+
+    private func setKeys(_ keys: CGFloat, in pager: DotPagerCoordinator) {
+        pager.container.keysForTesting = keys
+        pager.container.setNeedsLayout()
+        pager.container.layoutIfNeeded()
+    }
+
+    /// Writing Tools at work on the page brings controls of its own, a panel where the keys were.
+    /// The bar stayed on top of it, its buttons there to be pressed while the text was being
+    /// rewritten. Once it's done, the bar comes back with the keys, from the bottom of the
+    /// screen: back at once, it slid up onto the panel as the panel went, and then sat high above
+    /// the keys as they came up.
+    @Test func theBarMakesWayForWritingTools() {
+        let (pager, page, window) = editingPager(keys: 336)
+        let height = window.bounds.height
+        #expect(page.textView.keyboardOverlap == 336 + FormatBar.height)
+
+        page.textViewWritingToolsWillBegin(page.textView)
+        setKeys(201, in: pager)
+        #expect(FormatBar.shared.accessibilityElementsHidden)
+        #expect(page.textView.keyboardOverlap == 201)
+        #expect(pager.container.barTrackFrameForTesting.maxY == height)
+
+        page.textViewWritingToolsDidEnd(page.textView)
+        pager.container.layoutIfNeeded()
+        #expect(FormatBar.shared.accessibilityElementsHidden)
+        #expect(page.textView.keyboardOverlap == 201)
+        #expect(pager.container.barTrackFrameForTesting.maxY == height)
+
+        setKeys(336, in: pager)
+        #expect(!FormatBar.shared.accessibilityElementsHidden)
+        #expect(page.textView.keyboardOverlap == 336 + FormatBar.height)
+        #expect(pager.container.barTrackFrameForTesting.maxY == height - 336)
+    }
+
+    /// Keys that stay as they were once Writing Tools is done leave the bar waiting only a moment.
+    @Test func theBarComesBackOnItsOwnAfterWritingTools() async {
+        let (pager, page, window) = editingPager(keys: 336)
+        page.textViewWritingToolsWillBegin(page.textView)
+        page.textViewWritingToolsDidEnd(page.textView)
+        #expect(page.textView.keyboardOverlap == 336)
+        for _ in 0..<20 where page.textView.keyboardOverlap != 336 + FormatBar.height {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(page.textView.keyboardOverlap == 336 + FormatBar.height)
+        #expect(pager.container.barTrackFrameForTesting.maxY == window.bounds.height - 336)
+    }
+}

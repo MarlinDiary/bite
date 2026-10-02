@@ -29,6 +29,16 @@ final class BiteTextView: UITextView {
             // With the keyboard gone, no page is ready for it any more: where it comes back, the
             // pages beside are readied again.
             if keyboardOverlap == 0 { keepsKeyboardRoom = false }
+            // Keys gone while the page stays focused are most likely making way for Writing Tools,
+            // which says so a moment later (see `writingToolsWillBegin`). Their room stays till then.
+            if keyboardOverlap == 0, oldValue > 0, isFirstResponder, !isResigning, !isTracking, heldKeyboardOverlap == nil {
+                heldKeyboardOverlap = insetKeyboardOverlap
+                releaseHeldKeyboardRoom(after: 0.3)
+            }
+            // Back as tall as they were, the keys take their room over.
+            if let held = heldKeyboardOverlap, !isHeldForWritingTools, keyboardOverlap >= held - 0.5 {
+                heldKeyboardOverlap = nil
+            }
             applyKeyboardInset()
             // Keep the caret clear of a keyboard that's coming up.
             if keyboardOverlap > oldValue, !isTracking {
@@ -45,7 +55,48 @@ final class BiteTextView: UITextView {
     /// to shrink in two steps and the second one, which ran outside any animation, made the
     /// text jump.
     private var wantedKeyboardOverlap: CGFloat {
-        (isFirstResponder && !isResigning) || keepsKeyboardRoom ? keyboardOverlap : 0
+        let overlap = (isFirstResponder && !isResigning) || keepsKeyboardRoom ? keyboardOverlap : 0
+        guard let held = heldKeyboardOverlap, isFirstResponder, !isResigning else { return overlap }
+        return max(overlap, held)
+    }
+
+    /// The room kept for keys that went away while the page stayed focused, as they do for Writing
+    /// Tools: it puts a shorter panel of its own where they were, and brings them back once it's
+    /// done. The text stays where it was all the while. It moved down as the keys went and up as
+    /// they came back, and coming back it jumped: Writing Tools holds everything up for a moment
+    /// as it finishes, and the scroll back to the selection was held up with it.
+    private var heldKeyboardOverlap: CGFloat?
+    private var isHeldForWritingTools = false
+    /// Which release is due, so an earlier one doesn't end a later hold.
+    private var keyboardRoomRelease = 0
+
+    /// Writing Tools is starting on the page. The keys' room stays while it works.
+    func writingToolsWillBegin() {
+        isHeldForWritingTools = true
+        if heldKeyboardOverlap == nil, insetKeyboardOverlap > 0 {
+            heldKeyboardOverlap = insetKeyboardOverlap
+        }
+    }
+
+    /// Writing Tools is done. The room stays until the keys are back, or for a moment.
+    func writingToolsDidEnd() {
+        isHeldForWritingTools = false
+        if let held = heldKeyboardOverlap, keyboardOverlap >= held - 0.5 {
+            heldKeyboardOverlap = nil
+        } else {
+            releaseHeldKeyboardRoom(after: 0.5)
+        }
+    }
+
+    private func releaseHeldKeyboardRoom(after delay: TimeInterval) {
+        keyboardRoomRelease += 1
+        let release = keyboardRoomRelease
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.keyboardRoomRelease == release, !self.isHeldForWritingTools,
+                  self.heldKeyboardOverlap != nil else { return }
+            self.heldKeyboardOverlap = nil
+            self.applyKeyboardInset()
+        }
     }
 
     /// Set on a page beside the one being edited: readied to be swiped to (`arrive`), or just
@@ -180,6 +231,8 @@ final class BiteTextView: UITextView {
         // dot was picked, it went unsaved, and the next word composed there replaced it.
         if markedTextRange != nil { unmarkText() }
         selectionNotToScrollTo = nil
+        heldKeyboardOverlap = nil
+        isHeldForWritingTools = false
         isResigning = true
         defer {
             isResigning = false
@@ -237,8 +290,10 @@ final class BiteTextView: UITextView {
         super.layoutSubviews()
         // SwiftUI hosts this view edge to edge, so its own safe area is zero; the window's isn't.
         updateInsets()
-        // Text layout has just run here too, so the code blocks can follow it in the same frame.
+        // Text layout has just run here too, so the code blocks and the lines' marks can follow it
+        // in the same frame.
         updateCodeBackgrounds()
+        updateLineMarks()
         // Text layout has just run, so the caret rect is final.
         if needsCaretScroll {
             needsCaretScroll = false
@@ -605,6 +660,48 @@ final class BiteTextView: UITextView {
         CATransaction.commit()
     }
 
+    // MARK: Line marks
+
+    /// The marks beside the lines, bullets, numbers, checkboxes, quote bars and dividers, each in
+    /// a layer of its own over the code backgrounds. Drawn by their own lines, as on the Mac, they
+    /// went whenever UIKit took a line's view away: Writing Tools does while it rewrites a line,
+    /// and shows only the line's text meanwhile, so a to-do lost its checkbox for seconds.
+    private let lineMarks = CALayer()
+    /// The layers showing marks, by the line each shows. A line keeps its layer while it's on
+    /// screen, so scrolling only moves them; a line laid out again gets a fresh drawing.
+    private var markLayers: [ObjectIdentifier: LineMarkLayer] = [:]
+    private var spareMarkLayers: [LineMarkLayer] = []
+
+    private func updateLineMarks() {
+        if lineMarks.superlayer !== layer {
+            layer.insertSublayer(lineMarks, above: codeBackgrounds)
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        var shown: [ObjectIdentifier: LineMarkLayer] = [:]
+        forEachLineOnScreen { fragment in
+            guard let line = fragment as? BlockLayoutFragment, let frame = line.markFrame else { return true }
+            let id = ObjectIdentifier(line)
+            let mark = markLayers.removeValue(forKey: id) ?? spareMarkLayers.popLast() ?? newMarkLayer()
+            mark.show(line, at: frame.offsetBy(dx: textContainerInset.left, dy: textContainerInset.top), traits: traitCollection)
+            shown[id] = mark
+            return true
+        }
+        for mark in markLayers.values {
+            mark.clear()
+            spareMarkLayers.append(mark)
+        }
+        markLayers = shown
+        CATransaction.commit()
+    }
+
+    private func newMarkLayer() -> LineMarkLayer {
+        let mark = LineMarkLayer()
+        mark.isHidden = true
+        lineMarks.addSublayer(mark)
+        return mark
+    }
+
     /// The lines on screen, top to bottom, until `body` returns false. UIKit lays out what's on
     /// screen, after `super.layoutSubviews()`. Most lines past that have no layout yet and lie at
     /// the top of the page: a code block further down was drawn there, over the first line. And
@@ -628,6 +725,27 @@ final class BiteTextView: UITextView {
 
     override var isDecelerating: Bool {
         isDeceleratingForTesting ?? super.isDecelerating
+    }
+
+    /// Where the lines' marks are drawn, top to bottom, in the view's coordinates.
+    var lineMarkFramesForTesting: [CGRect] {
+        markLayers.values.map(\.frame).sorted { $0.minY < $1.minY }
+    }
+
+    /// The layers drawing the lines' marks, shown or spare.
+    var lineMarkLayersForTesting: [CALayer] {
+        lineMarks.sublayers ?? []
+    }
+
+    /// The lines' marks alone, over nothing, as they're drawn in `rect` of the view.
+    func lineMarksImageForTesting(of rect: CGRect) -> UIImage {
+        markLayers.values.forEach { $0.displayIfNeeded() }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 2
+        return UIGraphicsImageRenderer(size: rect.size, format: format).image { context in
+            context.cgContext.translateBy(x: -rect.minX, y: -rect.minY)
+            lineMarks.render(in: context.cgContext)
+        }
     }
 
     /// The code blocks' backgrounds as drawn, in the view's coordinates.
@@ -790,4 +908,46 @@ private final class SelectionRect: UITextSelectionRect {
     override var containsStart: Bool { source.containsStart }
     override var containsEnd: Bool { holdsEnd && source.containsEnd }
     override var isVertical: Bool { source.isVertical }
+}
+
+/// Draws one line's mark, as the line would (see `BiteTextView.updateLineMarks`).
+private nonisolated final class LineMarkLayer: CALayer {
+    private var line: BlockLayoutFragment?
+    private var traits = UITraitCollection()
+
+    func show(_ line: BlockLayoutFragment, at frame: CGRect, traits: UITraitCollection) {
+        // On whole pixels, as TextKit puts each line's own layer, with the drawing moved along:
+        // at a fraction of a pixel the marks came out soft, a divider most of all.
+        let scale = max(1, traits.displayScale)
+        let frame = CGRect(origin: CGPoint(x: (frame.minX * scale).rounded(.down) / scale, y: (frame.minY * scale).rounded(.down) / scale), size: frame.size)
+        let isNew = line !== self.line || frame.size != bounds.size
+            || traits.userInterfaceStyle != self.traits.userInterfaceStyle || traits.displayScale != self.traits.displayScale
+        self.line = line
+        self.traits = traits
+        if self.frame != frame { self.frame = frame }
+        isHidden = false
+        guard isNew else { return }
+        contentsScale = scale
+        setNeedsDisplay()
+    }
+
+    func clear() {
+        line = nil
+        isHidden = true
+    }
+
+    /// A mark changes on the spot. A layer passed on to another line while the page scrolled
+    /// faded from the old line's mark to the new one.
+    override func action(forKey event: String) -> CAAction? {
+        nil
+    }
+
+    override func draw(in context: CGContext) {
+        guard let line, let markFrame = line.markFrame else { return }
+        let origin = CGPoint(x: line.layoutFragmentFrame.minX - markFrame.minX, y: line.layoutFragmentFrame.minY - markFrame.minY)
+        // The colours as the page shows them, light or dark.
+        traits.performAsCurrent {
+            line.drawMark(at: origin, in: context)
+        }
+    }
 }

@@ -110,6 +110,17 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
 
     override func draw(at point: CGPoint, in context: CGContext) {
         super.draw(at: point, in: context)
+        // On the phone the text view draws the marks, each in a layer of its own (see
+        // `BiteTextView.updateLineMarks`). UIKit takes a line's view away at times, as Writing
+        // Tools does while it rewrites the line, and a mark drawn here went with it.
+        #if !canImport(UIKit)
+        drawMark(at: point, in: context)
+        #endif
+    }
+
+    /// Draws the line's mark, its bullet, number, checkbox, quote bar or divider, with the line's
+    /// own origin at `point`.
+    func drawMark(at point: CGPoint, in context: CGContext) {
         switch block.kind {
         case .bullet: drawBullet(at: point, in: context)
         case .ordered: drawNumber(at: point, in: context)
@@ -118,6 +129,29 @@ nonisolated final class BlockLayoutFragment: NSTextLayoutFragment {
         case .divider: drawDivider(at: point, in: context)
         default: break
         }
+    }
+
+    /// Where the line's mark is drawn, in text-container coordinates, or nil for a line without
+    /// one. A list's marks lie left of its text and a number may reach into the page margin;
+    /// a quote's bar lies left of its text; a divider runs across the page. Top to bottom it's
+    /// where the line itself draws, so a mark lands on the same pixels either way.
+    var markFrame: CGRect? {
+        let left: CGFloat, right: CGFloat
+        switch block.kind {
+        case .bullet, .ordered, .todo:
+            left = -Self.numberOverhang - 1
+            right = theme.listTextX(indent: block.indent)
+        case .quote:
+            left = 0
+            right = theme.quoteIndent
+        case .divider:
+            left = 0
+            right = containerWidth
+        default:
+            return nil
+        }
+        let surface = renderingSurfaceBounds
+        return CGRect(x: left, y: layoutFragmentFrame.minY + surface.minY, width: right - left, height: surface.height)
     }
 
     // MARK: Geometry

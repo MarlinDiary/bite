@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import BiteKit
 
-/// Settings, from the "…" menu.
+/// Settings, from the "…" menu: a drawer from the bottom (see `fittedDrawer`).
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(DotStore.self) private var store
@@ -36,15 +36,9 @@ struct SettingsView: View {
                     }
                 }
             }
+            .fittedDrawer()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(role: .close) {
-                        dismiss()
-                    }
-                }
-            }
         }
         .onChange(of: syncsWithICloud) {
             Preferences.syncsWithICloud = syncsWithICloud
@@ -59,26 +53,35 @@ struct SettingsView: View {
 }
 
 /// The app icon, a ring like the dots', comes in every dot's colour, as Tot's does. Orange is
-/// the main icon; the others are alternate icons named after their colour.
+/// the main icon; the others are alternate icons named after their colour. They're the dot bar's
+/// rings, in a row, with the icon's own filled in. As a list, one colour to a line, they made
+/// Settings nearly as tall as the screen.
 private struct AppIconPicker: View {
     private static let mainColor = "Orange"
     @State private var choice = Self.currentChoice
 
     var body: some View {
-        Picker("App Icon", selection: $choice) {
-            ForEach(DotPalette.colors.indices, id: \.self) { index in
-                Label {
-                    Text(DotPalette.colors[index].name)
-                } icon: {
-                    // The size and ring of a dot in the dot bar.
-                    Circle()
-                        .strokeBorder(DotPalette.colors[index].color, lineWidth: 3)
-                        .frame(width: 18, height: 18)
+        Section {
+            LabeledContent("App Icon") {
+                HStack(spacing: 0) {
+                    ForEach(DotPalette.colors.indices, id: \.self) { index in
+                        Button {
+                            choice = index
+                        } label: {
+                            // A dot's size and spacing in the dot bar, and as tall to press, though
+                            // the row stands only as tall as a switch's.
+                            DotIndicator(ink: DotPalette.colors[index], isSelected: choice == index)
+                                .frame(width: 30, height: 44)
+                                .contentShape(.rect)
+                                .padding(.vertical, -11)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(DotPalette.colors[index].name)
+                        .accessibilityAddTraits(choice == index ? .isSelected : [])
+                    }
                 }
-                .tag(index)
             }
         }
-        .pickerStyle(.inline)
         .onChange(of: choice) { _, index in
             guard index != Self.currentChoice else { return }
             Task {

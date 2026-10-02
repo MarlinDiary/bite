@@ -92,7 +92,7 @@ struct DotSwitcher: View {
 /// A ring that is solid when selected. It looks set into the capsule rather than sitting on top:
 /// the colour darkens toward the top edge, where a fine inner shadow falls. Changes are instant,
 /// with no animation, like Tot.
-private struct DotIndicator: View {
+struct DotIndicator: View {
     let ink: DotColor
     let isSelected: Bool
     @Environment(\.colorScheme) private var colorScheme

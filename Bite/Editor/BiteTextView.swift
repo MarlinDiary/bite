@@ -68,11 +68,18 @@ final class BiteTextView: UITextView {
 
     private func applyKeyboardInset() {
         updateScrollIndicatorInsets()
+        guard abs(insetKeyboardOverlap - wantedKeyboardOverlap) > 0.5 else { return }
         // Changing the inset under a finger clamps the scroll position on every frame, which made
-        // the text shudder while the keyboard was dragged away. That waits for the finger to lift
-        // (`dragDidEnd`), but not for the page to stop scrolling: the room a swiped-away keyboard
-        // left stayed open until then, half a second too long.
-        guard !isTracking, abs(insetKeyboardOverlap - wantedKeyboardOverlap) > 0.5 else { return }
+        // the text shudder while the keyboard was dragged away. Nor does it change while the page
+        // springs back from past its top or end, as one let go of there does: UIKit put the page
+        // back in range at once, under the spring, and the text dropped and crept back up as the
+        // keyboard left. It waits only until the page is back in range, though, not until it stops
+        // scrolling: the room a swiped-away keyboard left stayed open until then, half a second
+        // too long.
+        guard !isTracking, !(isDecelerating && isPastEitherEnd) else {
+            waitToApplyKeyboardInset()
+            return
+        }
         let apply = {
             self.insetKeyboardOverlap = self.wantedKeyboardOverlap
             self.updateInsets()
@@ -87,6 +94,27 @@ final class BiteTextView: UITextView {
             UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: apply)
         } else {
             UIView.performWithoutAnimation(apply)
+        }
+    }
+
+    /// Whether the page is scrolled past its top or its end, as while it springs back.
+    private var isPastEitherEnd: Bool {
+        let top = -contentInset.top
+        let end = max(top, contentSize.height + contentInset.bottom - bounds.height)
+        return contentOffset.y < top - 0.5 || contentOffset.y > end + 0.5
+    }
+
+    private var isWaitingToApplyKeyboardInset = false
+
+    /// Looks again in a moment, until the page is let go of and back in range. UIKit reports the
+    /// end of a drag (`dragDidEnd`) while it still counts the finger as down.
+    private func waitToApplyKeyboardInset() {
+        guard !isWaitingToApplyKeyboardInset else { return }
+        isWaitingToApplyKeyboardInset = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            self.isWaitingToApplyKeyboardInset = false
+            self.applyKeyboardInset()
         }
     }
 
@@ -595,6 +623,13 @@ final class BiteTextView: UITextView {
     }
 
     #if DEBUG
+    /// Stands in for UIKit's own, which only a finger sets off.
+    var isDeceleratingForTesting: Bool?
+
+    override var isDecelerating: Bool {
+        isDeceleratingForTesting ?? super.isDecelerating
+    }
+
     /// The code blocks' backgrounds as drawn, in the view's coordinates.
     var codeBackgroundsForTesting: [CGRect] {
         (codeBackgrounds.sublayers ?? []).compactMap { $0 as? CAShapeLayer }.filter { !$0.isHidden }.compactMap { $0.path?.boundingBox }

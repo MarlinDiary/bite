@@ -341,6 +341,18 @@ final class PagerContainerView: UIView {
     }
     /// How tall the keys stood as Writing Tools finished, until they change: the bar waits for them.
     private var keysWhenWritingToolsEnded: CGFloat?
+    /// The keys the bar stays on while they're gone for a moment, the page still being edited.
+    /// Siri takes the keys for its own and gives them back, and each time UIKit first says they've
+    /// gone, then a few milliseconds later that they're back. Following that, the bar dipped and
+    /// bounced back as Siri came, and fell and then dropped back down from above as it went.
+    private var keysThatVanished: CGFloat?
+    private var vanishedKeysRelease = 0
+    /// The keys as last measured, before any held in their place.
+    private var measuredKeys: CGFloat = 0
+    /// Set once UIKit says the keys are going, until they come back up or it says they're coming.
+    /// Keys going for good say so first, as when Writing Tools takes their place, and the bar goes
+    /// down with them.
+    private var keysAreGoing = false
     private let keyboardProbe = UIView()
     /// Its bottom edge is the top of the keys, and it clips the bar, so a bar sliding into the
     /// keyboard never shows through the keyboard's translucent top.
@@ -380,6 +392,10 @@ final class PagerContainerView: UIView {
         formatBar.frame.origin.y = trackHeadroom + barSink
         barTrack.addSubview(formatBar)
         addSubview(barTrack)
+
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(keysWillGo), name: UIResponder.keyboardWillHideNotification, object: nil)
+        center.addObserver(self, selector: #selector(keysWillCome), name: UIResponder.keyboardWillShowNotification, object: nil)
     }
 
     required init?(coder: NSCoder) {
@@ -411,14 +427,26 @@ final class PagerContainerView: UIView {
 
     /// Puts the bar on top of the keys, or away, and reports how much of this view they cover.
     private func placeBar() {
-        let keys = self.keys
+        var keys = self.keys
+        let editor = editingTextView()
+        if keys > measuredKeys { keysAreGoing = false }
+        if keys == 0, measuredKeys > 0, keysMayComeRightBack(to: editor) {
+            holdVanishedKeys(measuredKeys)
+        }
+        measuredKeys = keys
+        if let vanished = keysThatVanished {
+            if keys > 0 || isWritingToolsAtWork || editor == nil {
+                keysThatVanished = nil
+            } else {
+                keys = vanished
+            }
+        }
         if let ended = keysWhenWritingToolsEnded, abs(keys - ended) > 0.5 {
             keysWhenWritingToolsEnded = nil
         }
         // While Writing Tools is at work, and until the keys come back after it, the bar waits
         // at the bottom of the screen (see `isWritingToolsAtWork`).
         let barKeys = isWritingToolsAtWork || keysWhenWritingToolsEnded != nil ? 0 : keys
-        let editor = editingTextView()
         // On-screen keys stand well over 120 points. A hardware keyboard leaves no keys, or only a
         // short strip, and the bar stays away. Keys dragged partway down still carry it.
         if editor == nil || barKeys == 0 {
@@ -443,6 +471,40 @@ final class PagerContainerView: UIView {
         guard abs(overlap - reportedOverlap) > 0.5 else { return }
         reportedOverlap = overlap
         onKeyboardOverlapChange?(overlap)
+    }
+
+    /// Whether keys that just vanished from under the page being edited may be back in a moment:
+    /// nothing put them away, and nothing said they were going.
+    private func keysMayComeRightBack(to editor: UITextView?) -> Bool {
+        guard let editor, !editor.isTracking, (editor as? BiteTextView)?.isResigning != true,
+              !keysAreGoing, !isWritingToolsAtWork else { return false }
+        return window?.windowScene?.activationState == .foregroundActive
+    }
+
+    private func holdVanishedKeys(_ keys: CGFloat) {
+        keysThatVanished = keys
+        vanishedKeysRelease += 1
+        let release = vanishedKeysRelease
+        // Keys still gone a moment later have gone for good, as for a hardware keyboard.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.vanishedKeysRelease == release else { return }
+            self.letVanishedKeysGo()
+        }
+    }
+
+    private func letVanishedKeysGo() {
+        guard keysThatVanished != nil else { return }
+        keysThatVanished = nil
+        UIView.animate(withDuration: 0.25) { self.placeBar() }
+    }
+
+    @objc private func keysWillGo() {
+        keysAreGoing = true
+        letVanishedKeysGo()
+    }
+
+    @objc private func keysWillCome() {
+        keysAreGoing = false
     }
 
     /// How far the bar sinks into keys that stand `keys` points tall.

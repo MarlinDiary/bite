@@ -115,7 +115,7 @@ final class BiteTextView: UITextView {
 
     /// UIKit starts the keyboard's exit animation inside `resignFirstResponder`, while this view
     /// still reports being first responder.
-    private var isResigning = false
+    private(set) var isResigning = false
 
     private func applyKeyboardInset() {
         updateScrollIndicatorInsets()

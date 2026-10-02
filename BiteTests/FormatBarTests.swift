@@ -89,11 +89,11 @@ struct FormatBarPlacementTests {
         pager.container.frame = window.bounds
         window.addSubview(pager.container)
         EditorHarness.show(window)
-        pager.container.keysForTesting = keys
         let page = pager.controllers[0]
         page.load(markdown: "Some words to rewrite")
         page.focus()
-        pager.container.layoutIfNeeded()
+        // Laid out over the keys even when the window has been laid out already.
+        setKeys(keys, in: pager)
         return (pager, page, window)
     }
 
@@ -129,6 +129,53 @@ struct FormatBarPlacementTests {
         #expect(!FormatBar.shared.accessibilityElementsHidden)
         #expect(page.textView.keyboardOverlap == 336 + FormatBar.height)
         #expect(pager.container.barTrackFrameForTesting.maxY == height - 336)
+    }
+
+    /// Siri takes the keys for its own and gives them back, and each time UIKit first says they've
+    /// gone, then a few milliseconds later that they're back. The bar stays where it was: following
+    /// that, it dipped and bounced back, or fell and dropped back down from above.
+    @Test func keysGoneForAMomentLeaveTheBarWhereItIs() {
+        let (pager, page, window) = editingPager(keys: 336)
+        let track = pager.container.barTrackFrameForTesting
+        let overlap = page.textView.keyboardOverlap
+        setKeys(0, in: pager)
+        #expect(pager.container.barTrackFrameForTesting == track)
+        #expect(page.textView.keyboardOverlap == overlap)
+        setKeys(336, in: pager)
+        #expect(pager.container.barTrackFrameForTesting == track)
+        #expect(page.textView.keyboardOverlap == overlap)
+        #expect(window.bounds.height > track.maxY)
+    }
+
+    /// Keys still gone a moment later, as for a hardware keyboard, take the bar with them.
+    @Test func keysGoneForGoodTakeTheBarAfterAMoment() async {
+        let (pager, page, window) = editingPager(keys: 336)
+        setKeys(0, in: pager)
+        for _ in 0..<20 where page.textView.keyboardOverlap != 0 {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(page.textView.keyboardOverlap == 0)
+        #expect(pager.container.barTrackFrameForTesting.maxY == window.bounds.height)
+    }
+
+    /// Keys that say they're going, as when Writing Tools is about to take their place, take the
+    /// bar with them at once.
+    @Test func keysSayingTheyreGoingTakeTheBarAtOnce() {
+        let (pager, page, window) = editingPager(keys: 336)
+        let center = NotificationCenter.default
+        center.post(name: UIResponder.keyboardWillHideNotification, object: nil)
+        defer { center.post(name: UIResponder.keyboardWillShowNotification, object: nil) }
+        setKeys(0, in: pager)
+        #expect(page.textView.keyboardOverlap == 0)
+        #expect(pager.container.barTrackFrameForTesting.maxY == window.bounds.height)
+    }
+
+    /// Keys put away with the page, as the bar's own button puts them away, take the bar at once.
+    @Test func keysPutAwayTakeTheBarAtOnce() {
+        let (pager, page, window) = editingPager(keys: 336)
+        page.textView.resignFirstResponder()
+        setKeys(0, in: pager)
+        #expect(pager.container.barTrackFrameForTesting.maxY == window.bounds.height)
     }
 
     /// Keys that stay as they were once Writing Tools is done leave the bar waiting only a moment.

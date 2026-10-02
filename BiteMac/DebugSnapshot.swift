@@ -104,6 +104,15 @@ enum DebugSnapshot {
                             NSApp.postEvent(event, atStart: false)
                         }
                     }
+                    // `-snapshotMenuRight` then opens the highlighted row's own menu.
+                    if arguments.contains("-snapshotMenuRight") {
+                        let right = String(UnicodeScalar(UInt16(NSRightArrowFunctionKey))!)
+                        if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                        windowNumber: 0, context: nil, characters: right,
+                                                        charactersIgnoringModifiers: right, isARepeat: false, keyCode: 124) {
+                            NSApp.postEvent(event, atStart: false)
+                        }
+                    }
                     // `-snapshotMenuReturn` then chooses the highlighted item, and `-snapshotMenuEscape`
                     // closes the menu, each with the key going down and back up.
                     for (flag, key, code) in [("-snapshotMenuReturn", "\r", UInt16(36)), ("-snapshotMenuEscape", "\u{1b}", 53)]
@@ -133,6 +142,24 @@ enum DebugSnapshot {
             try? await Task.sleep(for: delay)
             do {
                 let content = try await SCShareableContent.currentProcess
+                // `-snapshotDisplay` also captures the display with only Bite's windows on it, at the
+                // screen's own pixels: a menu's own capture comes back as the panel and its menus
+                // together, scaled down into the menu's size.
+                if CommandLine.arguments.contains("-snapshotDisplay"),
+                   let menu = content.windows.first(where: { $0.isOnScreen && $0.windowLayer == 101 }),
+                   let display = content.displays.first(where: { $0.frame.intersects(menu.frame) }) {
+                    let windows = content.windows.filter { $0.isOnScreen && $0.windowLayer >= 0 && $0.windowLayer != 24 }
+                    let filter = SCContentFilter(display: display, including: windows)
+                    let configuration = SCStreamConfiguration()
+                    configuration.width = Int(display.frame.width * 2)
+                    configuration.height = Int(display.frame.height * 2)
+                    configuration.showsCursor = false
+                    let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+                    let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) ?? Data()
+                    for window in windows { print("SNAPSHOT window \(window.frame) layer \(window.windowLayer)") }
+                    print("SNAPSHOT display \(display.frame)")
+                    print("PNG display \(png.base64EncodedString())")
+                }
                 // Not the desktop or the menu bar, which come with every app's windows.
                 for (index, window) in content.windows.enumerated() where window.isOnScreen && window.windowLayer >= 0 && window.windowLayer != 24 {
                     let filter = SCContentFilter(desktopIndependentWindow: window)

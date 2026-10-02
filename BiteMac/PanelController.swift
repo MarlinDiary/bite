@@ -501,7 +501,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     // MARK: The menu
 
-    /// The "…" menu: settings, the page's own commands, and quitting.
+    /// The "…" menu: settings, the page's statistics and its own commands, and quitting.
     func makeMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -509,6 +509,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         let dot = store.selection
         let hasText = !store.isEmpty[dot]
         menu.addItem(settingsItem())
+        menu.addItem(statisticsItem(dot: dot))
         menu.addItem(.separator())
         menu.addItem(item("Copy Markdown", symbol: "doc.on.doc", action: #selector(copyMarkdown), isEnabled: hasText))
         menu.addItem(item("Copy Plain Text", symbol: "doc.plaintext", action: #selector(copyPlainText), isEnabled: hasText))
@@ -529,6 +530,23 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         menu.addItem(.separator())
         menu.addItem(quitItem())
         return menu
+    }
+
+    /// The page's words, characters and paragraphs, and when it last changed, as the phone's
+    /// Statistics drawer shows them. Counted as the menu opens, with typing from a moment ago.
+    private func statisticsItem(dot: Int) -> NSMenuItem {
+        let statistics = PageStatistics(document: MarkdownParser.parse(store.currentMarkdown(dot: dot)))
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        submenu.addItem(MenuRow.info("Words", value: statistics.words.formatted()))
+        submenu.addItem(MenuRow.info("Characters", value: statistics.characters.formatted()))
+        submenu.addItem(MenuRow.info("Paragraphs", value: statistics.paragraphs.formatted()))
+        if let modified = store.modified[dot] {
+            submenu.addItem(.separator())
+            submenu.addItem(MenuRow.info("Modified", value: ModifiedDate.text(modified)))
+        }
+        return MenuRow.item("Statistics", symbol: "chart.bar", submenu: submenu,
+                            tint: NSColor(hex: DotPalette.colors[dot].light))
     }
 
     private func settingsItem() -> NSMenuItem {

@@ -10,6 +10,9 @@ final class DotStore {
     private(set) var isEmpty: [Bool]
     /// Bumped when a dot changes outside its editor, which makes that editor reload.
     private(set) var revisions: [Int]
+    /// When each dot last changed, here or on another device. Its file keeps it as its
+    /// modification date, so it lasts.
+    @ObservationIgnored private(set) var modified: [Date?]
     var selection: Int {
         didSet { UserDefaults.standard.set(selection, forKey: Self.selectionKey) }
     }
@@ -46,6 +49,11 @@ final class DotStore {
         self.markdown = markdown
         isEmpty = markdown.map(Self.isBlank)
         revisions = Array(repeating: 0, count: DotPalette.count)
+        modified = (0..<DotPalette.count).map { dot in
+            isFirstLaunch
+                ? .now
+                : try? Self.fileURL(for: dot, in: folder).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        }
         selection = min(max(UserDefaults.standard.integer(forKey: Self.selectionKey), 0), DotPalette.count - 1)
         if isFirstLaunch {
             unsaved = Set(0..<DotPalette.count)
@@ -56,15 +64,17 @@ final class DotStore {
     func update(dot: Int, markdown newValue: String) {
         guard markdown.indices.contains(dot), markdown[dot] != newValue else { return }
         markdown[dot] = newValue
+        modified[dot] = .now
         unsaved.insert(dot)
         scheduleSave()
         onLocalChange?(dot)
     }
 
-    /// A page as another device changed it, which iCloud brought.
-    func applyRemote(dot: Int, markdown newValue: String) {
+    /// A page as another device changed it, which iCloud brought, last changed at `date`.
+    func applyRemote(dot: Int, markdown newValue: String, modified date: Date = .now) {
         guard markdown.indices.contains(dot), markdown[dot] != newValue else { return }
         markdown[dot] = newValue
+        modified[dot] = date
         unsaved.insert(dot)
         scheduleSave()
         if let applyInEditor {
@@ -107,6 +117,7 @@ final class DotStore {
         // Typing from a moment ago goes in first, so it can't come back after the page is cleared.
         reportPendingEdits()
         markdown[dot] = ""
+        modified[dot] = .now
         isEmpty[dot] = true
         revisions[dot] += 1
         unsaved.insert(dot)
@@ -123,6 +134,7 @@ final class DotStore {
             let sample = SampleContent.markdown(for: dot)
             guard markdown[dot] != sample else { continue }
             markdown[dot] = sample
+            modified[dot] = .now
             isEmpty[dot] = Self.isBlank(sample)
             revisions[dot] += 1
             unsaved.insert(dot)
@@ -136,7 +148,12 @@ final class DotStore {
         saveTask?.cancel()
         saveTask = nil
         for dot in unsaved.sorted() {
-            try? markdown[dot].write(to: Self.fileURL(for: dot, in: folder), atomically: true, encoding: .utf8)
+            let file = Self.fileURL(for: dot, in: folder)
+            try? markdown[dot].write(to: file, atomically: true, encoding: .utf8)
+            // Not when it was written: a page from elsewhere changed there before it came.
+            if let date = modified[dot] {
+                try? FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path(percentEncoded: false))
+            }
         }
         unsaved.removeAll()
     }

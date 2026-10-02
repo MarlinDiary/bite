@@ -8,6 +8,8 @@ final class MenuRow: NSView {
     private let symbol: String
     /// The key shown after ⌘, as AppKit shows it: a letter as a capital.
     private let key: String
+    /// What a row that only says something says after its title, at the row's end.
+    private let value: String
     private let tint: NSColor
 
     static let height: CGFloat = 24
@@ -16,6 +18,12 @@ final class MenuRow: NSView {
     private static let cornerRadius: CGFloat = 8
     private static let imageCenter: CGFloat = 22.25
     private static let titleStart: CGFloat = 36
+    /// Where a title starts in a menu without pictures.
+    private static let plainTitleStart: CGFloat = 16
+    /// A value ends where AppKit's keys end, and the arrow of a row opening a menu is centred this
+    /// far from the row's end.
+    private static let valueEnd: CGFloat = 17.75
+    private static let arrowCenter: CGFloat = 23.75
     /// The keys are in two columns, measured from the right: ⌘ starting here, and the key
     /// centred on the second.
     private static let modifierStart: CGFloat = 41
@@ -34,16 +42,36 @@ final class MenuRow: NSView {
         return item
     }
 
-    private init(title: String, symbol: String, key: String, tint: NSColor) {
+    /// The item for `title`, opening `submenu` as AppKit's own rows do: as the pointer comes to it,
+    /// or with the right arrow key.
+    static func item(_ title: String, symbol: String, submenu: NSMenu, tint: NSColor) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        item.view = MenuRow(title: title, symbol: symbol, key: "", tint: tint)
+        return item
+    }
+
+    /// A row that only says something: `title`, and `value` at its end. It never lights up, and
+    /// a click on it does nothing.
+    static func info(_ title: String, value: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        item.view = MenuRow(title: title, symbol: "", key: "", value: value, tint: .clear)
+        return item
+    }
+
+    private init(title: String, symbol: String, key: String, value: String = "", tint: NSColor) {
         self.title = title
         self.symbol = symbol
         self.key = key.uppercased()
+        self.value = value
         self.tint = tint
-        super.init(frame: NSRect(x: 0, y: 0, width: Self.width(title: title), height: Self.height))
+        let width = value.isEmpty ? Self.width(title: title) : Self.width(title: title, value: value)
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: Self.height))
         autoresizingMask = [.width]
         setAccessibilityElement(true)
         setAccessibilityRole(.menuItem)
-        setAccessibilityLabel(title)
+        setAccessibilityLabel(value.isEmpty ? title : "\(title), \(value)")
     }
 
     required init?(coder: NSCoder) {
@@ -58,6 +86,12 @@ final class MenuRow: NSView {
         return (titleStart + titleWidth + keysGap + modifierStart).rounded(.up)
     }
 
+    private static func width(title: String, value: String) -> CGFloat {
+        let titleWidth = (title as NSString).size(withAttributes: [.font: font]).width
+        let valueWidth = (value as NSString).size(withAttributes: [.font: font]).width
+        return (plainTitleStart + titleWidth + keysGap + valueWidth + valueEnd).rounded(.up)
+    }
+
     override var isFlipped: Bool { true }
 
     private var isLit: Bool {
@@ -66,6 +100,10 @@ final class MenuRow: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        guard value.isEmpty else {
+            drawInfo()
+            return
+        }
         let isEnabled = enclosingMenuItem?.isEnabled ?? true
         if isLit {
             tint.setFill()
@@ -76,14 +114,46 @@ final class MenuRow: NSView {
         let keyInk: NSColor = isLit ? .selectedMenuItemTextColor : isEnabled ? .tertiaryLabelColor : .quaternaryLabelColor
         drawImage(in: ink)
         let font = Self.font
-        // The capitals centred on the row, as AppKit sets a row's title.
-        let top = ((bounds.height - font.capHeight) / 2 + font.capHeight - font.ascender).rounded()
+        let top = textTop
         (title as NSString).draw(at: NSPoint(x: Self.titleStart, y: top), withAttributes: [.font: font, .foregroundColor: ink])
+        if enclosingMenuItem?.hasSubmenu == true {
+            drawArrow(in: ink)
+        }
         guard !key.isEmpty else { return }
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: keyInk]
         ("⌘" as NSString).draw(at: NSPoint(x: bounds.maxX - Self.modifierStart, y: top), withAttributes: attributes)
         let keyWidth = (key as NSString).size(withAttributes: attributes).width
         (key as NSString).draw(at: NSPoint(x: bounds.maxX - Self.keyCenter - keyWidth / 2, y: top), withAttributes: attributes)
+    }
+
+    /// The capitals centred on the row, as AppKit sets a row's title.
+    private var textTop: CGFloat {
+        let font = Self.font
+        return ((bounds.height - font.capHeight) / 2 + font.capHeight - font.ascender).rounded()
+    }
+
+    /// In the colours of text, not of a row that can't be chosen: there's nothing to choose.
+    private func drawInfo() {
+        let top = textTop
+        (title as NSString).draw(at: NSPoint(x: Self.plainTitleStart, y: top),
+                                 withAttributes: [.font: Self.font, .foregroundColor: NSColor.labelColor])
+        let attributes: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: NSColor.secondaryLabelColor]
+        let width = (value as NSString).size(withAttributes: attributes).width
+        (value as NSString).draw(at: NSPoint(x: bounds.maxX - Self.valueEnd - width, y: top), withAttributes: attributes)
+    }
+
+    /// The arrow AppKit puts at the end of a row that opens a menu of its own.
+    private func drawArrow(in ink: NSColor) {
+        let resolved = ink.usingColorSpace(.sRGB) ?? ink
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .bold, scale: .small)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [resolved.withAlphaComponent(1)]))
+        guard let image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration) else { return }
+        let size = image.size
+        let frame = NSRect(x: bounds.maxX - Self.arrowCenter - size.width / 2, y: (bounds.height - size.height) / 2,
+                           width: size.width, height: size.height)
+        image.draw(in: backingAlignedRect(frame, options: .alignAllEdgesNearest), from: .zero, operation: .sourceOver,
+                   fraction: resolved.alphaComponent, respectFlipped: true, hints: nil)
     }
 
     private func drawImage(in ink: NSColor) {
@@ -115,7 +185,8 @@ final class MenuRow: NSView {
     }
 
     private func choose() {
-        guard let item = enclosingMenuItem, item.isEnabled, let menu = item.menu else { return }
+        // A row with a menu of its own opens it as the pointer comes, and a click leaves it open.
+        guard let item = enclosingMenuItem, item.isEnabled, !item.hasSubmenu, let menu = item.menu else { return }
         Self.keyboard.choose(item, in: menu)
     }
 }

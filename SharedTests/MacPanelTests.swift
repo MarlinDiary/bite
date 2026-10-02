@@ -48,8 +48,8 @@ struct MacPanelTests {
         let panel = panel(store)
         let menu = panel.makeMenu()
         let titles = menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
-        #expect(titles == ["Settings…", "-", "Copy Markdown", "Copy Plain Text", "Clear Text", "-", "Share Text", "-",
-                           "Quit Bite"])
+        #expect(titles == ["Settings…", "Statistics", "-", "Copy Markdown", "Copy Plain Text", "Clear Text", "-", "Share Text",
+                           "-", "Quit Bite"])
         // Rows of Bite's own, with the phone's pictures and the page's colour for the highlight,
         // chosen from the keyboard too; and the keys Bite's menus give the same commands.
         for item in menu.items where !item.isSeparatorItem {
@@ -63,6 +63,26 @@ struct MacPanelTests {
         for title in ["Copy Markdown", "Copy Plain Text", "Clear Text", "Share Text"] {
             #expect(menu.items.first { $0.title == title }?.isEnabled == hasText)
         }
+    }
+
+    /// Statistics opens a menu of its own with the page's words, characters and paragraphs, and
+    /// when it last changed, as the phone's drawer shows them. Its rows only say something.
+    @Test func statisticsSaysWhatThePageHolds() throws {
+        let store = store()
+        store.update(dot: store.selection, markdown: "# Plan\n- two words\n")
+        let menu = panel(store).makeMenu()
+        let statistics = try #require(menu.items.first { $0.title == "Statistics" })
+        #expect(statistics.view is MenuRow)
+        let rows = try #require(statistics.submenu).items
+        #expect(rows.map { $0.isSeparatorItem ? "-" : $0.title } == ["Words", "Characters", "Paragraphs", "-", "Modified"])
+        for row in rows where !row.isSeparatorItem {
+            #expect(!row.isEnabled && row.view is MenuRow, "\(row.title)")
+        }
+        #expect(rows[0].view?.accessibilityLabel() == "Words, 3")
+        #expect(rows[1].view?.accessibilityLabel() == "Characters, 13")
+        #expect(rows[2].view?.accessibilityLabel() == "Paragraphs, 2")
+        let modified = try #require(store.modified[store.selection])
+        #expect(rows[4].view?.accessibilityLabel() == "Modified, \(ModifiedDate.text(modified))")
     }
 
     /// The ring's right click has Bite's own commands, none of the page's.

@@ -2,8 +2,8 @@ import SwiftUI
 import UIKit
 import BiteKit
 
-/// The "…" button: settings, copying the page as Markdown or plain text, clearing it, and
-/// sharing it.
+/// The "…" button: settings, the page's statistics, copying it as Markdown or plain text, clearing
+/// it, and sharing it.
 struct DotMenu: View {
     let dot: Int
     @Environment(DotStore.self) private var store
@@ -13,6 +13,7 @@ struct DotMenu: View {
     #else
     @State private var isShowingSettings = false
     #endif
+    @State private var shownStatistics: ShownStatistics?
 
     var body: some View {
         let isEmpty = store.isEmpty[dot]
@@ -20,6 +21,9 @@ struct DotMenu: View {
             Section {
                 Button("Settings", systemImage: "gearshape") {
                     isShowingSettings = true
+                }
+                Button("Statistics", systemImage: "chart.bar") {
+                    showStatistics()
                 }
             }
             Section {
@@ -60,7 +64,30 @@ struct DotMenu: View {
         .sheet(isPresented: $isShowingSettings) {
             SettingsView()
         }
+        .sheet(item: $shownStatistics) { shown in
+            StatisticsView(statistics: shown.statistics, modified: shown.modified)
+        }
+        #if DEBUG
+        .onAppear {
+            // `-showStatistics` opens Statistics as the app launches, for a picture of it.
+            if CommandLine.arguments.contains("-showStatistics") { showStatistics() }
+        }
+        #endif
     }
+
+    /// Counted as it opens, with typing from a moment ago, which changed the page just now.
+    private func showStatistics() {
+        let markdown = store.currentMarkdown(dot: dot)
+        shownStatistics = ShownStatistics(statistics: PageStatistics(document: MarkdownParser.parse(markdown)),
+                                          modified: store.modified[dot])
+    }
+}
+
+/// What Statistics shows for a page.
+private struct ShownStatistics: Identifiable {
+    let id = UUID()
+    let statistics: PageStatistics
+    let modified: Date?
 }
 
 enum ShareSheet {

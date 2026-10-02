@@ -334,6 +334,14 @@ final class PageSync: CKSyncEngineDelegate {
         return modified < agreed
     }
 
+    /// When a page from iCloud last changed: when it did there, unless it keeps changes from here,
+    /// which may be newer.
+    static func whenChanged(merged: String, remote: String, there: Date?, here: Date?) -> Date {
+        let there = there ?? .now
+        guard merged != remote, let here else { return there }
+        return max(there, here)
+    }
+
     /// The page as iCloud brought it, merged with what this device changed since they last agreed.
     /// Says whether it was new from elsewhere.
     @discardableResult
@@ -361,7 +369,8 @@ final class PageSync: CKSyncEngineDelegate {
         Self.log.info("Page \(dot + 1): \(local.count) here, \(remote.count) in iCloud, kept \(merged.count), saved \(age, format: .fixed(precision: 1)) s ago")
         saved.pages[dot] = Saved.Page(text: remote, systemFields: Self.systemFields(of: record), modified: record.modificationDate)
         if merged != local {
-            store.applyRemote(dot: dot, markdown: merged)
+            let modified = Self.whenChanged(merged: merged, remote: remote, there: record.modificationDate, here: store.modified[dot])
+            store.applyRemote(dot: dot, markdown: merged, modified: modified)
         }
         if merged != remote {
             engine.state.add(pendingRecordZoneChanges: [.saveRecord(record.recordID)])

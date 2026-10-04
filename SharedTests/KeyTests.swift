@@ -1,4 +1,9 @@
 import Testing
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
 @testable import Bite
 
 /// Return: lists carry on, everything else goes back to a plain paragraph, as in Notion.
@@ -286,6 +291,53 @@ struct CommandTests {
         #expect(editor.markdown == "- [x] a")
         editor.controller.toggleTodo(at: 0)
         #expect(editor.markdown == "- [ ] a")
+    }
+
+    /// A box ticked away from the caret leaves the page where it is, and so does undoing it: the
+    /// caret doesn't move, and bringing it into view took the page off the box (user,
+    /// 2026-10-05, on the Mac).
+    @Test func tickingABoxLeavesThePageWhereItIs() async {
+        let editor = EditorHarness("- [ ] box\n" + (1...80).map { "Line \($0)" }.joined(separator: "\n"))
+        editor.textView.selectedRange = NSRange(location: editor.storage.length - 1, length: 0)
+        await settle(editor)
+        scrollToTop(editor)
+        let top = scrolled(editor)
+        editor.controller.toggleTodo(at: 0)
+        await settle(editor)
+        #expect(editor.markdown.hasPrefix("- [x] box"))
+        #expect(scrolled(editor) == top)
+        editor.undo()
+        await settle(editor)
+        #expect(editor.markdown.hasPrefix("- [ ] box"))
+        #expect(scrolled(editor) == top)
+    }
+
+    private func scrolled(_ editor: EditorHarness) -> CGFloat {
+        #if canImport(UIKit)
+        editor.textView.contentOffset.y
+        #else
+        editor.textView.enclosingScrollView?.contentView.bounds.minY ?? 0
+        #endif
+    }
+
+    private func scrollToTop(_ editor: EditorHarness) {
+        #if canImport(UIKit)
+        editor.textView.setContentOffset(CGPoint(x: 0, y: -editor.textView.adjustedContentInset.top), animated: false)
+        #else
+        editor.textView.scroll(.zero)
+        #endif
+    }
+
+    /// Lets a caret scroll asked for meanwhile happen.
+    private func settle(_ editor: EditorHarness) async {
+        #if canImport(UIKit)
+        editor.textView.setNeedsLayout()
+        editor.textView.layoutIfNeeded()
+        #endif
+        try? await Task.sleep(for: .milliseconds(50))
+        #if canImport(UIKit)
+        editor.textView.layoutIfNeeded()
+        #endif
     }
 
     @Test func pastingMarkdown() {

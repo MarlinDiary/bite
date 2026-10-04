@@ -1342,12 +1342,14 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     }
 
     /// Ticks or unticks the to-do at `location`, and says which: nil if there's no to-do there.
+    /// The page stays where it is: the caret hasn't moved, and bringing it into view took the
+    /// page away from the box clicked (user, 2026-10-05).
     @discardableResult
     func toggleTodo(at location: Int) -> Bool? {
         finishComposing()
         let line = lineRange(at: location)
         guard block(of: line).kind == .todo else { return nil }
-        setBlocks(of: [line]) { $0.isChecked.toggle() }
+        setBlocks(of: [line], scrollsToCaret: false) { $0.isChecked.toggle() }
         return block(of: lineRange(at: location)).isChecked
     }
 
@@ -1569,9 +1571,11 @@ final class EditorController: NSObject, EditorTextViewDelegate {
 
     /// Replaces `range` and registers the inverse with the text view's undo manager, unless
     /// `recordsUndo` is false. `undo` overrides what undo restores; by default it's the text that
-    /// was there.
+    /// was there. Unless `scrollsToCaret` is false, the caret's brought into view after, and
+    /// after undoing it.
     private func replace(_ range: NSRange, with replacement: NSAttributedString, selection: NSRange,
-                         undo: (text: NSAttributedString, selection: NSRange)? = nil, recordsUndo: Bool = true) {
+                         undo: (text: NSAttributedString, selection: NSRange)? = nil, recordsUndo: Bool = true,
+                         scrollsToCaret: Bool = true) {
         // Undo puts back whole lines: those the edit touches, and the line after one that ends
         // at a line start, which the edit's last line may join. Restyling after the edit gives
         // the rest of each of those lines the kind of its first character, and an undo of just
@@ -1595,7 +1599,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
             textView.undoManager?.registerUndo(withTarget: self) { controller in
                 MainActor.assumeIsolated {
                     guard controller.textIsStill(textAfter, at: linesAfter) else { return }
-                    controller.replace(linesAfter, with: previous, selection: previousSelection)
+                    controller.replace(linesAfter, with: previous, selection: previousSelection, scrollsToCaret: scrollsToCaret)
                 }
             }
         }
@@ -1619,7 +1623,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         #if canImport(UIKit)
         textView.inputDelegate?.textDidChange(textView)
         #endif
-        contentDidChange(in: replacedRange)
+        contentDidChange(in: replacedRange, scrollsToCaret: scrollsToCaret)
         tellKeyboardOnceItsDone()
     }
 
@@ -1663,7 +1667,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         #endif
     }
 
-    private func setBlocks(of lines: [NSRange], _ change: (inout BlockAttributes) -> Void) {
+    private func setBlocks(of lines: [NSRange], scrollsToCaret: Bool = true, _ change: (inout BlockAttributes) -> Void) {
         guard let first = lines.first, let last = lines.last else { return }
         let range = NSRange(location: first.location, length: NSMaxRange(last) - first.location)
         let replacement = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
@@ -1674,13 +1678,13 @@ final class EditorController: NSObject, EditorTextViewDelegate {
             block.indent = block.kind.isList ? max(0, block.indent) : 0
             replacement.addAttributes(block.dictionary, range: local)
         }
-        replace(range, with: replacement, selection: textView.selectedRange)
+        replace(range, with: replacement, selection: textView.selectedRange, scrollsToCaret: scrollsToCaret)
     }
 
     /// `withinLine` is for typing that stays inside one line. That can't change any line's kind,
     /// level or number, so those aren't worked out again, which took longer than a frame on
     /// every keystroke in a long page.
-    private func contentDidChange(in range: NSRange, withinLine: Bool = false) {
+    private func contentDidChange(in range: NSRange, withinLine: Bool = false, scrollsToCaret: Bool = true) {
         ensureTrailingNewline()
         if withinLine {
             takeLineAttributes(range)
@@ -1693,7 +1697,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         scheduleReport()
         // Edits made here (list continuation, shortcuts) don't go through UIKit's typing path,
         // so nothing else would bring the caret into view.
-        if textView.isFirstResponder {
+        if scrollsToCaret, textView.isFirstResponder {
             textView.requestCaretScroll()
         }
     }

@@ -85,6 +85,39 @@ struct MacPanelTests {
         #expect(rows[4].view?.accessibilityLabel() == "Modified, \(ModifiedDate.text(modified))")
     }
 
+    /// Put away, the panel shrinks a little as its window clears, taking no clicks or keys
+    /// meanwhile, and is gone once it has. Its going starts at once, not after the rest of the
+    /// putting away. Shown again meanwhile, it's back as it was and stays.
+    @Test func thePanelShrinksAwayAndCanComeBackMeanwhile() async {
+        let panel = panel()
+        let window = panel.windowForTesting
+        // Five times as slow, to look at it partway.
+        panel.animateClosingForTesting(slowdown: 5)
+        panel.show()
+        panel.hide()
+        #expect(!panel.isShown)
+        #expect(window.isVisible)
+        #expect(window.ignoresMouseEvents)
+        #expect(panel.isClosingForTesting)
+        #expect(panel.closeHasBegunForTesting)
+        // Partway, the window is clearing, its shadow with it.
+        await wait(0.15)
+        #expect(window.alphaValue < 1)
+        #expect(window.alphaValue > 0)
+        panel.show()
+        #expect(panel.isShown)
+        #expect(window.alphaValue == 1)
+        #expect(!panel.isClosingForTesting)
+        await wait(0.3)
+        #expect(window.isVisible)
+        #expect(!window.ignoresMouseEvents)
+        panel.hide()
+        await wait(0.9)
+        #expect(!window.isVisible)
+        #expect(window.alphaValue == 1)
+        #expect(!panel.isClosingForTesting)
+    }
+
     /// The ring's right click has Bite's own commands, none of the page's.
     @Test func theRingsMenuIsBitesOwn() {
         let menu = panel().makeRingMenu()

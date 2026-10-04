@@ -35,6 +35,15 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     private var clickMonitors: [Any] = []
     /// Kept while the menu offering it is open.
     private var sharePicker: NSSharingServicePicker?
+    /// Set while the panel goes, put away already: it takes no clicks or keys meanwhile.
+    private var isClosing = false
+    /// Counts closes, so one only finishes if nothing showed the panel again or closed it since.
+    private var closes = 0
+    /// The panel shrinks a little as it goes (see `closeAway`). Off for tests, which look
+    /// straight after.
+    private lazy var animatesClosing = !forTesting
+    /// How many times as long the panel takes to go: 1 but in tests.
+    private var closeSlowdown = 1.0
 
     static let topBarHeight = TopBar.height
     private static let sizeKey = "panelSize"
@@ -176,7 +185,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
             scrollView.isHidden = index != page
         }
         background.accent = DotPalette.colors[page].platformColor
-        if panel.isVisible {
+        if isShown {
             controllers[page].focus()
         }
     }
@@ -296,13 +305,30 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     // MARK: Showing and hiding
 
+    /// Up, and not on its way out.
     var isShown: Bool {
-        panel.isVisible
+        panel.isVisible && !isClosing
     }
 
     #if DEBUG
     var windowForTesting: BitePanel {
         panel
+    }
+
+    /// Goes as it does for the person, for a test of it going, `slowdown` times as slow, to look at
+    /// it partway.
+    func animateClosingForTesting(slowdown: Double = 1) {
+        animatesClosing = true
+        closeSlowdown = slowdown
+    }
+
+    var isClosingForTesting: Bool {
+        background.layer?.animation(forKey: Self.closeKey) != nil
+    }
+
+    /// Whether the panel's shrink was handed to Core Animation as it was put away.
+    var closeHasBegunForTesting: Bool {
+        (background.layer?.animation(forKey: Self.closeKey)?.beginTime ?? 0) > 0
     }
 
     var backgroundIsGlassForTesting: Bool {
@@ -311,7 +337,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     #endif
 
     func toggle() {
-        if panel.isVisible {
+        if isShown {
             hide()
         } else if let hidden = hiddenByClickElsewhere, ContinuousClock.now - hidden < .milliseconds(400) {
             // The press on the ring took the panel's keyboard a moment ago, which put it away:
@@ -331,6 +357,8 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         onVisibleChange(true)
         // Hidden to give the app in use back the keyboard (see `hide`).
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
+        stopClosing()
+        // AppKit gives a window coming up a quick, slight zoom of its own.
         panel.makeKeyAndOrderFront(nil)
         controllers[store.selection].focus()
         statusItem?.isHighlighted = true
@@ -374,16 +402,16 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     /// Closed, a panel dragged away from the ring goes back below it next time.
     func hide() {
-        guard panel.isVisible else { return }
+        guard isShown else { return }
         store.saveNow()
-        panel.orderOut(nil)
         onVisibleChange(false)
         placement.isDetached = false
         statusItem?.isHighlighted = false
         stopHearingClicks()
+        closeAway()
         // Back to the app that was in use, unless another window of Bite's is. Bite gives it back by
         // hiding: told to deactivate, it stayed active with nothing on screen, and typing went
-        // nowhere.
+        // nowhere. It does so at once, so typing goes there even while the panel goes.
         if !forTesting, NSApp.isActive, !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeKey && $0 !== panel }) {
             NSApp.hide(nil)
         }
@@ -391,12 +419,113 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     /// Another window of Bite's, Settings, is coming up in front.
     func hideForOtherWindow() {
-        guard !placement.isDetached, panel.isVisible else { return }
+        guard !placement.isDetached, isShown else { return }
         store.saveNow()
-        panel.orderOut(nil)
         onVisibleChange(false)
         statusItem?.isHighlighted = false
         stopHearingClicks()
+        closeAway()
+    }
+
+    /// The panel goes with a quick, slight shrink about its middle, as it came: AppKit brings it
+    /// up whole at 98.3% of its size and grows it to its full size in 90 ms (recorded frame by
+    /// frame), and animates nothing going, even for `close()`. Going, it shrinks back to that
+    /// size, quickly at first, as it clears, slowly at first, its shadow with it, as quick as it
+    /// came: it's seen to shrink, and then to go.
+    ///
+    /// The user found 0.1 s to 98.5%, clearing only in its last 30 ms and its shadow then all at
+    /// once, too quick and sudden, a blink: the shadow going in one frame was most of it. Clearing
+    /// all the way, shadow and all, it was perfect, and the shrink went back to the opening's
+    /// (2026-10-05). A 0.18 s fade with no shrink was too slow and not what they meant
+    /// (2026-10-03). The shrink played backwards, easing in, stood still for its first 25 ms, and
+    /// sat shrunk 30 ms more before the window went.
+    private static let closeDuration: CFTimeInterval = 0.1
+    private static let closeScale: CGFloat = 0.983
+    private static let closeKey = "close"
+
+    /// Put away already: Bite hiding leaves the panel on screen meanwhile, taking neither clicks
+    /// nor keys, and it's gone once it has cleared.
+    ///
+    /// Core Animation plays the shrink, frame by frame in its own process, whatever Bite is doing:
+    /// Bite hides at once. Stepped from here, it started a few frames late and didn't run smoothly.
+    /// It's handed over at once, too: left to go with the rest of this turn, it waited on Bite
+    /// hiding, 13 ms. The window's shadow follows the panel's shape as it shrinks, but not its
+    /// opacity, so the window clears, which AppKit steps from here, Bite hidden or not.
+    private func closeAway() {
+        closes += 1
+        let close = closes
+        isClosing = true
+        panel.ignoresMouseEvents = true
+        panel.isClosing = true
+        panel.canHide = false
+        guard animatesClosing, let layer = background.layer else {
+            finishClosing()
+            return
+        }
+        let animation = CABasicAnimation(keyPath: "transform")
+        animation.fromValue = NSValue(caTransform3D: CATransform3DIdentity)
+        animation.toValue = NSValue(caTransform3D: scaled(layer, by: Self.closeScale))
+        animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        animation.duration = Self.closeDuration * closeSlowdown
+        animation.fillMode = .forwards
+        animation.isRemovedOnCompletion = false
+        layer.add(animation, forKey: Self.closeKey)
+        CATransaction.flush()
+        // The window clears, not the panel in it: the window's shadow, drawn outside, stayed dark
+        // as the panel cleared and went with the window all at once. It goes once it's clear;
+        // gone when the shrink was done, it was still a little there.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.closeDuration * closeSlowdown
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.closes == close, self.isClosing else { return }
+                self.finishClosing()
+            }
+        }
+        // In case the animation never says it's done.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.closeDuration * closeSlowdown + 0.15) { [weak self] in
+            guard let self, self.closes == close, self.isClosing else { return }
+            self.finishClosing()
+        }
+    }
+
+    private func finishClosing() {
+        isClosing = false
+        panel.orderOut(nil)
+        resetAfterClosing()
+        panel.alphaValue = 1
+    }
+
+    /// Shown again while it goes, it's back as it was at once.
+    private func stopClosing() {
+        closes += 1
+        isClosing = false
+        resetAfterClosing()
+        // Clear partway, it's back whole at once.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            panel.animator().alphaValue = 1
+        }
+    }
+
+    private func resetAfterClosing() {
+        background.layer?.removeAnimation(forKey: Self.closeKey)
+        panel.ignoresMouseEvents = false
+        panel.isClosing = false
+        panel.canHide = true
+    }
+
+    /// `layer` drawn at `scale` of its size, about its middle: from where it turns, over to the
+    /// middle and back.
+    private func scaled(_ layer: CALayer, by scale: CGFloat) -> CATransform3D {
+        let bounds = layer.bounds
+        let pivot = CGPoint(x: bounds.minX + layer.anchorPoint.x * bounds.width, y: bounds.minY + layer.anchorPoint.y * bounds.height)
+        let offset = CGPoint(x: bounds.midX - pivot.x, y: bounds.midY - pivot.y)
+        var transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
+        transform = CATransform3DScale(transform, scale, scale, 1)
+        return CATransform3DTranslate(transform, -offset.x, -offset.y, 0)
     }
 
     private func stopHearingClicks() {
@@ -414,7 +543,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     /// on another Space also changes the Space. With neither, as for Command-Tab on this Space,
     /// it goes a moment later.
     func windowDidResignKey(_ notification: Notification) {
-        guard panel.isVisible else { return }
+        guard isShown else { return }
         store.saveNow()
         guard !placement.isDetached else { return }
         let lost = ContinuousClock.now
@@ -436,7 +565,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     /// does the same (see `windowDidResignKey`).
     func clickedOutside() {
         clickedElsewhere = .now
-        guard !placement.isDetached, panel.isVisible, !panel.isKeyWindow else { return }
+        guard !placement.isDetached, isShown, !panel.isKeyWindow else { return }
         putAway()
     }
 
@@ -449,7 +578,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     /// Up but covered, or with the screen locked or asleep, the panel isn't on screen.
     func windowDidChangeOcclusionState(_ notification: Notification) {
-        onVisibleChange(panel.isVisible && panel.occlusionState.contains(.visible))
+        onVisibleChange(isShown && panel.occlusionState.contains(.visible))
     }
 
     /// The panel shows on every Space. Changed to just now, the Space took the keyboard, and the
@@ -632,6 +761,8 @@ final class BitePanel: NSPanel {
     var onCancel: () -> Void = {}
     /// Set on Bite's panel (see `sendEvent`).
     var activatesBite = false
+    /// Set while the panel goes, put away already: keys meant for the app in use don't land in it.
+    var isClosing = false
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -640,6 +771,7 @@ final class BitePanel: NSPanel {
     /// done in its window. Only the app in front sets the pointer: until then it stayed an arrow
     /// over the text, never the I-beam.
     override func sendEvent(_ event: NSEvent) {
+        if isClosing, event.type == .keyDown || event.type == .keyUp { return }
         switch event.type {
         case .leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown:
             if activatesBite, !Self.biteIsInFront { NSApp.activate() }

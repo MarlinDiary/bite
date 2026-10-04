@@ -58,7 +58,7 @@ final class BiteTextView: NSTextView {
         autoresizingMask = [.width]
         maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textContainer?.lineFragmentPadding = 0
-        textContainerInset = NSSize(width: 20, height: 12)
+        textContainerInset = NSSize(width: Self.sideMargin, height: 12)
         // The highlight is drawn by the view itself (see `updateSelectionHighlight`).
         selectedTextAttributes = [.backgroundColor: NSColor.clear]
         NotificationCenter.default.addObserver(self, selector: #selector(textDidProcessEditing),
@@ -820,6 +820,23 @@ final class BiteTextView: NSTextView {
             return true
         }
         return frames
+    }
+
+    // MARK: Line length
+
+    /// The text's widest: Notion's page measure, 44 of its body's ems, 660 pt at Bite's 15 pt.
+    /// A panel wider than that only widens the margins, the text staying in the middle: lines run
+    /// across a panel dragged out to the screen's width were too long to read (user, 2026-10-05).
+    static let widestText: CGFloat = 660
+    /// The margin each side of the text, at least.
+    static let sideMargin: CGFloat = 20
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        let margin = max(Self.sideMargin, ((newSize.width - Self.widestText) / 2).rounded(.down))
+        if textContainerInset.width != margin {
+            textContainerInset = NSSize(width: margin, height: textContainerInset.height)
+        }
     }
 
     // MARK: Code blocks

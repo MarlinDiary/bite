@@ -20,6 +20,19 @@ struct MacDrawingTests {
         editor.textView.layoutSubtreeIfNeeded()
     }
 
+    /// Lines grow no longer than Notion's: a wider page only widens the margins, the text in
+    /// the middle; narrower, the margins are as ever.
+    @Test func linesStopGrowingAtAReadableLength() throws {
+        let editor = EditorHarness("Some text")
+        let textView = editor.textView
+        textView.setFrameSize(NSSize(width: 1200, height: 400))
+        #expect(textView.textContainerInset.width == 270)
+        #expect(textView.textContainer?.size.width == BiteTextView.widestText)
+        textView.setFrameSize(NSSize(width: 500, height: 400))
+        #expect(textView.textContainerInset.width == BiteTextView.sideMargin)
+        #expect(textView.textContainer?.size.width == 460)
+    }
+
     /// A selection made before the page is laid out is highlighted once it is.
     @Test func aSelectionIsHighlightedOnceThePageIsLaidOut() throws {
         let editor = EditorHarness("one\ntwo")

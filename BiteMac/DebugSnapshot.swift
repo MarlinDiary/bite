@@ -80,6 +80,14 @@ enum DebugSnapshot {
             if arguments.contains("-snapshotScroller") {
                 (page.enclosingScrollView as? PageScrollView)?.showIndicatorForSnapshot()
             }
+            // `-snapshotWidth W` makes the panel W points wide, its size as saved left as it was.
+            if let index = arguments.firstIndex(of: "-snapshotWidth"), index + 1 < arguments.count,
+               let width = Double(arguments[index + 1]) {
+                let window = panel.windowForTesting
+                var frame = window.frame
+                frame.size.width = width
+                window.setFrame(frame, display: true)
+            }
             // `-snapshotScrolled N` scrolls the page N points on, under the dot bar.
             if let index = arguments.firstIndex(of: "-snapshotScrolled"), index + 1 < arguments.count,
                let distance = Double(arguments[index + 1]), let scrollView = page.enclosingScrollView {

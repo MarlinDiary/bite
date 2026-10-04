@@ -100,19 +100,71 @@ public enum MarkdownSerializer {
     /// with no space between, the result is read back to check, and if it doesn't hold, the
     /// least styling is let go that makes it hold. Losing a style beats stray asterisks turning
     /// up in the text.
+    ///
+    /// Brackets are left as they are, unless text with a bracket and a parenthesis in it, or a
+    /// link's own text, would read back as a link it isn't: then they're escaped. Escaping every
+    /// bracket put backslashes into pages that never had a link.
     static func inline(_ runs: [InlineRun]) -> String {
-        let markdown = encode(runs)
+        let markdown = inline(runs, escapingBrackets: false)
+        guard markdown.contains("]("), !linksReadBack(markdown, as: runs) else { return markdown }
+        return inline(runs, escapingBrackets: true)
+    }
+
+    /// A copied link: its text, where it goes, and which time its text comes in the copied text,
+    /// counting from 0, for text that comes more than once.
+    public typealias CopiedLink = (text: String, destination: String, occurrence: Int)
+
+    /// Plain text with links in it, as text copied from a web page or another app comes, with the
+    /// links written in as Markdown where their text is. The rest stays as it is, to be read as
+    /// pasted text is. A link whose text isn't there, or comes before the last one written in, is
+    /// left out.
+    public static func markdown(of text: String, links: [CopiedLink]) -> String {
+        var markdown = ""
+        var position = text.startIndex
+        for link in links where !link.text.isEmpty {
+            guard let found = range(of: link.text, occurrence: link.occurrence, in: text), found.lowerBound >= position else { continue }
+            markdown += text[position..<found.lowerBound]
+            markdown += inline([InlineRun(link.text, link: link.destination)])
+            position = found.upperBound
+        }
+        return markdown + text[position...]
+    }
+
+    private static func range(of target: String, occurrence: Int, in text: String) -> Range<String.Index>? {
+        var start = text.startIndex
+        var skipped = 0
+        while let found = text.range(of: target, range: start..<text.endIndex) {
+            if skipped == occurrence { return found }
+            skipped += 1
+            start = found.upperBound
+        }
+        return nil
+    }
+
+    private static func inline(_ runs: [InlineRun], escapingBrackets: Bool) -> String {
+        let markdown = encode(runs, escapingBrackets: escapingBrackets)
         guard emphasisChangesMidWord(runs), !readsBack(markdown, as: runs) else { return markdown }
         for dropped: InlineStyle in [.italic, .bold, [.bold, .italic]] {
             let simpler = droppingEmphasisChanges(dropped, from: runs)
-            let attempt = encode(simpler)
+            let attempt = encode(simpler, escapingBrackets: escapingBrackets)
             if readsBack(attempt, as: simpler) { return attempt }
         }
-        return encode(runs.map { InlineRun($0.text, style: $0.style.subtracting([.bold, .italic])) })
+        return encode(runs.map { InlineRun($0.text, style: $0.style.subtracting([.bold, .italic]), link: $0.link) },
+                      escapingBrackets: escapingBrackets)
+    }
+
+    private static func linksReadBack(_ markdown: String, as runs: [InlineRun]) -> Bool {
+        links(InlineParser.parse(markdown)) == links(runs)
+    }
+
+    /// Only the text and where it links.
+    private static func links(_ runs: [InlineRun]) -> [InlineRun] {
+        InlineRun.normalized(runs.map { InlineRun($0.text, link: $0.link) })
     }
 
     /// Words and the whitespace between them, whitespace unstyled: its style doesn't show, and
-    /// Markdown can't always say it. Two lines that look the same have the same words.
+    /// Markdown can't always say it. Two lines that look the same have the same words. Whitespace
+    /// in a link stays in it.
     public static func words(_ runs: [InlineRun]) -> [InlineRun] {
         var words: [InlineRun] = []
         for run in runs {
@@ -121,14 +173,14 @@ public enum MarkdownSerializer {
             for character in run.text {
                 let isSpace = character.isWhitespace
                 if let wasSpace = currentIsSpace, wasSpace != isSpace {
-                    words.append(InlineRun(current, style: wasSpace ? [] : run.style))
+                    words.append(InlineRun(current, style: wasSpace ? [] : run.style, link: run.link))
                     current = ""
                 }
                 current.append(character)
                 currentIsSpace = isSpace
             }
             if let wasSpace = currentIsSpace {
-                words.append(InlineRun(current, style: wasSpace ? [] : run.style))
+                words.append(InlineRun(current, style: wasSpace ? [] : run.style, link: run.link))
             }
         }
         return InlineRun.normalized(words)
@@ -172,7 +224,77 @@ public enum MarkdownSerializer {
         return InlineRun.normalized(words)
     }
 
-    private static func encode(_ runs: [InlineRun]) -> String {
+    /// A link is its text in brackets, styled inside them, then where it goes in parentheses.
+    private static func encode(_ runs: [InlineRun], escapingBrackets: Bool) -> String {
+        let runs = InlineRun.normalized(runs)
+        guard runs.contains(where: { $0.link != nil }) else { return encodeText(runs, inLink: false, escapingBrackets: escapingBrackets) }
+        var output = ""
+        var start = 0
+        while start < runs.count {
+            let link = runs[start].link
+            var end = start
+            while end < runs.count, runs[end].link == link { end += 1 }
+            let text = runs[start..<end].map { InlineRun($0.text, style: $0.style) }
+            if let link, !link.isEmpty {
+                // A `!` right before it would make it an image.
+                if output.last == "!" { output.insert("\\", at: output.index(before: output.endIndex)) }
+                output += "[" + encodeText(text, inLink: true, escapingBrackets: escapingBrackets) + "](" + destination(link) + ")"
+            } else if link != nil {
+                output += encodePlainAddresses(text, escapingBrackets: escapingBrackets)
+            } else {
+                output += encodeText(text, inLink: false, escapingBrackets: escapingBrackets)
+            }
+            start = end
+        }
+        return output
+    }
+
+    /// Text with an empty link, addresses kept from being links: each with a backslash where it
+    /// would start being one (see `LinkDetector.escapeOffset`), which Bite and GitHub alike then
+    /// read as text. Stand-ins mark those places while the text is escaped around them.
+    private static func encodePlainAddresses(_ runs: [InlineRun], escapingBrackets: Bool) -> String {
+        let units = Array(runs.map(\.text).joined().utf16)
+        let offsets = Set(LinkDetector.addresses(in: String(decoding: units, as: UTF16.self))
+            .map { LinkDetector.escapeOffset(ofAddressAt: $0, in: units) })
+        var start = 0
+        let marked = runs.map { run -> InlineRun in
+            var runUnits = Array(run.text.utf16)
+            for index in runUnits.indices where offsets.contains(start + index) {
+                switch runUnits[index] {
+                case UInt16(UInt8(ascii: ":")): runUnits[index] = 0xFDD0
+                case UInt16(UInt8(ascii: ".")): runUnits[index] = 0xFDD1
+                default: runUnits[index] = 0xFDD2
+                }
+            }
+            start += runUnits.count
+            return InlineRun(String(decoding: runUnits, as: UTF16.self), style: run.style)
+        }
+        return encodeText(marked, inLink: false, escapingBrackets: escapingBrackets)
+            .replacingOccurrences(of: String(LinkDetector.colonStandIn), with: "\\:")
+            .replacingOccurrences(of: String(LinkDetector.dotStandIn), with: "\\.")
+            .replacingOccurrences(of: String(LinkDetector.atStandIn), with: "\\@")
+    }
+
+    /// Where a link goes, as written between its parentheses: in angle brackets when it has
+    /// spaces in it, or brackets that don't pair up.
+    private static func destination(_ link: String) -> String {
+        var depth = 0
+        var pairsUp = true
+        for character in link {
+            if character == "(" { depth += 1 }
+            if character == ")" { depth -= 1 }
+            if depth < 0 { pairsUp = false }
+        }
+        let escaped = link.replacingOccurrences(of: "\\", with: "\\\\")
+        guard pairsUp, depth == 0, !link.contains(where: { $0.isWhitespace || $0 == "<" || $0 == ">" }) else {
+            return "<" + escaped.replacingOccurrences(of: "<", with: "\\<").replacingOccurrences(of: ">", with: "\\>") + ">"
+        }
+        return escaped
+    }
+
+    /// Text and its styles, with no links among it. Escaping brackets, all of them in a link's
+    /// text and in other text a `]` before a `(`, makes sure only the links read back as links.
+    private static func encodeText(_ runs: [InlineRun], inLink: Bool, escapingBrackets: Bool) -> String {
         struct Segment {
             var text: String
             var style: InlineStyle
@@ -225,7 +347,7 @@ public enum MarkdownSerializer {
                 continue
             }
             let after = pieces[(index + 1)...].first(where: { !$0.text.isEmpty })?.text.first
-            output += escape(piece.text, before: output.last, after: after)
+            output += escape(piece.text, before: output.last, after: after, inLink: inLink, escapingBrackets: escapingBrackets)
         }
         return output
     }
@@ -252,9 +374,10 @@ public enum MarkdownSerializer {
 
     /// `before` and `after` are what's written either side of the text: a delimiter, a space
     /// or other text.
-    private static func escape(_ text: String, before: Character?, after: Character?) -> String {
+    private static func escape(_ text: String, before: Character?, after: Character?, inLink: Bool, escapingBrackets: Bool) -> String {
         // Most text has nothing to escape. The characters that may need it are all ASCII.
-        guard text.utf8.contains(where: { $0 == 0x5C || $0 == 0x2A || $0 == 0x60 || $0 == 0x7E || $0 == 0x5F }) else {
+        guard text.utf8.contains(where: { $0 == 0x5C || $0 == 0x2A || $0 == 0x60 || $0 == 0x7E || $0 == 0x5F
+                || (escapingBrackets && ($0 == 0x5B || $0 == 0x5D)) }) else {
             return text
         }
         let characters = Array(text)
@@ -263,6 +386,12 @@ public enum MarkdownSerializer {
             switch character {
             case "\\", "*", "`":
                 output += "\\" + String(character)
+            case "[" where escapingBrackets && inLink, "]" where escapingBrackets && inLink:
+                output += "\\" + String(character)
+            case "]" where escapingBrackets:
+                // Only a bracket with a parenthesis right after it can end a link's text.
+                let next = index < characters.count - 1 ? characters[index + 1] : after
+                output += next == "(" ? "\\]" : "]"
             case "~":
                 // A tilde next to another, the text's own or a `~~` delimiter beside it, would
                 // read back as part of a strikethrough run. Whether one is beside it is known

@@ -113,7 +113,7 @@ struct InlineEdgeCaseTests {
         #expect(InlineParser.parse(MarkdownSerializer.inline(runs)) == runs)
     }
 
-    @Test(arguments: ["[link](https://example.com)", "![image](a.png)", "<b>html</b>", "| a | b |", "[^1]", "==mark=="])
+    @Test(arguments: ["![image](a.png)", "<b>html</b>", "| a | b |", "[^1]", "==mark=="])
     func thingsBiteDoesNotStyleStayAsTyped(_ text: String) {
         #expect(MarkdownParser.parse(text).plainText == text)
         #expect(settles(text + "\n"))

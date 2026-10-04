@@ -20,6 +20,14 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     /// Set while the panel is put below the ring, which isn't a drag taking it away.
     private var isPositioning = false
     private var topBar: NSHostingView<TopBar>?
+    /// A link being changed, in a card floating by it.
+    private let linkCard = LinkCard()
+    /// A link under the pointer, with Edit on it.
+    private let linkBubble = LinkBubble()
+    /// Where the pill's link is drawn, while the pill is up: the pointer between the two keeps it.
+    private var bubbleLinkFrame = NSRect.zero
+    /// Over the page while the card is up.
+    private let linkShield = LinkShield()
     private var shownPage: Int?
     /// Kept open, the panel stays while other apps are used.
     /// When the panel last went away because something else was clicked.
@@ -77,6 +85,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         panel.contentView = background
         addPages()
         addTopBar()
+        addLinkCard()
         addResizeCorner()
         store.reportPendingEdits = { [weak self] in
             self?.controllers.forEach { $0.reportPendingChange() }
@@ -107,6 +116,15 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
             }
             controller.load(markdown: store.markdown[dot])
             controller.loadedRevision = store.revisions[dot]
+            controller.onEditLink = { [weak self, weak controller] link in
+                guard let self, let controller else { return }
+                self.hideBubble()
+                self.linkCard.edit(link, on: controller)
+            }
+            controller.textView.onLinkHover = { [weak self, weak controller] link, point in
+                guard let self, let controller else { return }
+                self.pointerMoved(to: point, over: link, on: controller)
+            }
 
             let scrollView = PageScrollView(frame: background.bounds)
             scrollView.takesScroll = { [weak self] event in self?.takesScroll(event) ?? false }
@@ -128,6 +146,10 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
             scrollView.isHidden = true
             background.addSubview(scrollView)
             scrollViews.append(scrollView)
+            // The pill goes as the page scrolls, and the card goes along with its link.
+            scrollView.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(self, selector: #selector(pageScrolled), name: NSView.boundsDidChangeNotification,
+                                                   object: scrollView.contentView)
         }
     }
 
@@ -144,6 +166,80 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         topBar.autoresizingMask = [.width, .maxYMargin]
         background.addSubview(topBar)
         self.topBar = topBar
+    }
+
+    /// The link card and the pill, floating over the pages by a link. The keys going from the card
+    /// anywhere else leave the link as typed (see `LinkCard`).
+    private func addLinkCard() {
+        linkShield.isHidden = true
+        linkShield.frame = background.bounds
+        linkShield.autoresizingMask = [.width, .height]
+        linkShield.onClick = { [weak self] in self?.linkCard.finish() }
+        background.addSubview(linkShield)
+        linkCard.isHidden = true
+        linkCard.topClearance = Self.topBarHeight + LinkCard.margin
+        linkCard.onShownChange = { [weak self] shown in
+            guard let self else { return }
+            self.linkShield.isHidden = !shown
+            self.panel.invalidateCursorRects(for: self.linkShield)
+        }
+        background.addSubview(linkCard)
+        linkBubble.isHidden = true
+        background.addSubview(linkBubble)
+        linkBubble.onEdit = { [weak self] link, page in
+            guard let self else { return }
+            // The pill goes at once, the card coming in its place.
+            self.linkBubble.hideNow()
+            self.linkCard.edit(link, on: page)
+        }
+        linkBubble.onHoverChange = { [weak self] onIt, point in
+            guard let self, !onIt else { return }
+            self.pointerMoved(to: point, over: nil, on: nil)
+        }
+        panel.onFirstResponderChange = { [weak self] responder in
+            self?.linkCard.keysWent(to: responder)
+        }
+    }
+
+    /// The pointer is at `point`, in the window, over `link` on `page` or over none: the pill
+    /// comes as the pointer comes onto a link, and goes as it leaves, unless it's between the
+    /// link and the pill, on its way there.
+    private func pointerMoved(to point: NSPoint, over link: EditorController.PageLink?, on page: EditorController?) {
+        guard !linkCard.isEditingLink else { return }
+        if let link, let page {
+            if linkBubble.isShown, linkBubble.link == link { return }
+            showBubble(for: link, on: page)
+        } else if linkBubble.isShown {
+            let zone = bubbleLinkFrame.union(linkBubble.frame).insetBy(dx: -4, dy: -4)
+            if zone.contains(background.convert(point, from: nil)) { return }
+            hideBubble()
+        }
+    }
+
+    private func showBubble(for link: EditorController.PageLink, on page: EditorController) {
+        guard !linkCard.isEditingLink, let drawn = page.textView.anchorFrame(for: link.range) else { return }
+        let anchor = background.convert(drawn, from: page.textView)
+        bubbleLinkFrame = anchor
+        linkBubble.show(link, on: page, anchor: anchor, topClearance: Self.topBarHeight + LinkCard.margin)
+    }
+
+    private func hideBubble() {
+        linkBubble.hide()
+    }
+
+    @objc private func pageScrolled() {
+        hideBubble()
+        linkCard.place()
+    }
+
+    /// The link card's rows type in its own editor, in the page's colours.
+    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
+        linkCard.owns(client) ? linkCard.fieldEditor : nil
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        hideBubble()
+        linkCard.place()
     }
 
     private func addResizeCorner() {
@@ -180,6 +276,9 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 
     private func showPage(_ page: Int) {
         guard page != shownPage, controllers.indices.contains(page) else { return }
+        // A link being changed on the page left is kept as typed.
+        if linkCard.isEditingLink { linkCard.finish() }
+        hideBubble()
         shownPage = page
         for (index, scrollView) in scrollViews.enumerated() {
             scrollView.isHidden = index != page
@@ -315,6 +414,24 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         panel
     }
 
+    var linkCardForTesting: LinkCard {
+        linkCard
+    }
+
+    var linkBubbleForTesting: LinkBubble {
+        linkBubble
+    }
+
+    var linkShieldForTesting: LinkShield {
+        linkShield
+    }
+
+    /// As the pointer coming onto `link` does, or going from a link to `point` in the window, far
+    /// from it by default.
+    func hoverForTesting(_ link: EditorController.PageLink?, on page: EditorController, at point: NSPoint = NSPoint(x: -1000, y: -1000)) {
+        pointerMoved(to: point, over: link, on: page)
+    }
+
     /// Goes as it does for the person, for a test of it going, `slowdown` times as slow, to look at
     /// it partway.
     func animateClosingForTesting(slowdown: Double = 1) {
@@ -403,6 +520,9 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     /// Closed, a panel dragged away from the ring goes back below it next time.
     func hide() {
         guard isShown else { return }
+        // A link being changed is kept as typed, as when the keys go anywhere else.
+        if linkCard.isEditingLink { linkCard.finish() }
+        hideBubble()
         store.saveNow()
         onVisibleChange(false)
         placement.isDetached = false
@@ -759,6 +879,8 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
 /// A panel with no title bar that still takes typing. Esc and ⌘W put it away.
 final class BitePanel: NSPanel {
     var onCancel: () -> Void = {}
+    /// Called with the keys' new holder each time they move within the panel.
+    var onFirstResponderChange: (NSResponder?) -> Void = { _ in }
     /// Set on Bite's panel (see `sendEvent`).
     var activatesBite = false
     /// Set while the panel goes, put away already: keys meant for the app in use don't land in it.
@@ -801,6 +923,12 @@ final class BitePanel: NSPanel {
 
     override func performClose(_ sender: Any?) {
         onCancel()
+    }
+
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        let did = super.makeFirstResponder(responder)
+        if did { onFirstResponderChange(firstResponder) }
+        return did
     }
 }
 

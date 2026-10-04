@@ -45,6 +45,7 @@ enum MainMenu {
             item("Italic", #selector(BiteTextView.toggleItalic(_:)), "i"),
             item("Strikethrough", #selector(BiteTextView.toggleStrikethrough(_:)), "s", [.command, .shift]),
             item("Code", #selector(BiteTextView.toggleInlineCode(_:)), "e"),
+            item("Link", #selector(BiteTextView.addLink(_:)), "k"),
             .separator(),
             item("To-do", #selector(BiteTextView.toggleTodoList(_:))),
             item("Bulleted List", #selector(BiteTextView.toggleBulletedList(_:))),

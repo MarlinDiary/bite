@@ -83,6 +83,36 @@ enum DebugSnapshot {
             if arguments.contains("-snapshotDetached") {
                 panel.placement.isDetached = true
             }
+            // `-snapshotLink` brings the link card up for the selection, or the link the caret's in;
+            // `-snapshotLinkHover` the pill, as for the pointer on the link at the caret.
+            // `-snapshotLinkComing` brings the card up just before the capture, its coming slowed,
+            // to see it halfway.
+            if arguments.contains("-snapshotLink") {
+                page.window?.makeFirstResponder(page)
+                panel.controllers[store.selection].perform(.link)
+                // `-snapshotLinkTextRow` moves the keys up to the text row.
+                if arguments.contains("-snapshotLinkTextRow") {
+                    let card = panel.linkCardForTesting
+                    card.typeNameForTesting(card.nameForTesting)
+                }
+                // `-snapshotLinkSelectAll` selects what's in the row with the keys, to see its colour.
+                if arguments.contains("-snapshotLinkSelectAll") {
+                    page.window?.firstResponder?.tryToPerform(#selector(NSText.selectAll(_:)), with: nil)
+                }
+            }
+            if arguments.contains("-snapshotLinkComing") {
+                LinkCard.animationSlowdown = 20
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                    page.window?.makeFirstResponder(page)
+                    panel.controllers[store.selection].perform(.link)
+                }
+            }
+            if arguments.contains("-snapshotLinkHover") {
+                let controller = panel.controllers[store.selection]
+                if let link = controller.link(at: page.selectedRange().location) {
+                    panel.hoverForTesting(link, on: controller)
+                }
+            }
         }
         if arguments.contains("-snapshotSettings") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {

@@ -27,7 +27,23 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     /// Whether Writing Tools is at work on the page, as it starts and once it's done: the format
     /// bar keeps out of its way.
     var onWritingToolsChange: ((_ isAtWork: Bool) -> Void)?
+    /// The page has just taken the keyboard.
+    var onBeginEditing: (() -> Void)?
+    /// Whether a link can be changed in the format bar now (`onEditLink`): not with no keys on
+    /// screen, as with a hardware keyboard, where the bar doesn't show.
+    var canEditLinkInBar: () -> Bool = { false }
     #endif
+    /// A link to change in the format bar: the link button's, which may be a new one to make, or
+    /// one tapped while the page is being edited.
+    var onEditLink: ((PageLink) -> Void)?
+    /// Goes where a tapped link goes, out of the app. Tests catch it instead.
+    var openURL: (URL) -> Void = { url in
+        #if canImport(UIKit)
+        UIApplication.shared.open(url)
+        #else
+        NSWorkspace.shared.open(url)
+        #endif
+    }
     var loadedRevision = -1
 
     private let theme: EditorTheme
@@ -99,6 +115,8 @@ final class EditorController: NSObject, EditorTextViewDelegate {
             isApplyingEdit = false
         }
         pendingEdit = nil
+        // And a link shown as it was being typed.
+        linkPreview = nil
         // What's loaded replaces anything still waiting to be reported, say after Clear, and
         // any report still being worked out.
         pendingReport?.cancel()
@@ -176,6 +194,17 @@ final class EditorController: NSObject, EditorTextViewDelegate {
             return min(location, range.location + max(0, replacement.length - 1))
         }
         let selection = textView.selectedRange
+        // A link shown as it's typed moves along with its text, or, in the lines that changed, is
+        // let go of: what came in is what was there.
+        if var preview = linkPreview, NSMaxRange(preview.range) > range.location {
+            if preview.range.location >= NSMaxRange(range) {
+                preview.range.location += delta
+                preview.selection.location = moved(preview.selection.location)
+                linkPreview = preview
+            } else {
+                linkPreview = nil
+            }
+        }
         #if canImport(UIKit)
         textView.inputDelegate?.textWillChange(textView)
         #endif
@@ -360,6 +389,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         bar.editor = self
         bar.tintColor = theme.accent
         bar.refresh()
+        onBeginEditing?()
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
@@ -434,6 +464,8 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         let replacedLength: Int
         let block: BlockAttributes
         let inline: InlineStyle
+        /// The link the new text is part of: typed inside one, or over some of its text.
+        let link: String?
         /// The edit deletes at least one line break, joining lines.
         let joinsLines: Bool
 
@@ -453,20 +485,21 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     private func recordPendingEdit(replacing range: NSRange, composing: Bool) {
         // While composing, each update replaces the marked text; keep the first line and style.
         if composing, let edit = pendingEdit {
-            textView.typingAttributes = typingAttributes(atLineOf: edit.location, inline: edit.inline)
+            textView.typingAttributes = typingAttributes(atLineOf: edit.location, inline: edit.inline, link: edit.link)
             return
         }
         let block = block(of: lineRange(at: range.location))
         // Typing over text carries on in the style of that text.
         let inline = range.length > 0 && block.kind != .code ? inlineStyle(at: range.location) : typingStyle(at: range.location)
+        let link = linkContinued(by: range)
         let joinsLines = range.length > 0 && string.substring(with: range).contains("\n")
         pendingEdit = PendingEdit(location: range.location, lengthBefore: storage.length, replacedLength: range.length,
-                                  block: block, inline: inline, joinsLines: joinsLines)
+                                  block: block, inline: inline, link: link, joinsLines: joinsLines)
         // The text goes in with the attributes it's due, not only stamped with them afterwards
         // (`apply`): UIKit's undo and redo bring it back as it went in. Text being composed in
         // an input method went in with none when UIKit had reset the typing attributes, and
         // undoing it passed through a state where it started the line, so the line lost its kind.
-        textView.typingAttributes = typingAttributes(atLineOf: range.location, inline: inline)
+        textView.typingAttributes = typingAttributes(atLineOf: range.location, inline: inline, link: link)
     }
 
     /// Return with text selected: the selection goes, then Return does what it does at the
@@ -571,6 +604,11 @@ final class EditorController: NSObject, EditorTextViewDelegate {
             var attributes = edit.block.dictionary
             attributes[.biteInline] = edit.inline.rawValue
             storage.addAttributes(attributes, range: inserted)
+            if let link = edit.link {
+                storage.addAttribute(.biteLink, value: link, range: inserted)
+            } else {
+                storage.removeAttribute(.biteLink, range: inserted)
+            }
         }
         if edit.joinsLines {
             // Only an input method still gets here with a join (see `joinLines`). Joined lines
@@ -586,7 +624,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     // MARK: Shortcuts
 
     /// The characters that can set a shortcut off.
-    private static let shortcutTriggers = InputRules.inlineMarkers.union([" ", "\u{3000}", "-", "`", "\u{00B7}"])
+    private static let shortcutTriggers = InputRules.inlineMarkers.union([" ", "\u{3000}", "-", "`", "\u{00B7}", ")"])
 
     /// Returns true when `character` completed a shortcut and was consumed.
     private func handleTyped(_ character: String, at location: Int) -> Bool {
@@ -630,13 +668,18 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         default:
             break
         }
-        guard InputRules.inlineMarkers.contains(character) else { return false }
         // Code stands in as characters that are neither spaces, letters nor markers, the way
         // its backticks sit in Markdown. Same length, so the match's offsets still hold.
         let text = NSMutableString(string: prefix)
         for range in code {
             text.replaceCharacters(in: range, with: String(repeating: "#", count: range.length))
         }
+        if character == ")" {
+            guard let match = InputRules.linkShortcut(prefix: text as String) else { return false }
+            applyLink(match, lineStart: line.location, caret: location)
+            return true
+        }
+        guard InputRules.inlineMarkers.contains(character) else { return false }
         let following = location < content.upperBound ? string.substring(with: string.rangeOfComposedCharacterSequence(at: location)).first : nil
         guard let match = InputRules.inlineShortcut(prefix: text as String, typed: character, following: following) else { return false }
         applyInline(match, lineStart: line.location, caret: location, typed: character)
@@ -692,6 +735,20 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         let undo = undoForShortcut(replacing: replaced, typed: typed, at: caret)
         replace(replaced, with: content, selection: NSRange(location: end, length: 0), undo: undo)
         typingOverride = (styleBefore.subtracting(match.style), end)
+        updateTypingAttributes()
+    }
+
+    /// `[text](address)` typed: the text, with its styles, becomes a link, and typing goes on after
+    /// it as plain text.
+    private func applyLink(_ match: InputRules.LinkMatch, lineStart: Int, caret: Int) {
+        let start = lineStart + match.range.lowerBound
+        let text = NSRange(location: lineStart + match.text.lowerBound, length: match.text.count)
+        let content = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: text))
+        content.addAttribute(.biteLink, value: LinkDetector.destination(forTyped: match.destination),
+                             range: NSRange(location: 0, length: content.length))
+        let replaced = NSRange(location: start, length: caret - start)
+        let undo = undoForShortcut(replacing: replaced, typed: ")", at: caret)
+        replace(replaced, with: content, selection: NSRange(location: start + content.length, length: 0), undo: undo)
         updateTypingAttributes()
     }
 
@@ -880,6 +937,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         case .bold: toggleInline(.bold)
         case .italic: toggleInline(.italic)
         case .strikethrough: toggleInline(.strikethrough)
+        case .link: editLink()
         case .outdent: changeIndent(by: -1)
         case .indent: changeIndent(by: 1)
         case .dismiss:
@@ -945,6 +1003,344 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         replace(selection, with: replacement, selection: selection)
     }
 
+    // MARK: Links
+
+    /// A link on the page: where its text is, and where it goes.
+    struct PageLink: Equatable, Identifiable {
+        var range: NSRange
+        var text: String
+        /// As the Markdown has it, or where an address written out in the text goes.
+        var destination: String
+        /// An address written out in the text, which shows as a link but is plain text.
+        var isWrittenOut: Bool
+        /// Not on the page yet: the selected text to link, or the caret, where a link goes.
+        var isNew = false
+
+        var id: String { "\(range.location) \(range.length) \(destination)" }
+
+        /// Where the link goes, to change: an address written out, or text that says its address,
+        /// as it's written. `apple.com` made into a link goes to `https://apple.com`, and comes up
+        /// as `apple.com` again, changing nothing if left so.
+        var address: String { saysItsAddress ? text : destination }
+
+        /// Whether the text says where the link goes, as an address written out does, or
+        /// `example.com` going to `https://example.com`, or to `example.com` in a page from
+        /// elsewhere: the format bar leaves its text row empty, the address standing in, in grey.
+        var saysItsAddress: Bool {
+            !isNew && (isWrittenOut || LinkDetector.destination(forTyped: text) == LinkDetector.destination(forTyped: destination))
+        }
+
+        /// Where `destination` goes. One from elsewhere may lack its scheme, which Bite's own
+        /// links have (see `LinkDetector.destination(forTyped:)`).
+        static func url(for destination: String) -> URL? {
+            let full = LinkDetector.destination(forTyped: destination)
+            return full.isEmpty ? nil : URL(string: full)
+        }
+    }
+
+    /// The link whose text is at `location`, if there is one.
+    func link(at location: Int) -> PageLink? {
+        guard location >= 0, location < storage.length - 1 else { return nil }
+        let content = contentRange(of: lineRange(at: location))
+        let line = NSRange(location: content.lowerBound, length: content.count)
+        guard NSLocationInRange(location, line) else { return nil }
+        var range = NSRange()
+        if let destination = storage.attribute(.biteLink, at: location, longestEffectiveRange: &range, in: line) as? String {
+            // An address kept from being a link is text.
+            guard !destination.isEmpty else { return nil }
+            return PageLink(range: range, text: string.substring(with: range), destination: destination, isWrittenOut: false)
+        }
+        if let address = storage.attribute(.biteWrittenLink, at: location, longestEffectiveRange: &range, in: line) as? String {
+            return PageLink(range: range, text: address, destination: LinkDetector.destination(of: address), isWrittenOut: true)
+        }
+        return nil
+    }
+
+    /// Whether the selection is a link's text, all or part of it, an address written out too:
+    /// the format bar's link button shows as on, as bold does over bold text, and takes the link
+    /// off what's selected. Not for a caret, even in a link, nor for a selection a link is only
+    /// part of, which the button makes one link of.
+    var isLinkSelected: Bool {
+        let selection = clamp(textView.selectedRange)
+        return selection.length > 0 && linkAround(selection) != nil
+    }
+
+    /// A tap on a link's text, while the page isn't being edited: goes where the link goes.
+    func openLink(at location: Int) {
+        guard let link = link(at: location), let url = PageLink.url(for: link.destination) else { return }
+        openURL(url)
+    }
+
+    /// A tap on a link's text while the page is being edited: the link is changed in the format
+    /// bar, its text and where it goes, a link one letter long as well as any. The caret stays where
+    /// it was; held down, a link's text takes the caret, as any text does.
+    func editLink(at location: Int) {
+        // The link being changed, as it's typed, stays as it is.
+        guard !isInLinkPreview(location), let link = link(at: location) else { return }
+        onEditLink?(link)
+    }
+
+    /// The format bar's link button: the link at the caret or around the selection, or the
+    /// selected text to make one of, or the caret, where a new one goes.
+    private func editLink() {
+        let selection = clamp(textView.selectedRange)
+        if let plain = plainAddress(around: selection) {
+            setLinkAttribute(nil, on: plain)
+            return
+        }
+        guard let link = linkToEdit() else { return }
+        if selection.length > 0, !link.isNew {
+            if link.isWrittenOut {
+                setLinkAttribute("", on: link.range)
+            } else {
+                unlink(selection)
+            }
+            return
+        }
+        if link.isNew, takeIntoLink(selection) { return }
+        onEditLink?(link)
+    }
+
+    /// Takes the link off the selected part of a link's text, as bold comes off just what's
+    /// selected: the rest of the link, before and after, stays one. All of it selected, the link
+    /// goes, its text staying.
+    private func unlink(_ selection: NSRange) {
+        let unlinked = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: selection))
+        unlinked.removeAttribute(.biteLink, range: NSRange(location: 0, length: unlinked.length))
+        keepAddressesPlain(in: unlinked, at: selection)
+        replace(selection, with: unlinked, selection: selection)
+    }
+
+    /// Puts `link` on the text at `range`, or takes it off, as one edit, the text and the
+    /// selection staying as they are. An empty link keeps an address written out from being one.
+    private func setLinkAttribute(_ link: String?, on range: NSRange) {
+        let text = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
+        let all = NSRange(location: 0, length: text.length)
+        if let link {
+            text.addAttribute(.biteLink, value: link, range: all)
+        } else {
+            text.removeAttribute(.biteLink, range: all)
+        }
+        replace(range, with: text, selection: clamp(textView.selectedRange))
+    }
+
+    /// The address kept from being a link, with an empty link, that the selection is within or
+    /// the caret is strictly inside: the link button makes it one again.
+    private func plainAddress(around selection: NSRange) -> NSRange? {
+        guard selection.location < storage.length - 1 else { return nil }
+        let content = contentRange(of: lineRange(at: selection.location))
+        let line = NSRange(location: content.lowerBound, length: content.count)
+        var range = NSRange()
+        guard NSLocationInRange(selection.location, line),
+              storage.attribute(.biteLink, at: selection.location, longestEffectiveRange: &range, in: line) as? String == "" else { return nil }
+        guard selection.length > 0 else { return range.location < selection.location ? range : nil }
+        return NSMaxRange(selection) <= NSMaxRange(range) ? range : nil
+    }
+
+    /// Addresses written out in `text`, put in for `range`, kept from showing as links: they're
+    /// in text a link is coming off, and by their own text they'd be links again.
+    private func keepAddressesPlain(in text: NSMutableAttributedString, at range: NSRange) {
+        let content = contentRange(of: lineRange(at: range.location))
+        let line = NSMutableString(string: string.substring(with: NSRange(location: content.lowerBound, length: content.count)))
+        let local = NSRange(location: range.location - content.lowerBound, length: range.length)
+        line.replaceCharacters(in: local, with: text.string)
+        for address in LinkDetector.addresses(in: line as String)
+        where address.lowerBound >= local.location && address.upperBound <= local.location + text.length {
+            text.addAttribute(.biteLink, value: "", range: NSRange(location: address.lowerBound - local.location, length: address.count))
+        }
+    }
+
+    /// Selected text that takes in a link, or part of one, and words beside it, becomes that link
+    /// at once, all of it, with nothing to type: the words join the link, and its text beyond the
+    /// selection stays in it. Typing on at a link's end leaves the link as it was, so it takes in
+    /// words this way. The selection stays as it was made. Taking in more than one link, it goes
+    /// where the first went. Says whether there was a link to take in.
+    private func takeIntoLink(_ selection: NSRange) -> Bool {
+        guard selection.length > 0 else { return false }
+        var whole = selection
+        var destination: String?
+        var location = selection.location
+        while location < NSMaxRange(selection) {
+            guard let link = link(at: location) else {
+                location += 1
+                continue
+            }
+            destination = destination ?? link.destination
+            whole = NSUnionRange(whole, link.range)
+            location = NSMaxRange(link.range)
+        }
+        guard let destination else { return false }
+        let linked = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: whole))
+        linked.addAttribute(.biteLink, value: destination, range: NSRange(location: 0, length: linked.length))
+        replace(whole, with: linked, selection: selection)
+        return true
+    }
+
+    /// Whether the link button has a link to change or make where the caret or selection is. It
+    /// dims where it hasn't: pressed there, it did nothing, and said nothing.
+    var canEditLink: Bool {
+        linkToEdit() != nil
+    }
+
+    /// The link the link button is for: the one at the caret or around the selection, or a new one
+    /// of the selected text or at the caret. None in code, or across lines.
+    private func linkToEdit() -> PageLink? {
+        let selection = clamp(textView.selectedRange)
+        if let link = linkAround(selection) { return link }
+        let line = lineRange(at: selection.location)
+        // Code holds no links, and a link holds no line break.
+        let inCode = selection.length > 0 ? inlineStyles(in: selection).contains { $0.contains(.code) } : typingStyle(at: selection.location).contains(.code)
+        guard ![.code, .divider].contains(block(of: line).kind), !inCode, !string.substring(with: selection).contains("\n") else { return nil }
+        return PageLink(range: selection, text: string.substring(with: selection), destination: "", isWrittenOut: false, isNew: true)
+    }
+
+    /// The page's links, in order.
+    func links() -> [PageLink] {
+        let all = NSRange(location: 0, length: storage.length)
+        var starts: [Int] = []
+        for key in [NSAttributedString.Key.biteLink, .biteWrittenLink] {
+            storage.enumerateAttribute(key, in: all) { value, range, _ in
+                if value != nil { starts.append(range.location) }
+            }
+        }
+        var links: [PageLink] = []
+        for start in starts.sorted() where !links.contains(where: { NSLocationInRange(start, $0.range) }) {
+            if let link = link(at: start) { links.append(link) }
+        }
+        return links
+    }
+
+    /// The link the selection is within, or a caret strictly inside, where no other can go. A
+    /// caret at either end of one is where a new link goes.
+    private func linkAround(_ selection: NSRange) -> PageLink? {
+        guard let link = link(at: selection.location) else { return nil }
+        guard selection.length > 0 else { return link.range.location < selection.location ? link : nil }
+        return NSMaxRange(selection) <= NSMaxRange(link.range) ? link : nil
+    }
+
+    /// Makes `link`'s text say `text` and go to `destination`, as one edit. Text that says its
+    /// own address stays plain text where it shows as a link anyway, and so does text whose
+    /// destination is taken away. A new link given no destination is its text, as text: what the
+    /// page showed as it was typed. With neither, the link's text goes. Nothing happens if the
+    /// page has changed there since, or if there's nothing to change.
+    func setLink(_ link: PageLink, text: String, destination: String) {
+        finishComposing()
+        guard isStill(link) else { return }
+        let original = storage.attributedSubstring(from: link.range)
+        let replacement = linkText(for: link, original: original, at: link.range, text: text, destination: destination)
+        guard !replacement.isEqual(to: original) else { return }
+        replace(link.range, with: replacement, selection: NSRange(location: link.range.location + replacement.length, length: 0))
+    }
+
+    /// What `setLink` puts in place of `link`'s text, `original`, which is at `range`: `text` going
+    /// to `destination`, with no text the address, and with neither nothing. The page shows this
+    /// as it's typed (`previewLink`), so it's all that's put in: nothing shows that doesn't stay.
+    private func linkText(for link: PageLink, original: NSAttributedString, at range: NSRange,
+                          text: String, destination: String) -> NSMutableAttributedString {
+        let typed = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = text.isEmpty ? typed : text
+        // Kept in full, as any app reading the Markdown needs it.
+        let destination = LinkDetector.destination(forTyped: typed)
+        let replacement = text == link.text && original.length > 0
+            ? NSMutableAttributedString(attributedString: original)
+            : newText(text, at: range)
+        let all = NSRange(location: 0, length: replacement.length)
+        if destination.isEmpty || (showsAsAddress(text, at: range) && LinkDetector.destination(of: text) == destination) {
+            replacement.removeAttribute(.biteLink, range: all)
+            // Taken off a link, an address written out stays off. Typed for a new one, with no
+            // address to go to, it's text, and shows as a link by its own text as any does.
+            if destination.isEmpty, !link.isNew { keepAddressesPlain(in: replacement, at: range) }
+        } else {
+            replacement.addAttribute(.biteLink, value: destination, range: all)
+        }
+        return replacement
+    }
+
+    /// `text` to put in place of `range`, in the style of the text there, or of what's typed at
+    /// the caret.
+    private func newText(_ text: String, at range: NSRange) -> NSMutableAttributedString {
+        let inline = range.length > 0 ? inlineStyle(at: range.location) : typingStyle(at: range.location)
+        var attributes = lineBreakAttributes(for: block(of: lineRange(at: range.location)))
+        attributes[.biteInline] = inline.rawValue
+        return NSMutableAttributedString(string: text, attributes: attributes)
+    }
+
+    // MARK: Links shown as they're typed
+
+    /// A link being changed in the format bar, shown on the page as it's typed: its text as it
+    /// was, the selection then, and the text shown in its place, and where.
+    private var linkPreview: (link: PageLink, original: NSAttributedString, selection: NSRange,
+                              shown: String, range: NSRange)?
+
+    /// Shows on the page what `setLink` would make of `link` with `text` and `destination`, as
+    /// they're typed in the format bar, so the page's text follows the bar's. None of it is an
+    /// edit of its own, to undo: it's put back (`endLinkPreview`) before the link is changed for
+    /// good, in one edit. Says where the text shown is.
+    @discardableResult
+    func previewLink(_ link: PageLink, text: String, destination: String) -> NSRange {
+        if linkPreview == nil {
+            guard isStill(link) else { return link.range }
+            linkPreview = (link, storage.attributedSubstring(from: link.range), clamp(textView.selectedRange), link.text, link.range)
+        }
+        guard var preview = linkPreview, preview.link == link, textIsStill(preview.shown, at: preview.range) else { return link.range }
+        let shown = linkText(for: link, original: preview.original, at: preview.range, text: text, destination: destination)
+        // Nothing for nothing, as at the caret before anything's typed.
+        guard shown.length > 0 || preview.range.length > 0 else { return preview.range }
+        replaceUnrecorded(preview.range, with: shown, selection: NSRange(location: preview.range.location + shown.length, length: 0))
+        preview.shown = shown.string
+        preview.range.length = shown.length
+        linkPreview = preview
+        return preview.range
+    }
+
+    /// Puts back the text of a link shown as it was being typed (`previewLink`), and the
+    /// selection then.
+    func endLinkPreview() {
+        guard let preview = linkPreview else { return }
+        linkPreview = nil
+        // Changed from elsewhere meanwhile, as iCloud may, it's left as it is.
+        guard textIsStill(preview.shown, at: preview.range) else { return }
+        replaceUnrecorded(preview.range, with: preview.original, selection: preview.selection)
+    }
+
+    /// Whether `location` is in the text shown for a link as it's typed.
+    func isInLinkPreview(_ location: Int) -> Bool {
+        guard let preview = linkPreview else { return false }
+        return NSLocationInRange(location, preview.range)
+    }
+
+    /// Replaces `range` with no undo step. Turning registration off in UIKit's own undo manager
+    /// for it threw: UIKit turned it back on as the text changed.
+    private func replaceUnrecorded(_ range: NSRange, with replacement: NSAttributedString, selection: NSRange) {
+        replace(range, with: replacement, selection: selection, recordsUndo: false)
+    }
+
+    /// Whether `text`, put in for `range`, would show as a link on its own, an address written
+    /// out. Right after a letter, as typed on the end of a word, it wouldn't.
+    private func showsAsAddress(_ text: String, at range: NSRange) -> Bool {
+        guard LinkDetector.isAddress(text) else { return false }
+        let content = contentRange(of: lineRange(at: range.location))
+        let line = NSMutableString(string: string.substring(with: NSRange(location: content.lowerBound, length: content.count)))
+        let local = NSRange(location: range.location - content.lowerBound, length: range.length)
+        line.replaceCharacters(in: local, with: text)
+        return LinkDetector.addresses(in: line as String).contains(local.location..<(local.location + (text as NSString).length))
+    }
+
+    /// Takes the link off `link`'s text, which stays as it is, an address written out too.
+    func removeLink(_ link: PageLink) {
+        finishComposing()
+        guard isStill(link), !link.isNew else { return }
+        let replacement = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: link.range))
+        replacement.removeAttribute(.biteLink, range: NSRange(location: 0, length: replacement.length))
+        keepAddressesPlain(in: replacement, at: link.range)
+        replace(link.range, with: replacement, selection: NSRange(location: NSMaxRange(link.range), length: 0))
+    }
+
+    /// The page still has `link`'s text where it was.
+    private func isStill(_ link: PageLink) -> Bool {
+        NSMaxRange(link.range) <= storage.length - 1 && string.substring(with: link.range) == link.text
+    }
+
     /// Ticks or unticks the to-do at `location`, and says which: nil if there's no to-do there.
     @discardableResult
     func toggleTodo(at location: Int) -> Bool? {
@@ -996,6 +1392,15 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         guard !text.isEmpty else { return }
         finishComposing()
         let selection = clamp(textView.selectedRange)
+        // An address pasted onto text links the text to it, as in Notion. The text stays.
+        if selection.length > 0, LinkDetector.isAddress(text), !string.substring(with: selection).contains("\n"),
+           ![.code, .divider].contains(block(of: lineRange(at: selection.location)).kind) {
+            let linked = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: selection))
+            linked.addAttribute(.biteLink, value: LinkDetector.destination(forTyped: text),
+                                range: NSRange(location: 0, length: linked.length))
+            replace(selection, with: linked, selection: NSRange(location: NSMaxRange(selection), length: 0))
+            return
+        }
         // One line pasted among text goes in as text, markers and all: `- `, `# ` or `1. ` only
         // start a block on a line of their own. Bold, italics and code still come through.
         let isOneLine = !MarkdownParser.normalizedLineBreaks(text).contains("\n")
@@ -1019,6 +1424,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
                 }
             }
             inserted = AttributedDocument.attributedString(blocks: blocks, terminated: false)
+            if isOneLine { continueLink(over: inserted, at: selection) }
             // Plain text pasted into a list item stays in that item.
             if document.blocks[0].kind == .paragraph, current.kind != .paragraph {
                 let firstLineEnd = (inserted.string as NSString).range(of: "\n").location
@@ -1046,10 +1452,21 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         let isCode = !runs.isEmpty && runs.allSatisfy { $0.style.contains(.code) }
         var attributes = block.dictionary
         attributes[.biteInline] = style.rawValue
-        let inserted = NSAttributedString(string: isCode ? runs.map(\.text).joined() : text, attributes: attributes)
+        let inserted = NSMutableAttributedString(string: isCode ? runs.map(\.text).joined() : text, attributes: attributes)
+        continueLink(over: inserted, at: selection)
         replace(selection, with: inserted, selection: NSRange(location: selection.location + inserted.length, length: 0))
         textView.scrollRangeToVisible(textView.selectedRange)
         return true
+    }
+
+    /// Text pasted into a link's text is more of it, as typed text is (see `linkContinued`):
+    /// pasted strictly inside it, or in place of text all in it. Pasted text's own links stay
+    /// theirs, as the inner of two links wins. Pasted in, it split the link in two.
+    private func continueLink(over inserted: NSMutableAttributedString, at selection: NSRange) {
+        guard let link = linkContinued(by: selection), !inserted.string.contains("\n") else { return }
+        inserted.enumerateAttribute(.biteLink, in: NSRange(location: 0, length: inserted.length)) { value, range, _ in
+            if value == nil { inserted.addAttribute(.biteLink, value: link, range: range) }
+        }
     }
 
     // MARK: Drag and drop
@@ -1150,10 +1567,11 @@ final class EditorController: NSObject, EditorTextViewDelegate {
 
     // MARK: Editing primitives
 
-    /// Replaces `range` and registers the inverse with the text view's undo manager. `undo`
-    /// overrides what undo restores; by default it's the text that was there.
+    /// Replaces `range` and registers the inverse with the text view's undo manager, unless
+    /// `recordsUndo` is false. `undo` overrides what undo restores; by default it's the text that
+    /// was there.
     private func replace(_ range: NSRange, with replacement: NSAttributedString, selection: NSRange,
-                         undo: (text: NSAttributedString, selection: NSRange)? = nil) {
+                         undo: (text: NSAttributedString, selection: NSRange)? = nil, recordsUndo: Bool = true) {
         // Undo puts back whole lines: those the edit touches, and the line after one that ends
         // at a line start, which the edit's last line may join. Restyling after the edit gives
         // the rest of each of those lines the kind of its first character, and an undo of just
@@ -1173,10 +1591,12 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         // The keyboard asks before a backspace, but the text view may then handle it here
         // instead; whatever it asked about isn't going to happen.
         pendingEdit = nil
-        textView.undoManager?.registerUndo(withTarget: self) { controller in
-            MainActor.assumeIsolated {
-                guard controller.textIsStill(textAfter, at: linesAfter) else { return }
-                controller.replace(linesAfter, with: previous, selection: previousSelection)
+        if recordsUndo {
+            textView.undoManager?.registerUndo(withTarget: self) { controller in
+                MainActor.assumeIsolated {
+                    guard controller.textIsStill(textAfter, at: linesAfter) else { return }
+                    controller.replace(linesAfter, with: previous, selection: previousSelection)
+                }
             }
         }
         #if canImport(UIKit)
@@ -1531,6 +1951,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         storage.addAttributes(block.dictionary, range: line)
         if block.kind == .code {
             storage.addAttribute(.biteInline, value: 0, range: line)
+            storage.removeAttribute(.biteLink, range: line)
         }
         // A line break holds no text, so it never takes an inline style, whatever came with it:
         // text typed or pasted across lines, a style set over lines. Styled, it drew a
@@ -1538,8 +1959,10 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         // italic kept the wrong font.
         if let lastCharacter = line.length > 0 ? NSMaxRange(line) - 1 : nil, string.character(at: lastCharacter) == 0x0A {
             storage.addAttribute(.biteInline, value: 0, range: NSRange(location: lastCharacter, length: 1))
+            storage.removeAttribute(.biteLink, range: NSRange(location: lastCharacter, length: 1))
         }
         styleText(in: line, as: block)
+        markWrittenLinks(inLine: line, as: block)
     }
 
     /// Text typed into a line took the line's block attributes (`apply`) and its place among its
@@ -1556,6 +1979,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         }
         storage.beginEditing()
         styleText(in: range, as: block)
+        markWrittenLinks(inLine: line, as: block)
         storage.endEditing()
     }
 
@@ -1565,11 +1989,59 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         storage.removeAttribute(.strikethroughStyle, range: range)
         storage.removeAttribute(.strikethroughColor, range: range)
         storage.removeAttribute(.backgroundColor, range: range)
+        storage.removeAttribute(.underlineStyle, range: range)
+        storage.removeAttribute(.underlineColor, range: range)
         for (run, inline) in inlineRuns(in: storage, range: range) {
             storage.addAttributes(displayAttributes(for: block, inline: inline, runPosition: runPosition), range: run)
             if inline.contains(.italic), block.kind != .code {
                 slantTextWithoutItalics(in: run)
             }
+        }
+        guard block.kind != .code else { return }
+        storage.enumerateAttribute(.biteLink, in: range) { link, linkRange, _ in
+            // An empty link keeps an address from being one, and it looks like the text around it.
+            if let link = link as? String, !link.isEmpty {
+                storage.addAttributes(theme.linkAttributes(for: block), range: linkRange)
+            }
+        }
+    }
+
+    /// Addresses written out in a line show as links (see `LinkDetector`), except in code or in
+    /// a link's own text. Found again whenever the line changes: one that's no longer an
+    /// address, typed on into a word, goes back to looking like the text around it.
+    private func markWrittenLinks(inLine line: NSRange, as block: BlockAttributes) {
+        var previous: [NSRange] = []
+        storage.enumerateAttribute(.biteWrittenLink, in: line) { value, range, _ in
+            if value != nil { previous.append(range) }
+        }
+        let found = block.kind == .code ? [] : writtenLinks(inLine: line, of: storage)
+        guard !previous.isEmpty || !found.isEmpty else { return }
+        storage.removeAttribute(.biteWrittenLink, range: line)
+        for range in previous where !found.contains(range) {
+            styleText(in: range, as: block)
+        }
+        for range in found {
+            storage.addAttribute(.biteWrittenLink, value: string.substring(with: range), range: range)
+            storage.addAttributes(theme.linkAttributes(for: block), range: range)
+        }
+    }
+
+    /// The addresses written out in `line` of `text`, outside code and links.
+    private func writtenLinks(inLine line: NSRange, of text: NSAttributedString) -> [NSRange] {
+        let content = AttributedDocument.contentRange(of: line, in: text.string as NSString)
+        guard content.count >= 4 else { return [] }
+        let lineText = (text.string as NSString).substring(with: NSRange(location: content.lowerBound, length: content.count))
+        return LinkDetector.addresses(in: lineText).compactMap { address in
+            let range = NSRange(location: content.lowerBound + address.lowerBound, length: address.count)
+            var isText = true
+            text.enumerateAttributes(in: range) { attributes, _, stop in
+                let inline = InlineStyle(rawValue: attributes[.biteInline] as? Int ?? 0)
+                if inline.contains(.code) || attributes[.biteLink] != nil {
+                    isText = false
+                    stop.pointee = true
+                }
+            }
+            return isText ? range : nil
         }
     }
 
@@ -1642,6 +2114,10 @@ final class EditorController: NSObject, EditorTextViewDelegate {
                 var runAttributes = lineAttributes
                 runAttributes[.biteInline] = inline.rawValue
                 runAttributes.merge(displayAttributes(for: attributes, inline: inline, runPosition: position)) { $1 }
+                if block.kind != .code, let link = run.link {
+                    runAttributes[.biteLink] = link
+                    if !link.isEmpty { runAttributes.merge(theme.linkAttributes(for: attributes)) { $1 } }
+                }
                 if inline.contains(.italic) {
                     italicRanges.append(NSRange(location: text.length, length: (run.text as NSString).length))
                 }
@@ -1654,7 +2130,23 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         for range in italicRanges {
             slantTextWithoutItalics(in: range, of: text)
         }
+        markWrittenLinks(in: text, blocks: blocks)
         return text
+    }
+
+    /// As `markWrittenLinks(inLine:as:)` does, for a page being put together.
+    private func markWrittenLinks(in text: NSMutableAttributedString, blocks: [Block]) {
+        let string = text.string as NSString
+        var location = 0
+        for block in blocks {
+            let line = string.paragraphRange(for: NSRange(location: location, length: 0))
+            location = NSMaxRange(line)
+            guard block.kind != .code else { continue }
+            for range in writtenLinks(inLine: line, of: text) {
+                text.addAttribute(.biteWrittenLink, value: string.substring(with: range), range: range)
+                text.addAttributes(theme.linkAttributes(for: BlockAttributes(block)), range: range)
+            }
+        }
     }
 
     private var obliqueFonts: [String: PlatformFont] = [:]
@@ -1796,7 +2288,8 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         let selection = clamp(textView.selectedRange)
         let block = block(of: lineRange(at: selection.location))
         let inline = typingStyle(at: selection.location)
-        textView.typingAttributes = typingAttributes(atLineOf: selection.location, inline: inline)
+        textView.typingAttributes = typingAttributes(atLineOf: selection.location, inline: inline,
+                                                     link: linkContinued(by: NSRange(location: selection.location, length: 0)))
         textView.isTypingCode = block.kind == .code || inline.contains(.code)
         #if canImport(UIKit)
         if FormatBar.shared.editor === self {
@@ -1806,8 +2299,8 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     }
 
     /// Everything text typed into the line at `location` gets: the line's own and derived
-    /// attributes, `inline`, and what they look like.
-    private func typingAttributes(atLineOf location: Int, inline: InlineStyle) -> [NSAttributedString.Key: Any] {
+    /// attributes, `inline`, the link it's part of, and what they look like.
+    private func typingAttributes(atLineOf location: Int, inline: InlineStyle, link: String? = nil) -> [NSAttributedString.Key: Any] {
         guard storage.length > 0 else { return [:] }
         let lineAttributes = storage.attributes(at: lineRange(at: location).location, effectiveRange: nil)
         let block = BlockAttributes(lineAttributes)
@@ -1819,7 +2312,29 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         typing[.biteShownStyle] = lineAttributes[.biteShownStyle] ?? ""
         typing[.biteRunPosition] = runPosition.rawValue
         typing.merge(displayAttributes(for: block, inline: inline, runPosition: runPosition)) { $1 }
+        if let link, block.kind != .code {
+            typing[.biteLink] = link
+            if !link.isEmpty { typing.merge(theme.linkAttributes(for: block)) { $1 } }
+        }
         return typing
+    }
+
+    /// The link text typed at `range` is part of: one the caret is inside, not at either end of,
+    /// or one all the replaced text is in. Typing on at the end of a link, as after pasting it,
+    /// is no longer the link.
+    private func linkContinued(by range: NSRange) -> String? {
+        guard storage.length > 1, block(of: lineRange(at: range.location)).kind != .code else { return nil }
+        let link = { (location: Int) -> String? in
+            location >= 0 && location < self.storage.length ? self.storage.attribute(.biteLink, at: location, effectiveRange: nil) as? String : nil
+        }
+        guard range.length > 0 else {
+            guard let before = link(range.location - 1), link(range.location) == before else { return nil }
+            return before
+        }
+        var effective = NSRange()
+        guard let first = storage.attribute(.biteLink, at: range.location, longestEffectiveRange: &effective, in: range) as? String,
+              NSMaxRange(effective) >= NSMaxRange(range) else { return nil }
+        return first
     }
 
     #if DEBUG

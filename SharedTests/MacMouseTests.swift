@@ -47,6 +47,30 @@ struct MacMouseTests {
 
     private var blank: NSPoint { NSPoint(x: 120, y: 700) }
 
+    /// A click on a link opens it, as in Notes, with ⌘ held or not. A drag that starts on one
+    /// selects text, and opens nothing.
+    @Test func aClickOpensALinkAndADragSelects() {
+        let editor = editor("See [the site](https://example.com) now")
+        var opened: URL?
+        editor.controller.openURL = { opened = $0 }
+        let onLink = point(of: 6, in: editor)
+        NSApp.postEvent(event(.leftMouseUp, at: onLink, in: editor), atStart: false)
+        editor.textView.mouseDown(with: event(.leftMouseDown, at: onLink, in: editor))
+        #expect(opened == URL(string: "https://example.com"))
+
+        opened = nil
+        NSApp.postEvent(event(.leftMouseUp, at: onLink, in: editor, modifiers: .command), atStart: false)
+        editor.textView.mouseDown(with: event(.leftMouseDown, at: onLink, in: editor, modifiers: .command))
+        #expect(opened == URL(string: "https://example.com"))
+
+        opened = nil
+        let further = point(of: 16, in: editor)
+        drag(in: editor, from: onLink, through: [NSPoint(x: onLink.x + 12, y: onLink.y), further])
+        #expect(opened == nil)
+        #expect(editor.textView.selectedRange().length > 0)
+        #expect(editor.textView.selectedRange().location == 6)
+    }
+
     /// Runs the main run loop in its default mode, as it is once a menu has gone, for `duration`
     /// or until `done`. Other tests' work on it may come first.
     private static func runLoop(for duration: Duration, until done: () -> Bool = { false }) {

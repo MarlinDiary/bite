@@ -3,6 +3,7 @@ import UIKit
 #else
 import AppKit
 #endif
+import BiteKit
 
 // The editor's code is the same on iPhone and Mac. What differs between UIKit and AppKit is
 // named here once.
@@ -149,6 +150,53 @@ enum Clipboard {
         #else
         board.data(forType: NSPasteboard.PasteboardType(markdownType)).flatMap { String(data: $0, encoding: .utf8) }
         #endif
+    }
+
+    /// What a paste brings: the Markdown of a copy made in Bite, or the text, with any links it
+    /// had as rich text, from a web page or another app, written in as Markdown. As plain text
+    /// alone the links went, and only their words came.
+    static var textToPaste: String? {
+        if let markdown { return markdown }
+        guard let string else { return nil }
+        let links = copiedLinks
+        guard !links.isEmpty else { return string }
+        return MarkdownSerializer.markdown(of: string.replacingOccurrences(of: "\u{A0}", with: " "), links: links)
+    }
+
+    /// The links in what was copied as rich text, in order.
+    private static var copiedLinks: [MarkdownSerializer.CopiedLink] {
+        guard let rich = richText else { return [] }
+        let whole = rich.string.replacingOccurrences(of: "\u{A0}", with: " ") as NSString
+        var links: [MarkdownSerializer.CopiedLink] = []
+        rich.enumerateAttribute(.link, in: NSRange(location: 0, length: rich.length)) { value, range, _ in
+            guard let destination = (value as? URL)?.absoluteString ?? value as? String, !destination.isEmpty else { return }
+            let text = whole.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
+            // A link in Bite is on one line.
+            guard !text.isEmpty, !text.contains("\n") else { return }
+            let occurrence = whole.substring(to: range.location).components(separatedBy: text).count - 1
+            links.append((text, destination, occurrence))
+        }
+        return links
+    }
+
+    /// What was copied as rich text, read from the first kind there is: HTML last, as WebKit reads
+    /// it, which takes longest. Very long copies are left as plain text, so a paste doesn't hang.
+    private static var richText: NSAttributedString? {
+        let kinds: [(type: String, document: NSAttributedString.DocumentType)] = [
+            ("public.rtf", .rtf), ("com.apple.flat-rtfd", .rtfd), ("public.html", .html),
+        ]
+        for kind in kinds {
+            #if canImport(UIKit)
+            guard let data = board.data(forPasteboardType: kind.type) else { continue }
+            #else
+            guard let data = board.data(forType: NSPasteboard.PasteboardType(kind.type)) else { continue }
+            #endif
+            guard data.count < 2_000_000 else { return nil }
+            var options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: kind.document]
+            if kind.document == .html { options[.characterEncoding] = String.Encoding.utf8.rawValue }
+            if let text = try? NSAttributedString(data: data, options: options, documentAttributes: nil) { return text }
+        }
+        return nil
     }
 
     /// `text` for other apps, with its Markdown for Bite.

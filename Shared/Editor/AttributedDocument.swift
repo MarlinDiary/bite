@@ -19,6 +19,7 @@ nonisolated enum AttributedDocument {
             for run in block.runs {
                 var attributes = lineAttributes
                 attributes[.biteInline] = block.kind == .code ? 0 : run.style.rawValue
+                if block.kind != .code, let link = run.link { attributes[.biteLink] = link }
                 result.append(NSAttributedString(string: run.text, attributes: attributes))
             }
             if terminated || index < blocks.count - 1 {
@@ -47,7 +48,10 @@ nonisolated enum AttributedDocument {
             if contentEnd > location {
                 let content = NSRange(location: location, length: contentEnd - location)
                 text.enumerateAttribute(.biteInline, in: content) { value, runRange, _ in
-                    runs.append(InlineRun(string.substring(with: runRange), style: InlineStyle(rawValue: value as? Int ?? 0)))
+                    let style = InlineStyle(rawValue: value as? Int ?? 0)
+                    text.enumerateAttribute(.biteLink, in: runRange) { link, linkRange, _ in
+                        runs.append(InlineRun(string.substring(with: linkRange), style: style, link: link as? String))
+                    }
                 }
             }
             let shown = text.attribute(.biteOrdinal, at: line.location, effectiveRange: nil) as? Int

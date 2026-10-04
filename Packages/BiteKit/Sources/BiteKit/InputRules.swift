@@ -89,6 +89,50 @@ public enum InputRules {
     /// The characters that can close an inline shortcut.
     public static let inlineMarkers: Set<String> = ["*", "_", "`", "~", "\u{FF5E}"]
 
+    /// A link typed as Markdown, `[text](address)`. UTF-16 offsets into `prefix + ")"`.
+    public struct LinkMatch: Equatable, Sendable {
+        /// The whole link, brackets and parentheses included.
+        public var range: Range<Int>
+        /// The text between the brackets.
+        public var text: Range<Int>
+        public var destination: String
+    }
+
+    /// Checks whether typing `)` closes a link, `[text](address)`, read as `InlineParser` reads
+    /// one. `prefix` is the text of the line before the caret. An image, `![text](a.png)`, isn't
+    /// a link.
+    public static func linkShortcut(prefix: String) -> LinkMatch? {
+        let line = prefix + ")"
+        let units = Array(line.utf16)
+        let open = UInt16(UInt8(ascii: "[")), close = UInt16(UInt8(ascii: "]")), parenthesis = UInt16(UInt8(ascii: "("))
+        func isEscaped(_ index: Int) -> Bool {
+            var backslashes = 0
+            while index - backslashes > 0, units[index - backslashes - 1] == backslash { backslashes += 1 }
+            return backslashes % 2 == 1
+        }
+        // The `](` before the address: the last one, with an address after it.
+        var middle = units.count - 3
+        while middle >= 1, !(units[middle] == close && units[middle + 1] == parenthesis && !isEscaped(middle)) {
+            middle -= 1
+        }
+        guard middle >= 1 else { return nil }
+        // The `[` that bracket closes.
+        var start = middle - 1
+        var depth = 0
+        while start >= 0 {
+            if units[start] == close, !isEscaped(start) { depth += 1 }
+            if units[start] == open, !isEscaped(start) {
+                if depth == 0 { break }
+                depth -= 1
+            }
+            start -= 1
+        }
+        guard start >= 0, !(start > 0 && units[start - 1] == UInt16(UInt8(ascii: "!")) && !isEscaped(start - 1)) else { return nil }
+        let runs = InlineParser.parse(String(decoding: units[start...], as: UTF16.self))
+        guard let destination = runs.first?.link, runs.allSatisfy({ $0.link == destination }) else { return nil }
+        return LinkMatch(range: start..<units.count, text: (start + 1)..<middle, destination: destination)
+    }
+
     /// Checks whether typing `typed` closes `**bold**`, `*italic*`, `__bold__`, `_italic_`,
     /// `~~strike~~` or `` `code` ``. `prefix` is the text of the line before the caret and
     /// `following` the character after it, if there is one.

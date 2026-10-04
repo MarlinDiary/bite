@@ -3,23 +3,98 @@ import BiteKit
 
 /// Formatting buttons above the keyboard. All seven editors share one bar, so it stays put
 /// when you swipe to another dot while typing. The pager places it on top of the keys.
-final class FormatBar: UIView {
+///
+/// Links are changed in it too, while a page is being edited: the glass grows up from the keys, the
+/// link's text over where it goes, under a row that says what's being done, Add Link or Edit Link,
+/// between buttons to cancel and to finish, and the keys move over to them as they are (see
+/// `editLink`).
+final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     static let shared = FormatBar()
     /// The glass capsule and the space around it, down to the top of the keys.
     static let height: CGFloat = 60
+    /// A row of the glass, the capsule's height. A link being changed takes two, under its buttons.
+    private static let rowHeight: CGFloat = 48
+    /// The row with a link's buttons, to cancel and to finish.
+    private static let buttonRowHeight: CGFloat = 44
+    /// How tall the link's rows stand: two rows, or more as an address wraps.
+    private var rowsHeight: CGFloat = 2 * rowHeight
+    /// How tall the bar stands now: taller while a link is being changed in it, the link's rows
+    /// in the capsule's place and its buttons above them.
+    var height: CGFloat { showsLink ? Self.height - Self.rowHeight + Self.buttonRowHeight + rowsHeight : Self.height }
+    /// Called as the bar grows for a link, or goes back down, so the pager moves it and makes room
+    /// for it on the page.
+    var onHeightChange: (() -> Void)?
     weak var editor: EditorController?
-    private var buttons: [FormatAction: FormatButton] = [:]
+    private var buttons: [FormatAction: BarButton] = [:]
+    /// The formatting buttons and the one putting the keys away, which a link's rows take the
+    /// place of.
+    private var formatViews: [UIView] = []
+    private var glassHeight: NSLayoutConstraint!
+    /// The link's buttons, over its text: one leaving it as it was, one putting it on the page,
+    /// and between them what's being done, so the rows below read as a link's.
+    private let buttonRow = UIView()
+    private let linkTitle = UILabel()
+    /// A link's rows: its text, in a row the glass grows above the formatting buttons, and where it
+    /// goes, in their place.
+    enum LinkRow {
+        case name, address
+    }
+    /// Both rows, with their symbols, the line between them, and what stands in for empty text.
+    private let linkRows = LinkRowsView()
+    private var rowsHeightConstraint: NSLayoutConstraint!
+    private let nameIcon = UIImageView()
+    private let addressIcon = UIImageView()
+    private let nameLabel = UILabel()
+    private let addressLabel = UILabel()
+    private let divider = Hairline()
+    private var nameIconY: NSLayoutConstraint!
+    private var addressIconY: NSLayoutConstraint!
+    private var dividerY: NSLayoutConstraint!
+    /// Where the text row's last line ends and the address row's first line starts, in the text
+    /// view: between them is the gap the rows meet in, under the text row's text and over the
+    /// address row's.
+    private var nameLineBottom: CGFloat = 0
+    private var addressLineTop: CGFloat = 0
+    /// The one text view for both rows: the link's text on its first line, where it goes on its
+    /// second, and the keys on whichever line the caret is on. A tap on the other row only moves
+    /// the caret, as a tap in any text does. With a field for each row, or one moved between them,
+    /// the keys were rebuilt or told of new text at every move, 60–170 ms on the phone (iOS 27.2).
+    private let linkText = UITextView()
+    private var textAttributes: [NSAttributedString.Key: Any] = [:]
+    /// A line's height at the type size, and the space above and below one that makes a row.
+    private var lineHeight: CGFloat = 0
+    private var linePadding: CGFloat = 0
+    /// The rows' text as typed.
+    private var nameText = ""
+    private var addressText = ""
+    /// The link being changed, while it is, and the page it's on: the keys are on its text or on
+    /// its address.
+    private(set) var editingLink: EditorController.PageLink?
+    private weak var linkPage: EditorController?
+    var isEditingLink: Bool { editingLink != nil }
+    /// Whether the link's rows are up in place of the buttons.
+    private var showsLink = false
+    /// Set once what becomes of the link is settled, kept as typed or put back, while the keys go
+    /// back to a page: the text view giving them up then leaves it be, and the bar lets it go once
+    /// the page has them (`pageTookKeys`).
+    private var isLinkSettled = false
 
     private init() {
         super.init(frame: CGRect(x: 0, y: 0, width: 390, height: Self.height))
         backgroundColor = .clear
 
-        // Interactive, as the dot bar is: the glass swells under a finger and springs back.
+        // Interactive, as the dot bar is: the glass swells under a finger and springs back, over a
+        // link's rows too (user, 2026-10-05), though it stands still a few frames as the caret
+        // moves between them: iOS holds the main thread about 30 ms telling the keys, and the
+        // glass's give runs on it a frame at a time.
         let effect = UIGlassEffect(style: .regular)
         effect.isInteractive = true
         let glass = UIVisualEffectView(effect: effect)
         glass.translatesAutoresizingMaskIntoConstraints = false
-        glass.cornerConfiguration = .capsule()
+        // A capsule, and with a link's rows a card, its corners the capsule's ends.
+        glass.cornerConfiguration = .capsule(maximumRadius: Self.rowHeight / 2)
+        // The link's text comes in from above as the glass grows up to it, not over the glass.
+        glass.contentView.clipsToBounds = true
         addSubview(glass)
 
         let scroll = FadingScrollView()
@@ -36,35 +111,93 @@ final class FormatBar: UIView {
         dismiss.translatesAutoresizingMaskIntoConstraints = false
         glass.contentView.addSubview(scroll)
         glass.contentView.addSubview(dismiss)
+        formatViews = [scroll, dismiss]
+
+        makeLinkRows()
+        glass.contentView.addSubview(linkRows)
+
+        let cancel = BarButton(image: Self.symbol("xmark"), title: "Cancel", handler: UIAction { [weak self] _ in
+            self?.cancelLink()
+        })
+        // In the text's colour, as Cancel and every other symbol on the bar: the page's colour
+        // there says a style is on.
+        let done = BarButton(image: Self.symbol("checkmark"), title: "Done", handler: UIAction { [weak self] _ in
+            self?.finishLink()
+        })
+        linkTitle.font = .preferredFont(forTextStyle: .headline)
+        linkTitle.adjustsFontForContentSizeCategory = true
+        linkTitle.textColor = .label
+        linkTitle.textAlignment = .center
+        linkTitle.accessibilityTraits = .header
+        buttonRow.translatesAutoresizingMaskIntoConstraints = false
+        for view in [cancel, linkTitle, done] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            buttonRow.addSubview(view)
+        }
+        glass.contentView.addSubview(buttonRow)
+
+        // The row on the keys: the buttons, or a link's address. The glass grows up from it.
+        let bottomRow = UILayoutGuide()
+        glass.contentView.addLayoutGuide(bottomRow)
+        glassHeight = glass.heightAnchor.constraint(equalToConstant: Self.rowHeight)
+        rowsHeightConstraint = linkRows.heightAnchor.constraint(equalToConstant: rowsHeight)
 
         NSLayoutConstraint.activate([
             // Clear of the Dynamic Island and the rounded corners in landscape.
             glass.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 12),
             glass.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -12),
-            glass.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            glass.heightAnchor.constraint(equalToConstant: 48),
+            glass.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            glassHeight,
+
+            bottomRow.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor),
+            bottomRow.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
+            bottomRow.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor),
+            bottomRow.heightAnchor.constraint(equalToConstant: Self.rowHeight),
 
             scroll.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 10),
-            scroll.topAnchor.constraint(equalTo: glass.contentView.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor),
+            scroll.topAnchor.constraint(equalTo: bottomRow.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: bottomRow.bottomAnchor),
             scroll.trailingAnchor.constraint(equalTo: dismiss.leadingAnchor),
 
             dismiss.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -6),
-            dismiss.centerYAnchor.constraint(equalTo: glass.contentView.centerYAnchor),
+            dismiss.centerYAnchor.constraint(equalTo: bottomRow.centerYAnchor),
 
             stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
             stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
             stack.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+
+            // The rows where the buttons were and above, across the glass, growing up from the
+            // keys as the address wraps.
+            linkRows.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor),
+            linkRows.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
+            linkRows.bottomAnchor.constraint(equalTo: bottomRow.bottomAnchor),
+            rowsHeightConstraint,
+
+            // Cancel over the rows' symbols, Done where the button putting the keys away is, and
+            // what's being done between them.
+            buttonRow.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor),
+            buttonRow.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
+            buttonRow.bottomAnchor.constraint(equalTo: linkRows.topAnchor),
+            buttonRow.heightAnchor.constraint(equalToConstant: Self.buttonRowHeight),
+            cancel.leadingAnchor.constraint(equalTo: buttonRow.leadingAnchor, constant: 10),
+            cancel.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
+            done.trailingAnchor.constraint(equalTo: buttonRow.trailingAnchor, constant: -6),
+            done.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
+            linkTitle.centerXAnchor.constraint(equalTo: buttonRow.centerXAnchor),
+            linkTitle.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
+            linkTitle.leadingAnchor.constraint(greaterThanOrEqualTo: cancel.trailingAnchor, constant: 8),
+            linkTitle.trailingAnchor.constraint(lessThanOrEqualTo: done.leadingAnchor, constant: -8),
         ])
+        showLinkRows(false, animated: false)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
     }
 
-    /// Only the capsule takes touches; the clear margin around it belongs to the text behind.
+    /// Only the glass takes touches; the clear margin around it belongs to the text behind.
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let view = super.hitTest(point, with: event)
         return view === self ? nil : view
@@ -72,12 +205,16 @@ final class FormatBar: UIView {
 
     /// Shows which styles are on where the editor's caret or selection is, so bold chosen for
     /// the next word shows before it's typed. Only styles show: turning one on changes nothing on
-    /// the page until you type, while a line's kind shows on the page at once.
+    /// the page until you type, while a line's kind shows on the page at once. The link button
+    /// shows as on while the selection is a link's text, which it then takes the link off, as bold
+    /// comes off bold text.
     func refresh() {
         let active = editor?.activeStyles ?? []
+        let isLinkSelected = editor?.isLinkSelected ?? false
         for (action, button) in buttons {
-            button.isOn = action.style.map(active.contains) ?? false
+            button.isOn = action == .link ? isLinkSelected : action.style.map(active.contains) ?? false
         }
+        buttons[.link]?.isEnabled = editor?.canEditLink ?? false
     }
 
     #if DEBUG
@@ -85,18 +222,605 @@ final class FormatBar: UIView {
     func showsOn(_ action: FormatAction) -> Bool {
         buttons[action]?.isOn ?? false
     }
+
+    /// Whether the button for `action` can be pressed, rather than dimmed. For tests.
+    func isEnabled(_ action: FormatAction) -> Bool {
+        buttons[action]?.isEnabled ?? false
+    }
     #endif
 
-    private func makeButton(for action: FormatAction) -> FormatButton {
-        let button = FormatButton(action: action, handler: UIAction { [weak self] _ in
+    private func makeButton(for action: FormatAction) -> BarButton {
+        let button = BarButton(image: Self.symbol(action.symbol), title: action.title, handler: UIAction { [weak self] _ in
             self?.editor?.perform(action)
         })
-        NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 42),
-            button.heightAnchor.constraint(equalToConstant: 44),
-        ])
         buttons[action] = button
         return button
+    }
+
+    private static let symbolConfiguration = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium, scale: .large)
+
+    private static func symbol(_ name: String) -> UIImage? {
+        UIImage(systemName: name, withConfiguration: symbolConfiguration)
+    }
+
+    // MARK: Links
+
+    /// The rows: a symbol for each where a button would be, the text view across both, what
+    /// stands in for empty text in grey over it, and a line between the rows from where the text
+    /// starts, as a list's lines are. The symbols and the line follow the rows' text as it wraps
+    /// (`placeRows`).
+    private func makeLinkRows() {
+        linkRows.translatesAutoresizingMaskIntoConstraints = false
+        for (icon, symbol) in [(nameIcon, "character.cursor.ibeam"), (addressIcon, "link")] {
+            icon.image = Self.symbol(symbol)
+            // In the text's colour, as the buttons are: the page's colour on the bar says a style
+            // is on, and this only says what the row is.
+            icon.tintColor = .label
+            icon.contentMode = .center
+            icon.isAccessibilityElement = false
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            linkRows.addSubview(icon)
+        }
+        for label in [nameLabel, addressLabel] {
+            label.font = .preferredFont(forTextStyle: .body)
+            label.adjustsFontForContentSizeCategory = true
+            label.textColor = .placeholderText
+            label.lineBreakMode = .byTruncatingTail
+            label.isAccessibilityElement = false
+            label.translatesAutoresizingMaskIntoConstraints = false
+            linkRows.addSubview(label)
+        }
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        linkRows.addSubview(divider)
+        configureText()
+        linkRows.addSubview(linkText)
+        // A tap beside the text, on a row's symbol or in the gap under or over a row's text, is
+        // the row's: the text gives a tap in the gap under an empty address's text row to the
+        // address (TextKit 2, iOS 27), as far up as the text row's line.
+        let tap = UITapGestureRecognizer(target: self, action: #selector(rowTapped(_:)))
+        tap.delegate = self
+        linkRows.addGestureRecognizer(tap)
+        linkRows.isInGap = { [unowned self] point in
+            let y = linkRows.convert(point, to: linkText).y
+            return y > nameLineBottom && y < addressLineTop
+        }
+
+        nameIconY = nameIcon.centerYAnchor.constraint(equalTo: linkText.topAnchor, constant: Self.rowHeight / 2)
+        addressIconY = addressIcon.centerYAnchor.constraint(equalTo: linkText.topAnchor, constant: Self.rowHeight * 1.5)
+        dividerY = divider.centerYAnchor.constraint(equalTo: linkText.topAnchor, constant: Self.rowHeight)
+        NSLayoutConstraint.activate([
+            linkText.leadingAnchor.constraint(equalTo: linkRows.leadingAnchor, constant: 52),
+            linkText.trailingAnchor.constraint(equalTo: linkRows.trailingAnchor, constant: -18),
+            linkText.topAnchor.constraint(equalTo: linkRows.topAnchor),
+            linkText.bottomAnchor.constraint(equalTo: linkRows.bottomAnchor),
+            nameIcon.leadingAnchor.constraint(equalTo: linkRows.leadingAnchor, constant: 10),
+            nameIcon.widthAnchor.constraint(equalToConstant: 42),
+            nameIcon.heightAnchor.constraint(equalToConstant: 44),
+            nameIconY,
+            addressIcon.leadingAnchor.constraint(equalTo: linkRows.leadingAnchor, constant: 10),
+            addressIcon.widthAnchor.constraint(equalToConstant: 42),
+            addressIcon.heightAnchor.constraint(equalToConstant: 44),
+            addressIconY,
+            nameLabel.leadingAnchor.constraint(equalTo: linkText.leadingAnchor),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: linkText.trailingAnchor),
+            nameLabel.centerYAnchor.constraint(equalTo: nameIcon.centerYAnchor),
+            addressLabel.leadingAnchor.constraint(equalTo: linkText.leadingAnchor),
+            addressLabel.trailingAnchor.constraint(lessThanOrEqualTo: linkText.trailingAnchor),
+            addressLabel.centerYAnchor.constraint(equalTo: addressIcon.centerYAnchor),
+            divider.leadingAnchor.constraint(equalTo: linkText.leadingAnchor),
+            divider.trailingAnchor.constraint(equalTo: linkText.trailingAnchor),
+            dividerY,
+        ])
+    }
+
+    /// The text view is set up once, for both rows, and its keys never change: changed, they'd be
+    /// rebuilt (see `linkText`). So the text is typed as an address is: nothing capitalised (a
+    /// link's text is mostly mid-sentence anyway), corrected, predicted, checked or made curly.
+    private func configureText() {
+        linkText.delegate = self
+        linkText.backgroundColor = .clear
+        linkText.isScrollEnabled = false
+        linkText.textContainer.lineFragmentPadding = 0
+        linkText.textColor = .label
+        linkText.accessibilityLabel = "Link text and address"
+        // The keys' own Return, as on the page, which the keys move over from: Done made it a tick.
+        linkText.returnKeyType = .default
+        linkText.keyboardType = .default
+        linkText.autocapitalizationType = .none
+        linkText.autocorrectionType = .no
+        linkText.inlinePredictionType = .no
+        linkText.spellCheckingType = .no
+        linkText.smartQuotesType = .no
+        linkText.smartDashesType = .no
+        linkText.smartInsertDeleteType = .no
+        linkText.translatesAutoresizingMaskIntoConstraints = false
+        sizeText()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (bar: Self, _) in
+            bar.sizeText()
+            bar.setRows(name: bar.nameText, address: bar.addressText)
+        }
+    }
+
+    /// Each row is a paragraph, its lines at the type size, with the space above and below a line
+    /// that makes a row: half of it after each paragraph and half before, so a tap in the space
+    /// goes to the row it's in, as far as the line between. A line wrapping on makes the row
+    /// taller by its own height.
+    private func sizeText() {
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        let lineHeight = ceil(font.lineHeight) + 2
+        let padding = max(0, (Self.rowHeight - lineHeight) / 2)
+        self.lineHeight = lineHeight
+        linePadding = padding
+        let style = NSMutableParagraphStyle()
+        // TextKit adds the font's leading to a line's height as it's set here.
+        style.minimumLineHeight = lineHeight - max(0, font.leading)
+        style.maximumLineHeight = lineHeight - max(0, font.leading)
+        style.paragraphSpacing = padding
+        style.paragraphSpacingBefore = padding
+        textAttributes = [.font: font, .foregroundColor: UIColor.label, .paragraphStyle: style]
+        linkText.textContainerInset = UIEdgeInsets(top: padding, left: 0, bottom: padding, right: 0)
+        linkText.font = font
+    }
+
+    /// Where the break between the rows is, in UTF-16.
+    private var separator: Int {
+        (linkText.text as NSString).range(of: "\n").location
+    }
+
+    /// The row the caret is on.
+    private var keysRow: LinkRow {
+        linkText.selectedRange.location <= separator ? .name : .address
+    }
+
+    /// Puts `name` and `address` in the rows, as one text.
+    private func setRows(name: String, address: String) {
+        nameText = name
+        addressText = address
+        linkText.attributedText = NSAttributedString(string: name + "\n" + address, attributes: textAttributes)
+        rowsDidChange()
+    }
+
+    /// The rows as the text now says them, and the symbols, the line and the stand-ins, and the
+    /// bar's height, to match: a row wrapping is taller.
+    private func rowsDidChange() {
+        let text = linkText.text ?? ""
+        let separator = separator
+        if separator == NSNotFound {
+            // The break went, as it shouldn't (see `shouldChangeTextIn`): put back after what's typed.
+            linkText.attributedText = NSAttributedString(string: text + "\n" + addressText, attributes: textAttributes)
+            nameText = text
+        } else {
+            let whole = text as NSString
+            nameText = whole.substring(to: separator)
+            addressText = whole.substring(from: separator + 1)
+        }
+        linkText.typingAttributes = textAttributes
+        nameLabel.text = namePlaceholder
+        nameLabel.alpha = nameText.isEmpty ? 1 : 0
+        addressLabel.text = "Address"
+        addressLabel.alpha = addressText.isEmpty ? 1 : 0
+        placeRows()
+    }
+
+    /// The symbols beside their rows' first lines, the line between the rows, and the rows' height
+    /// as the text wraps.
+    private func placeRows() {
+        linkText.layoutIfNeeded()
+        // Asked how tall it is, the text is all laid out: asked where its end is alone, after a
+        // change, it says where the end was.
+        let width = linkText.bounds.width > 0 ? linkText.bounds.width : 300
+        let fitsText = ceil(linkText.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
+        let separator = separator
+        guard separator != NSNotFound,
+              let nameStart = linkText.position(from: linkText.beginningOfDocument, offset: 0),
+              let nameEnd = linkText.position(from: linkText.beginningOfDocument, offset: separator),
+              let addressStart = linkText.position(from: linkText.beginningOfDocument, offset: separator + 1) else { return }
+        let first = linkText.caretRect(for: nameStart)
+        let last = linkText.caretRect(for: nameEnd)
+        let second = linkText.caretRect(for: addressStart)
+        let end = linkText.caretRect(for: linkText.endOfDocument)
+        nameIconY.constant = first.midY
+        addressIconY.constant = second.midY
+        dividerY.constant = (last.maxY + second.minY) / 2
+        nameLineBottom = last.maxY
+        addressLineTop = second.minY
+        // Down to the last line's bottom and the space under it: what the text says it takes
+        // leaves out an empty address's line.
+        let scale = window?.screen.scale ?? 3
+        let fitsLines = ((end.midY + lineHeight / 2 + linePadding) * scale).rounded() / scale
+        let height = max(2 * Self.rowHeight, fitsText, fitsLines)
+        guard abs(height - rowsHeight) > 0.5 else { return }
+        rowsHeight = height
+        rowsHeightConstraint.constant = height
+        if showsLink {
+            glassHeight.constant = Self.buttonRowHeight + rowsHeight
+            onHeightChange?()
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if showsLink { placeRows() }
+    }
+
+    private var namePlaceholder: String {
+        address.isEmpty ? "Text" : address
+    }
+
+    /// The link's text as it stands, nothing if it's blank: then it's the address.
+    private var name: String {
+        nameText.allSatisfy(\.isWhitespace) ? "" : nameText
+    }
+
+    private var address: String {
+        addressText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The link as it stands in the bar, shown on the page as it's typed, lit, as Done would leave
+    /// it. Not while an input method composes the text: its letters aren't the text yet.
+    private func showLinkAsTyped() {
+        guard let link = editingLink, let page = linkPage, linkText.markedTextRange == nil else { return }
+        page.textView.showLinkTarget(page.previewLink(link, text: name, destination: address))
+    }
+
+    /// A tap on a row beside its text, on its symbol, brings the caret to the row's end; under or
+    /// over the text, in the gap the rows meet in, to where it would go on the text's nearest
+    /// line. A tap on the text is the text's: the caret goes where it's tapped.
+    @objc private func rowTapped(_ tap: UITapGestureRecognizer) {
+        tapRows(at: tap.location(in: linkRows))
+    }
+
+    private func tapRows(at point: CGPoint) {
+        let row: LinkRow = point.y < divider.frame.midY ? .name : .address
+        let inText = linkRows.convert(point, to: linkText)
+        guard (linkText.bounds.minX...linkText.bounds.maxX).contains(inText.x) else { return moveKeys(to: row) }
+        if !linkText.isFirstResponder { linkText.becomeFirstResponder() }
+        let y = row == .name ? nameLineBottom - 1 : addressLineTop + 1
+        guard let position = linkText.closestPosition(to: CGPoint(x: inText.x, y: y)) else { return moveKeys(to: row) }
+        linkText.selectedTextRange = linkText.textRange(from: position, to: position)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        touch.view !== linkText
+    }
+
+    /// Moves the keys to `row`, the caret at the end of its text. The keys stay as they are, and
+    /// the text too, which a field for each row couldn't give them (see `linkText`).
+    private func moveKeys(to row: LinkRow) {
+        if !linkText.isFirstResponder { linkText.becomeFirstResponder() }
+        let separator = separator
+        guard separator != NSNotFound else { return }
+        linkText.selectedRange = NSRange(location: row == .name ? separator : (linkText.text as NSString).length, length: 0)
+    }
+
+    /// Shows `link` in the bar, its text above where it goes, to change, and moves the keys over
+    /// to its address. They stay up, only changing to keys for an address. A drawer brought keys
+    /// of its own: the page's went down first, and came back up only as the drawer went. Says
+    /// whether it could, which takes a page that the bar is on.
+    ///
+    /// The page shows the link as it's typed. Done puts it there for good, as the keys' own
+    /// Return does from the address; from the text, Return moves on to the address. Text left
+    /// empty is the address, which stands in for it in grey and follows it as it's typed, and
+    /// text that says its address comes up so; an address emptied takes the link off; a new link
+    /// with no address is its text as text; both emptied is nothing, the link's text going; and
+    /// both left as they were change nothing. Cancel puts the link back as it was. Anything else
+    /// taking the keys, a tap on the page or on another link, another page or the keys put away,
+    /// keeps it as typed, as Done does: it's on the page already.
+    @discardableResult
+    func editLink(_ link: EditorController.PageLink) -> Bool {
+        guard let editor else { return false }
+        // Tapped again while it's being changed, it keeps what's been typed.
+        guard link != editingLink else { return true }
+        var link = link
+        if let current = editingLink, linkPage === editor {
+            // Another link tapped: the one being changed is kept as typed first. The one tapped
+            // stays as far from the page's end as it was, if it's after it.
+            let storage = editor.textView.textStorage
+            let fromEnd = storage.length - link.range.location
+            applyLink()
+            if link.range.location > current.range.location { link.range.location = storage.length - fromEnd }
+        }
+        linkTitle.text = link.isNew ? "Add Link" : "Edit Link"
+        // Text that only says the address isn't typed: the address stands in for it, in grey,
+        // which says so, and follows the address until text is typed. The rows are set before
+        // the glass grows for them, to as tall as they stand.
+        setRows(name: link.saysItsAddress ? "" : link.text, address: link.address)
+        startEditing(link, on: editor)
+        moveKeys(to: .address)
+        return true
+    }
+
+    private func startEditing(_ link: EditorController.PageLink, on page: EditorController) {
+        // The page keeps its room for the keys, which are only moving over to the link.
+        if editingLink == nil { page.textView.keepKeyboardRoom() }
+        linkPage?.textView.showLinkTarget(nil)
+        editingLink = link
+        linkPage = page
+        isLinkSettled = false
+        setLinkShown(true)
+        // Once the page has made room for the taller bar, the link's text is lit above it.
+        page.textView.showLinkTarget(link.range)
+    }
+
+    func textViewShouldBeginEditing(_ textView: UITextView) -> Bool {
+        isEditingLink
+    }
+
+    /// Return in the text row moves on to the address, and in the address puts the link on the
+    /// page. Neither row takes in the other, nor the break between them: lines pasted go in as
+    /// one, with spaces between.
+    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        let separator = separator
+        if text == "\n" {
+            if range.location <= separator {
+                moveKeys(to: .address)
+            } else {
+                finishLink()
+            }
+            return false
+        }
+        if separator != NSNotFound, range.location <= separator, NSMaxRange(range) > separator { return false }
+        if text.contains(where: \.isNewline) {
+            let joined = text.components(separatedBy: .newlines).joined(separator: " ")
+            if let start = textView.position(from: textView.beginningOfDocument, offset: range.location),
+               let end = textView.position(from: start, offset: range.length),
+               let textRange = textView.textRange(from: start, to: end) {
+                textView.replace(textRange, withText: joined)
+                rowsDidChange()
+                showLinkAsTyped()
+            }
+            return false
+        }
+        return true
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        rowsDidChange()
+        showLinkAsTyped()
+    }
+
+    /// A selection across the rows is no selection: it's the caret where it started. What's
+    /// typed next keeps the rows' style wherever the caret goes: on an empty row, UIKit's own
+    /// typing attributes would lay the row out with no space about it.
+    func textViewDidChangeSelection(_ textView: UITextView) {
+        textView.typingAttributes = textAttributes
+        let selection = textView.selectedRange
+        let separator = separator
+        guard selection.length > 0, separator != NSNotFound, selection.location <= separator, NSMaxRange(selection) > separator else { return }
+        textView.selectedRange = NSRange(location: selection.location, length: 0)
+    }
+
+    func textViewDidBeginEditing(_ textView: UITextView) {
+        textView.typingAttributes = textAttributes
+    }
+
+    /// The keys went elsewhere: to the page tapped or another page moved to, or away. The link
+    /// is kept as typed, as Done keeps it.
+    func textViewDidEndEditing(_ textView: UITextView) {
+        applyLink()
+        // A page taking the keys, as a tapped one does, doesn't have them yet: the bar lets the
+        // link go once it has (`pageTookKeys`). With neither the page nor the link holding them,
+        // the bar went down into the keys and came back up, and the page's room for it with it.
+        guard !BiteTextView.isTakingKeys else { return }
+        endLink()
+    }
+
+    /// A page has taken the keys from the link: the bar lets the link go, kept as typed or put
+    /// back, the bar staying on the keys all along.
+    func pageTookKeys() {
+        guard isLinkSettled, !linkText.isFirstResponder else { return }
+        endLink()
+    }
+
+    /// Puts the link's text and address on the page as they stand, as one edit, to undo all at
+    /// once: what was shown as they were typed goes back first. Both left as they were change
+    /// nothing, with nothing to undo.
+    private func applyLink() {
+        guard let link = editingLink, let page = linkPage, !isLinkSettled else { return }
+        isLinkSettled = true
+        page.textView.showLinkTarget(nil)
+        page.endLinkPreview()
+        page.setLink(link, text: name, destination: address)
+    }
+
+    /// Done: the link goes on the page as it stands, and the keys back to the page, as they are.
+    /// The page has them before the bar lets the link go (`pageTookKeys`).
+    private func finishLink() {
+        let page = linkPage
+        applyLink()
+        page?.focus()
+        endLink()
+    }
+
+    /// Cancel: the link goes back as it was, and the keys back to the page, the caret where it
+    /// was.
+    private func cancelLink() {
+        let page = linkPage
+        page?.textView.showLinkTarget(nil)
+        page?.endLinkPreview()
+        isLinkSettled = true
+        page?.focus()
+        endLink()
+    }
+
+    /// The bar goes back to its buttons, and what was shown as the link was typed, if it wasn't
+    /// put on the page, goes back as it was.
+    private func endLink() {
+        guard editingLink != nil else { return }
+        editingLink = nil
+        linkPage?.textView.showLinkTarget(nil)
+        linkPage?.endLinkPreview()
+        linkPage = nil
+        isLinkSettled = false
+        setLinkShown(false)
+        refresh()
+    }
+
+    /// Grows the glass up from the keys for a link, or back down to the buttons. The pager moves
+    /// the bar and the page's room for it along (`onHeightChange`), in the same animation.
+    private func setLinkShown(_ shown: Bool) {
+        guard shown != showsLink else { return }
+        showsLink = shown
+        glassHeight.constant = shown ? Self.buttonRowHeight + rowsHeight : Self.rowHeight
+        showLinkRows(shown, animated: window != nil)
+        if let onHeightChange {
+            onHeightChange()
+        } else {
+            layoutIfNeeded()
+        }
+    }
+
+    /// The link's rows in place of the buttons, or the buttons back, fading over within the glass
+    /// as it grows or shrinks. What goes fades out faster than what comes fades in: at the same
+    /// pace, the two sets of symbols showed through each other halfway.
+    private func showLinkRows(_ shows: Bool, animated: Bool) {
+        let linkViews = [buttonRow, linkRows]
+        for view in linkViews {
+            view.isUserInteractionEnabled = shows
+            view.accessibilityElementsHidden = !shows
+        }
+        for view in formatViews {
+            view.isUserInteractionEnabled = !shows
+            view.accessibilityElementsHidden = shows
+        }
+        let going = shows ? formatViews : linkViews
+        let coming = shows ? linkViews : formatViews
+        guard animated else {
+            going.forEach { $0.alpha = 0 }
+            coming.forEach { $0.alpha = 1 }
+            return
+        }
+        let options: UIView.AnimationOptions = [.beginFromCurrentState, .allowUserInteraction]
+        UIView.animate(withDuration: 0.1, delay: 0, options: options) { going.forEach { $0.alpha = 0 } }
+        UIView.animate(withDuration: 0.18, delay: 0.04, options: options) { coming.forEach { $0.alpha = 1 } }
+    }
+
+    #if DEBUG
+    /// What the card says it's doing, over the link's rows.
+    var linkTitleForTesting: String? { linkTitle.text }
+    /// The rows' text as typed.
+    var nameForTesting: String { nameText }
+    var addressForTesting: String { addressText }
+    /// What stands in for the link's text while none is typed.
+    var namePlaceholderForTesting: String { namePlaceholder }
+    var fieldForTesting: UITextView { linkText }
+    /// The row the keys are on, while they're on the link.
+    var rowWithKeysForTesting: LinkRow? { linkText.isFirstResponder ? keysRow : nil }
+    var showsLinkForTesting: Bool { showsLink }
+    /// How tall the rows stand.
+    var rowsHeightForTesting: CGFloat { rowsHeight }
+    /// Where the caret is in the rows' text, and where the text row ends in it.
+    var caretForTesting: Int { linkText.selectedRange.location }
+    var separatorForTesting: Int { separator }
+
+    /// As pasting `text` where the caret is does.
+    func pasteForTesting(_ text: String) {
+        let range = linkText.selectedRange
+        if textView(linkText, shouldChangeTextIn: range, replacementText: text) {
+            linkText.textStorage.replaceCharacters(in: range, with: NSAttributedString(string: text, attributes: textAttributes))
+            linkText.selectedRange = NSRange(location: range.location + (text as NSString).length, length: 0)
+            textViewDidChange(linkText)
+        }
+    }
+
+    /// As a tap on the link's text row does.
+    func tapNameForTesting() {
+        moveKeys(to: .name)
+    }
+
+    /// As a tap at `point` on the rows does, in the rows' coordinates, the text view's leading
+    /// edge 52 in from theirs. Says whether the rows took it, rather than the text.
+    @discardableResult
+    func tapRowsForTesting(at point: CGPoint) -> Bool {
+        guard linkRows.hitTest(point, with: nil) === linkRows else { return false }
+        tapRows(at: point)
+        return true
+    }
+
+    /// As a tap on the link's address row does.
+    func tapAddressForTesting() {
+        moveKeys(to: .address)
+    }
+
+    /// As typing `text` in the link's text row does, the keys brought there first.
+    func typeNameForTesting(_ text: String) {
+        moveKeys(to: .name)
+        setRows(name: text, address: addressText)
+        moveKeys(to: .name)
+        showLinkAsTyped()
+    }
+
+    /// As typing `text` in the link's address row does, the keys brought there first.
+    func typeAddressForTesting(_ text: String) {
+        moveKeys(to: .address)
+        setRows(name: nameText, address: text)
+        moveKeys(to: .address)
+        showLinkAsTyped()
+    }
+
+    /// As Return in the link's text does.
+    func returnNameForTesting() {
+        moveKeys(to: .name)
+        _ = textView(linkText, shouldChangeTextIn: NSRange(location: separator, length: 0), replacementText: "\n")
+    }
+
+    /// As Return in the link's address does.
+    func returnLinkForTesting() {
+        moveKeys(to: .address)
+        _ = textView(linkText, shouldChangeTextIn: NSRange(location: (linkText.text as NSString).length, length: 0), replacementText: "\n")
+    }
+
+    /// As Cancel over the link does.
+    func cancelLinkForTesting() {
+        cancelLink()
+    }
+
+    /// As Done over the link does.
+    func finishLinkForTesting() {
+        finishLink()
+    }
+
+    /// As the keys going away from the link do, swiped down.
+    func resignLinkForTesting() {
+        linkText.resignFirstResponder()
+    }
+
+    /// Whether the button putting the keys away shows, to be pressed.
+    var showsPutKeysAwayForTesting: Bool {
+        guard let button = buttons[.dismiss] else { return false }
+        return button.alpha > 0 && button.isUserInteractionEnabled && !button.accessibilityElementsHidden
+    }
+    #endif
+}
+
+/// A link's rows: a touch in the gap between a row's text and the line between the rows is the
+/// rows' to place (see `FormatBar.tapRows`), not the text's, which would give it to the other row.
+private final class LinkRowsView: UIView {
+    var isInGap: (CGPoint) -> Bool = { _ in false }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let view = super.hitTest(point, with: event)
+        return view != nil && isInGap(point) ? self : view
+    }
+}
+
+/// A line a pixel thick on any screen, in the colour of a list's dividers.
+private final class Hairline: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .separator
+        isUserInteractionEnabled = false
+        registerForTraitChanges([UITraitDisplayScale.self]) { (view: Hairline, _) in
+            view.invalidateIntrinsicContentSize()
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: 1 / max(1, traitCollection.displayScale))
     }
 }
 
@@ -134,11 +858,10 @@ private final class FadingScrollView: UIScrollView {
     }
 }
 
-/// A format bar button: just its symbol, which takes the page's colour, the bar's tint, while
-/// its style is on, and dims while pressed. Both change on the spot. A system button put a
-/// platter behind the symbol when pressed and faded it out after, so a style's colour seemed
-/// to lag behind the tap.
-private final class FormatButton: UIControl {
+/// A bar button: just its symbol, which takes the page's colour, the bar's tint, while it's on,
+/// and dims while pressed. Both change on the spot. A system button put a platter behind the
+/// symbol when pressed and faded it out after, so a style's colour seemed to lag behind the tap.
+private final class BarButton: UIControl {
     private let symbol = UIImageView()
 
     var isOn = false {
@@ -149,22 +872,21 @@ private final class FormatButton: UIControl {
         }
     }
 
-    init(action: FormatAction, handler: UIAction) {
+    init(image: UIImage?, title: String, handler: UIAction) {
         super.init(frame: .zero)
-        symbol.image = UIImage(
-            systemName: action.symbol,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .medium, scale: .large)
-        )
+        symbol.image = image
         symbol.translatesAutoresizingMaskIntoConstraints = false
         addSubview(symbol)
         NSLayoutConstraint.activate([
             symbol.centerXAnchor.constraint(equalTo: centerXAnchor),
             symbol.centerYAnchor.constraint(equalTo: centerYAnchor),
+            widthAnchor.constraint(equalToConstant: 42),
+            heightAnchor.constraint(equalToConstant: 44),
         ])
         addAction(handler, for: .touchUpInside)
         isAccessibilityElement = true
         accessibilityTraits = .button
-        accessibilityLabel = action.title
+        accessibilityLabel = title
         updateLook()
     }
 
@@ -175,6 +897,12 @@ private final class FormatButton: UIControl {
     override var isHighlighted: Bool {
         didSet {
             if isHighlighted != oldValue { updateLook() }
+        }
+    }
+
+    override var isEnabled: Bool {
+        didSet {
+            if isEnabled != oldValue { updateLook() }
         }
     }
 
@@ -190,6 +918,6 @@ private final class FormatButton: UIControl {
 
     private func updateLook() {
         symbol.tintColor = isOn ? tintColor : .label
-        symbol.alpha = isHighlighted ? 0.35 : 1
+        symbol.alpha = !isEnabled ? 0.25 : isHighlighted ? 0.35 : 1
     }
 }

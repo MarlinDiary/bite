@@ -2,7 +2,7 @@ import BiteKit
 
 /// What the format bar's buttons, and on a Mac the Format menu, do to the page.
 enum FormatAction: CaseIterable {
-    case todo, bullet, ordered, heading, quote, code, bold, italic, strikethrough, outdent, indent, dismiss
+    case todo, bullet, ordered, heading, quote, code, bold, italic, strikethrough, link, outdent, indent, dismiss
 
     var symbol: String {
         switch self {
@@ -15,6 +15,7 @@ enum FormatAction: CaseIterable {
         case .bold: "bold"
         case .italic: "italic"
         case .strikethrough: "strikethrough"
+        case .link: "link"
         case .outdent: "decrease.indent"
         case .indent: "increase.indent"
         case .dismiss: "keyboard.chevron.compact.down"
@@ -32,6 +33,7 @@ enum FormatAction: CaseIterable {
         case .bold: "Bold"
         case .italic: "Italic"
         case .strikethrough: "Strikethrough"
+        case .link: "Link"
         case .outdent: "Outdent"
         case .indent: "Indent"
         case .dismiss: "Hide Keyboard"

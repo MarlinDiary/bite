@@ -68,17 +68,22 @@ public struct InlineStyle: OptionSet, Sendable, Hashable {
 public struct InlineRun: Sendable, Hashable {
     public var text: String
     public var style: InlineStyle
+    /// Where the text links to, as the Markdown has it: `[text](link)`. Nil for text that isn't
+    /// a link. An address written out in the text is no link here, only shown as one. Empty for
+    /// an address written out but kept from showing as a link, `www\.example.com` in Markdown.
+    public var link: String?
 
-    public init(_ text: String, style: InlineStyle = []) {
+    public init(_ text: String, style: InlineStyle = [], link: String? = nil) {
         self.text = text
         self.style = style
+        self.link = link
     }
 
-    /// Drops empty runs and merges neighbours that share a style.
+    /// Drops empty runs and merges neighbours that share a style and a link.
     public static func normalized(_ runs: [InlineRun]) -> [InlineRun] {
         var result: [InlineRun] = []
         for run in runs where !run.text.isEmpty {
-            if let last = result.last, last.style == run.style {
+            if let last = result.last, last.style == run.style, last.link == run.link {
                 result[result.count - 1].text += run.text
             } else {
                 result.append(run)

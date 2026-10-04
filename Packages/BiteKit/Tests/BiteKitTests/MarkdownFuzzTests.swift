@@ -38,6 +38,8 @@ struct MarkdownFuzzTests {
         "|", "!", "(", ")", "[", "]", "<", "=", ":", ".",
     ]
 
+    private static let links = ["https://example.com", "u", "a b", "a(b)", "a)b", "(", "<z>", "\\", "x\\)", "]", "*"]
+
     private static func text(_ random: inout Random, pieces count: ClosedRange<Int>) -> String {
         (0..<random.int(count)).map { _ in random.pick(pieces) }.joined()
     }
@@ -54,7 +56,9 @@ struct MarkdownFuzzTests {
                     for option in [InlineStyle.bold, .italic, .strikethrough, .code] where random.chance(4) {
                         style.insert(option)
                     }
-                    runs.append(InlineRun(text(&random, pieces: 1...3), style: style))
+                    // Some of it links somewhere, and the address may need writing in angle brackets.
+                    let link = random.chance(4) ? random.pick(links) : nil
+                    runs.append(InlineRun(text(&random, pieces: 1...3), style: style, link: link))
                 }
             }
             return Block(kind: kind, indent: random.int(0...3), isChecked: random.chance(2),

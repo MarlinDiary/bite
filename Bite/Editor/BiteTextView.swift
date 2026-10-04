@@ -9,6 +9,7 @@ final class BiteTextView: UITextView {
     private let contentStorage = NSTextContentStorage()
     private let finalNewlineDelegate = FinalNewlineDelegate()
     private lazy var checkboxTap = UITapGestureRecognizer(target: self, action: #selector(handleCheckboxTap(_:)))
+    private lazy var linkTap = UITapGestureRecognizer(target: self, action: #selector(handleLinkTap(_:)))
     /// How far below the safe area the dot bar reaches; text scrolled higher is behind it.
     private let topBarHeight: CGFloat = 50
     /// Where the first line starts, below the safe area. Leaves some air under the dot bar.
@@ -181,10 +182,17 @@ final class BiteTextView: UITextView {
         applyKeyboardInset()
     }
 
+    /// Set while a page takes the keys, before it has them: what had them has given them up.
+    private(set) static var isTakingKeys = false
+
     @discardableResult
     override func becomeFirstResponder() -> Bool {
         let keepsPlace = wasScrolledSinceReady && !isFirstResponder
+        Self.isTakingKeys = true
         let became = super.becomeFirstResponder()
+        Self.isTakingKeys = false
+        // Taken from a link in the format bar, which lets it go now the page has them.
+        FormatBar.shared.pageTookKeys()
         if became, keepsPlace { selectionNotToScrollTo = selectedRange }
         // Moving to this page with the keyboard already up: nothing else will tell it.
         if became {
@@ -280,6 +288,7 @@ final class BiteTextView: UITextView {
         allowsEditingTextAttributes = false
         textContainer.lineFragmentPadding = 0
         addGestureRecognizer(checkboxTap)
+        addGestureRecognizer(linkTap)
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: BiteTextView, _) in
             view.setNeedsLayout()
         }
@@ -530,7 +539,7 @@ final class BiteTextView: UITextView {
     }
 
     override func paste(_ sender: Any?) {
-        guard let editor, let text = Clipboard.markdown ?? Clipboard.string else {
+        guard let editor, let text = Clipboard.textToPaste else {
             super.paste(sender)
             return
         }
@@ -850,9 +859,27 @@ final class BiteTextView: UITextView {
     /// TextKit 2 keeps a plain container view over the text. Touches that land on it never reach
     /// UITextView's own tap handling, so a quick tap on the text didn't start editing (only taps
     /// below the last line did). Nothing inside needs touches of its own, so the text view takes them.
+    /// It's also where a touch going down is seen first, before any of the taps have it.
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard let view = super.hitTest(point, with: event) else { return nil }
-        return view.isDescendant(of: self) ? self : view
+        guard view.isDescendant(of: self) else { return view }
+        if event?.type == .touches { touchGoesDown(at: point) }
+        return self
+    }
+
+    /// A touch going down on a checkbox or a link is for this view's own taps. UIKit's taps on
+    /// text give way there when they ask (`gestureRecognizerShouldBegin`), but its tap counting
+    /// asks only on a run's first tap: for 0.35 s after a tap it waits for the next, and takes it
+    /// unasked, wherever it lands, putting the caret there and keeping any other tap from being
+    /// recognised. A link tapped just after a tap on the page, as when that tap put the link card
+    /// away, got the caret in it and no card (user, 2026-10-05). The run is cut short as the touch
+    /// comes, before UIKit's taps have it: they take it as a first tap, and ask.
+    private func touchGoesDown(at point: CGPoint) {
+        guard todoLocation(at: point) != nil || tapsLink(at: point) else { return }
+        for recognizer in gestureRecognizers ?? [] where recognizer !== linkTap && recognizer !== checkboxTap && Self.isTap(recognizer) && recognizer.isEnabled {
+            recognizer.isEnabled = false
+            recognizer.isEnabled = true
+        }
     }
 
     // MARK: Checkboxes
@@ -876,12 +903,170 @@ final class BiteTextView: UITextView {
     }
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        let onCheckbox = todoLocation(at: gestureRecognizer.location(in: self)) != nil
+        let point = gestureRecognizer.location(in: self)
+        let onCheckbox = todoLocation(at: point) != nil
         if gestureRecognizer === checkboxTap { return onCheckbox }
+        if gestureRecognizer === linkTap { return !onCheckbox && tapsLink(at: point) }
         // Tapping a checkbox shouldn't move the caret or bring up the keyboard.
         if onCheckbox, !(gestureRecognizer is UIPanGestureRecognizer) { return false }
+        // Nor should tapping a link. Holding one down still puts the caret in its text.
+        if Self.isTap(gestureRecognizer), tapsLink(at: point) { return false }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
+
+    // MARK: Links
+
+    /// Whether `recognizer` is one of the text's taps, which a tap on a link is not: UIKit's taps
+    /// on text aren't all `UITapGestureRecognizer`s. Its tap counting, `UITextMultiTapRecognizer`,
+    /// and its tap-then-drag, `UITapAndAHalfRecognizer`, aren't; let through, they put the caret
+    /// in a link tapped, and the link's card didn't come (see also `touchGoesDown`).
+    static func isTap(_ recognizer: UIGestureRecognizer) -> Bool {
+        if recognizer is UITapGestureRecognizer { return true }
+        let name = NSStringFromClass(type(of: recognizer))
+        return name.contains("MultiTap") || name.contains("TapAndAHalf")
+    }
+
+    /// A link's text reads as text, and a double tap goes into the page to edit it, so VoiceOver
+    /// opens the page's links from its actions.
+    override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
+        get {
+            let links = (editor?.links() ?? []).prefix(20)
+            let opens = links.map { link in
+                UIAccessibilityCustomAction(name: "Open \(link.text)") { [weak self] _ in
+                    self?.editor?.openLink(at: link.range.location)
+                    return true
+                }
+            }
+            return (super.accessibilityCustomActions ?? []) + opens
+        }
+        set { super.accessibilityCustomActions = newValue }
+    }
+
+    /// Whether a tap at `point` is a link's: it opens the link, or, while the page is being edited,
+    /// changes it in the format bar on the keys. With no bar there, as with a hardware keyboard, a
+    /// link's text is text on a page being edited, and a tap puts the caret in it.
+    private func tapsLink(at point: CGPoint) -> Bool {
+        if isBeingEdited, editor?.canEditLinkInBar() != true { return false }
+        return linkLocation(at: point) != nil
+    }
+
+    /// The page has the keys, or they've moved over to one of its links in the format bar.
+    private var isBeingEdited: Bool {
+        isFirstResponder || FormatBar.shared.isEditingLink && FormatBar.shared.editor?.textView === self
+    }
+
+    /// Where the text of a link under `point` is, if there's one there: on its letters, not just
+    /// on the line beside them.
+    func linkLocation(at point: CGPoint) -> Int? {
+        guard let editor, let position = closestPosition(to: point) else { return nil }
+        let offset = offset(from: beginningOfDocument, to: position)
+        for location in [offset, offset - 1] {
+            guard let link = editor.link(at: location) else { continue }
+            if textFrames(of: link.range).contains(where: { $0.insetBy(dx: -2, dy: -3).contains(point) }) {
+                return location
+            }
+        }
+        return nil
+    }
+
+    /// Where the characters in `range` are drawn, a frame for each line they're on.
+    private func textFrames(of range: NSRange) -> [CGRect] {
+        guard let layoutManager = textLayoutManager,
+              let start = contentStorage.location(contentStorage.documentRange.location, offsetBy: range.location),
+              let end = contentStorage.location(start, offsetBy: range.length),
+              let textRange = NSTextRange(location: start, end: end) else { return [] }
+        // Laid out, as text on screen is: elsewhere TextKit may only have estimated where it goes.
+        layoutManager.ensureLayout(for: textRange)
+        var frames: [CGRect] = []
+        layoutManager.enumerateTextSegments(in: textRange, type: .standard, options: []) { _, frame, _, _ in
+            frames.append(frame.offsetBy(dx: self.textContainerInset.left, dy: self.textContainerInset.top))
+            return true
+        }
+        return frames
+    }
+
+    @objc private func handleLinkTap(_ recognizer: UITapGestureRecognizer) {
+        tapLink(at: recognizer.location(in: self))
+    }
+
+    private func tapLink(at point: CGPoint) {
+        guard let location = linkLocation(at: point) else { return }
+        if isBeingEdited {
+            editor?.editLink(at: location)
+        } else {
+            editor?.openLink(at: location)
+        }
+    }
+
+    /// Lights the text a link is being changed for in the format bar, as the selection lit it: the
+    /// selection goes with the keys when they move over to the link. A new link at the caret shows
+    /// a caret there, where it goes. It's scrolled into view above the bar, as the caret is while
+    /// typing. Nil puts it out. A layer under the text, as the code backgrounds are: TextKit's
+    /// rendering attributes, made for this, didn't show.
+    func showLinkTarget(_ range: NSRange?) {
+        if linkTarget.superlayer !== layer { layer.insertSublayer(linkTarget, at: 0) }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard let range, NSMaxRange(range) < textStorage.length else {
+            linkTargetRange = nil
+            linkTarget.path = nil
+            return
+        }
+        linkTargetRange = range
+        let frames: [CGRect]
+        let path = UIBezierPath()
+        if range.length == 0 {
+            guard let position = position(from: beginningOfDocument, offset: range.location) else { return }
+            let caret = caretRect(for: position)
+            frames = [caret]
+            path.append(UIBezierPath(roundedRect: caret, cornerRadius: caret.width / 2))
+            linkTarget.fillColor = tintColor.resolvedColor(with: traitCollection).cgColor
+        } else {
+            frames = textFrames(of: range)
+            for frame in frames {
+                path.append(UIBezierPath(roundedRect: frame, cornerRadius: 2))
+            }
+            linkTarget.fillColor = PlatformColor.adaptive(tintColor, alpha: 0.22, darkAlpha: 0.32).resolvedColor(with: traitCollection).cgColor
+        }
+        linkTarget.path = path.cgPath
+        reveal(frames)
+    }
+
+    /// Scrolls text drawn in `frames` into view, between the dot bar and the format bar: below
+    /// the bar, a little clear of it, and its first line at least, if it's taller than the room.
+    private func reveal(_ frames: [CGRect]) {
+        guard let first = frames.first, !isTracking, !isDragging, !isDecelerating else { return }
+        let text = frames.reduce(first) { $0.union($1) }
+        var target = max(contentOffset.y, text.maxY + 16 - (bounds.height - bottomObstruction))
+        target = min(target, text.minY - 8 - topObstruction)
+        let maxOffset = max(-contentInset.top, contentSize.height + contentInset.bottom - bounds.height)
+        target = min(max(target, -contentInset.top), maxOffset)
+        guard abs(target - contentOffset.y) > 0.5 else { return }
+        setContentOffset(CGPoint(x: contentOffset.x, y: target), animated: true)
+    }
+
+    private let linkTarget = CAShapeLayer()
+    private var linkTargetRange: NSRange?
+
+    #if DEBUG
+    /// As a tap at `point` does if it's a link's. Says whether it was.
+    func tapLinkForTesting(at point: CGPoint) -> Bool {
+        guard tapsLink(at: point) else { return false }
+        tapLink(at: point)
+        return true
+    }
+
+    /// Where `range`'s text is drawn. For tests.
+    func textFramesForTesting(of range: NSRange) -> [CGRect] {
+        textFrames(of: range)
+    }
+
+    /// The text lit for a link being changed in the format bar, and where. For tests.
+    var linkTargetForTesting: NSRange? {
+        linkTarget.path == nil ? nil : linkTargetRange
+    }
+    #endif
 
     @objc private func handleCheckboxTap(_ recognizer: UITapGestureRecognizer) {
         tapCheckbox(at: recognizer.location(in: self))

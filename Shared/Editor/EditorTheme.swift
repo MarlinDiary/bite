@@ -14,6 +14,10 @@ nonisolated extension NSAttributedString.Key {
     static let biteChecked = NSAttributedString.Key("bite.checked")
     /// `InlineStyle.rawValue` (Int).
     static let biteInline = NSAttributedString.Key("bite.inline")
+    /// Where a link's text goes, as the Markdown has it (String).
+    static let biteLink = NSAttributedString.Key("bite.link")
+    /// Derived: an address written out in the text, which shows as a link (String, the address).
+    static let biteWrittenLink = NSAttributedString.Key("bite.writtenLink")
     /// Derived: the number shown in front of an ordered item (Int).
     static let biteOrdinal = NSAttributedString.Key("bite.ordinal")
     /// Derived: `RunPosition.rawValue` (Int).
@@ -158,6 +162,17 @@ nonisolated struct EditorTheme: @unchecked Sendable {
             attributes[.backgroundColor] = accent.withAlphaComponent(0.12)
         }
         return attributes
+    }
+
+    /// A link over its text's own look: in the page's colour, with a fine line under it in a
+    /// paler shade. A link in a done to-do is as grey as the rest of the line.
+    func linkAttributes(for block: BlockAttributes) -> [NSAttributedString.Key: Any] {
+        let colour: PlatformColor = block.kind == .todo && block.isChecked ? .secondaryText : accent
+        return [
+            .foregroundColor: colour,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .underlineColor: colour.withAlphaComponent(0.4),
+        ]
     }
 
     private func font(for kind: BlockKind, inline: InlineStyle) -> PlatformFont {

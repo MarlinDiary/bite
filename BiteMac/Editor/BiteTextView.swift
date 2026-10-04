@@ -344,7 +344,7 @@ final class BiteTextView: NSTextView {
     }
 
     override func paste(_ sender: Any?) {
-        guard let editor, let text = Clipboard.markdown ?? Clipboard.string else {
+        guard let editor, let text = Clipboard.textToPaste else {
             super.paste(sender)
             return
         }
@@ -404,6 +404,12 @@ final class BiteTextView: NSTextView {
         editor?.toggleInline(.code)
     }
 
+    /// ⌘K: a link for the selection, or the one the caret is in, in the panel's link card; a link's
+    /// text selected comes off its link, as on the phone's link button.
+    @objc func addLink(_ sender: Any?) {
+        editor?.perform(.link)
+    }
+
     @objc func toggleTodoList(_ sender: Any?) {
         editor?.perform(.todo)
     }
@@ -446,6 +452,10 @@ final class BiteTextView: NSTextView {
         if let action = menuItem.action, let style = styles[action] {
             menuItem.state = editor?.activeStyles.contains(style) == true ? .on : .off
             return isEditable
+        }
+        if menuItem.action == #selector(addLink(_:)) {
+            menuItem.state = editor?.isLinkSelected == true ? .on : .off
+            return isEditable && editor?.canEditLink == true
         }
         return super.validateMenuItem(menuItem)
     }
@@ -504,6 +514,24 @@ final class BiteTextView: NSTextView {
         let point = convert(event.locationInWindow, from: nil)
         if let location = todoLocation(at: point) {
             editor?.toggleTodo(at: location)
+            return
+        }
+        // A click on a link opens it, as in Notes, ⌘ held or not; a drag that starts on one selects
+        // text, as from anywhere. The caret goes into a link's text from beside it, or from Edit.
+        if event.clickCount == 1, !hasMarkedText(), !event.modifierFlags.contains(.control), !event.modifierFlags.contains(.shift),
+           let location = linkLocation(at: point) {
+            while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+                if next.type == .leftMouseUp {
+                    if linkLocation(at: convert(next.locationInWindow, from: nil)) == location {
+                        editor?.openLink(at: location)
+                    }
+                    return
+                }
+                if hypot(next.locationInWindow.x - event.locationInWindow.x, next.locationInWindow.y - event.locationInWindow.y) > 3 {
+                    trackSelection(from: event)
+                    return
+                }
+            }
             return
         }
         if event.clickCount == 1, !hasMarkedText(), !event.modifierFlags.contains(.control),
@@ -597,13 +625,201 @@ final class BiteTextView: NSTextView {
         return point.y > bottom + textContainerOrigin.y
     }
 
-    /// An arrow over checkboxes, which are clicked rather than typed in.
+    /// The link under the pointer, if any, and where the pointer is, in the window, at every move
+    /// over the page and as it leaves: for the pill the panel floats under a link (see
+    /// `LinkBubble`), which goes as the pointer goes, unless it's on its way to the pill.
+    var onLinkHover: ((EditorController.PageLink?, NSPoint) -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self && area.userInfo?["hover"] != nil {
+            removeTrackingArea(area)
+        }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: ["hover": true]))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        onLinkHover?(nil, event.locationInWindow)
+    }
+
+    /// AppKit's I-beam, unless something floating on the page, the link card's shield, is under
+    /// the pointer: then the pointer is its.
+    override func cursorUpdate(with event: NSEvent) {
+        if let hit = window?.contentView?.hitTest(event.locationInWindow), hit !== self, !hit.isDescendant(of: self) { return }
+        super.cursorUpdate(with: event)
+    }
+
+    private func reportHover(at point: NSPoint?, inWindow: NSPoint) {
+        let link = point.flatMap { linkLocation(at: $0) }.flatMap { editor?.link(at: $0) }
+        onLinkHover?(link, inWindow)
+    }
+
+    /// An arrow over checkboxes, which are clicked rather than typed in, and a pointing hand over a
+    /// link, which a click opens. Over something floating on the page, the link pill or card, the
+    /// pointer is theirs.
     override func mouseMoved(with event: NSEvent) {
-        if todoLocation(at: convert(event.locationInWindow, from: nil)) != nil {
+        if let hit = window?.contentView?.hitTest(event.locationInWindow), hit !== self, !hit.isDescendant(of: self) { return }
+        let point = convert(event.locationInWindow, from: nil)
+        reportHover(at: visibleRect.contains(point) ? point : nil, inWindow: event.locationInWindow)
+        if todoLocation(at: point) != nil {
             NSCursor.arrow.set()
             return
         }
+        if linkLocation(at: point) != nil {
+            NSCursor.pointingHand.set()
+            return
+        }
         super.mouseMoved(with: event)
+    }
+
+    // MARK: Links
+
+    /// Right-clicked on a link: what can be done with it, in place of the text's own menu. On
+    /// other text, the text's own menu, with Add Link… on top of it.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let editor, let location = linkLocation(at: point), let link = editor.link(at: location) else {
+            let menu = super.menu(for: event) ?? NSMenu()
+            let add = NSMenuItem(title: "Add Link…", action: #selector(addLink(_:)), keyEquivalent: "")
+            add.target = self
+            menu.insertItem(.separator(), at: 0)
+            menu.insertItem(add, at: 0)
+            return menu
+        }
+        contextLink = link
+        return linkMenu(tint: NSColor(hex: DotPalette.colors[editor.dot].light))
+    }
+
+    /// The link last right-clicked, which its menu's items act on.
+    private var contextLink: EditorController.PageLink?
+
+    /// A link's menu: rows of Bite's own, as the "…" menu's are.
+    func linkMenu(tint: NSColor) -> NSMenu {
+        let menu = NSMenu()
+        menu.delegate = MenuRow.keyboard
+        let items = [
+            MenuRow.item("Open Link", symbol: "arrow.up.right.square", action: #selector(openContextLink), target: self, tint: tint),
+            MenuRow.item("Edit Link…", symbol: "pencil", action: #selector(editContextLink), target: self, tint: tint),
+            MenuRow.item("Copy Link", symbol: "doc.on.doc", action: #selector(copyContextLink), target: self, tint: tint),
+            .separator(),
+            MenuRow.item("Remove Link", symbol: "link.badge.minus", action: #selector(removeContextLink), target: self, tint: tint),
+        ]
+        items.forEach(menu.addItem)
+        return menu
+    }
+
+    @objc private func openContextLink() {
+        guard let contextLink else { return }
+        editor?.openLink(at: contextLink.range.location)
+    }
+
+    @objc private func editContextLink() {
+        guard let contextLink else { return }
+        editor?.editLink(at: contextLink.range.location)
+    }
+
+    @objc private func copyContextLink() {
+        guard let contextLink else { return }
+        Clipboard.string = EditorController.PageLink.url(for: contextLink.destination)?.absoluteString ?? contextLink.destination
+    }
+
+    @objc private func removeContextLink() {
+        guard let contextLink else { return }
+        editor?.removeLink(contextLink)
+    }
+
+    /// Where `range` is drawn, in the view, on the first line of it: a link's, to float its pill
+    /// or card by. A caret for an empty range, where a new link goes.
+    func anchorFrame(for range: NSRange) -> NSRect? {
+        if range.length == 0 {
+            let onScreen = firstRect(forCharacterRange: range, actualRange: nil)
+            guard let window, onScreen.height > 0 else { return nil }
+            let corner = convert(window.convertPoint(fromScreen: onScreen.origin), from: nil)
+            return NSRect(x: corner.x, y: corner.y - onScreen.height, width: 2, height: onScreen.height)
+        }
+        return textFrames(of: range).first
+    }
+
+    /// Where the text of a link under `point` is, if there's one there: on its letters, not just
+    /// on the line beside them.
+    func linkLocation(at point: NSPoint) -> Int? {
+        guard let editor else { return nil }
+        let index = characterIndexForInsertion(at: point)
+        guard index != NSNotFound else { return nil }
+        for location in [index, index - 1] {
+            guard let link = editor.link(at: location) else { continue }
+            if textFrames(of: link.range).contains(where: { $0.insetBy(dx: -2, dy: -2).contains(point) }) {
+                return location
+            }
+        }
+        return nil
+    }
+
+    /// Lights the text a link is being changed for in the link card, as the selection lit it: the
+    /// selection goes with the keys when they move over to the card. A new link at the caret shows
+    /// a caret there, where it goes. It's scrolled into view. Nil puts it out. A layer under the
+    /// text, as the code backgrounds are.
+    func showLinkTarget(_ range: NSRange?) {
+        guard let layer else { return }
+        if linkTarget.superlayer !== layer {
+            layer.insertSublayer(linkTarget, above: codeBackgrounds.superlayer === layer ? codeBackgrounds : nil)
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard let range, NSMaxRange(range) < (textStorage?.length ?? 0) else {
+            linkTargetRange = nil
+            linkTarget.path = nil
+            return
+        }
+        linkTargetRange = range
+        let path = CGMutablePath()
+        let color: NSColor
+        if range.length == 0 {
+            if let caret = anchorFrame(for: range) {
+                path.addRoundedRect(in: caret, cornerWidth: 1, cornerHeight: 1)
+            }
+            color = insertionPointColor
+        } else {
+            for frame in textFrames(of: range) {
+                path.addRoundedRect(in: frame, cornerWidth: 2, cornerHeight: 2)
+            }
+            color = selectionColor
+        }
+        linkTarget.path = path
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            linkTarget.fillColor = color.cgColor
+        }
+        scrollRangeToVisible(range)
+    }
+
+    private let linkTarget = CAShapeLayer()
+    private var linkTargetRange: NSRange?
+
+    #if DEBUG
+    /// The text lit for a link being changed in the card, and where. For tests.
+    var linkTargetForTesting: NSRange? {
+        linkTarget.path == nil ? nil : linkTargetRange
+    }
+    #endif
+
+    /// Where the characters in `range` are drawn, a frame for each line they're on.
+    private func textFrames(of range: NSRange) -> [CGRect] {
+        guard let layoutManager = textLayoutManager,
+              let contentStorage = layoutManager.textContentManager as? NSTextContentStorage,
+              let start = contentStorage.location(contentStorage.documentRange.location, offsetBy: range.location),
+              let end = contentStorage.location(start, offsetBy: range.length),
+              let textRange = NSTextRange(location: start, end: end) else { return [] }
+        layoutManager.ensureLayout(for: textRange)
+        let origin = textContainerOrigin
+        var frames: [CGRect] = []
+        layoutManager.enumerateTextSegments(in: textRange, type: .standard, options: []) { _, frame, _, _ in
+            frames.append(frame.offsetBy(dx: origin.x, dy: origin.y))
+            return true
+        }
+        return frames
     }
 
     // MARK: Code blocks

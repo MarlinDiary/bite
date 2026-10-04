@@ -99,11 +99,25 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
             }
         }
         container.editingTextView = { [weak self] in
-            self?.controllers.first { $0.textView.isFirstResponder }?.textView
+            if let page = self?.controllers.first(where: { $0.textView.isFirstResponder }) { return page.textView }
+            // The keys moved over to a link on the page, in the format bar.
+            let bar = FormatBar.shared
+            return bar.isEditingLink ? bar.editor?.textView : nil
         }
         for controller in controllers {
             controller.onWritingToolsChange = { [weak self] isAtWork in
                 self?.container.isWritingToolsAtWork = isAtWork
+            }
+            controller.onBeginEditing = { [weak self] in
+                self?.container.pageTookKeys()
+            }
+            controller.onEditLink = { [weak self, weak controller] link in
+                guard let self, let controller else { return }
+                self.container.editLinkOnKeys(link, of: controller)
+            }
+            controller.canEditLinkInBar = { [weak self, weak controller] in
+                guard let self, let controller else { return false }
+                return self.container.canEditLinks(on: controller)
             }
         }
     }
@@ -116,8 +130,9 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         }
     }
 
+    /// Whether a page has the keys, or they've moved over to a link on it, in the format bar.
     private var keyboardIsUp: Bool {
-        controllers.contains { $0.textView.isFirstResponder }
+        controllers.contains { $0.textView.isFirstResponder } || FormatBar.shared.isEditingLink
     }
 
     /// Set while SwiftUI is updating the pager, when its state can't change.
@@ -364,6 +379,8 @@ final class PagerContainerView: UIView {
     /// How far the bar has slid down into the keys: 0 while it sits on top of them, its full
     /// height when hidden.
     private var barSink = FormatBar.height
+    /// How tall the bar stands: a row taller while a link is being changed in it.
+    private var barHeight: CGFloat { formatBar.height }
     private var laidOutKeys: CGFloat = 0
     /// Room above the bar inside its track, so the glass's soft edge isn't clipped.
     private let trackHeadroom: CGFloat = 20
@@ -392,6 +409,7 @@ final class PagerContainerView: UIView {
         formatBar.frame.origin.y = trackHeadroom + barSink
         barTrack.addSubview(formatBar)
         addSubview(barTrack)
+        formatBar.onHeightChange = { [weak self] in self?.barHeightChanged() }
 
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(keysWillGo), name: UIResponder.keyboardWillHideNotification, object: nil)
@@ -423,6 +441,9 @@ final class PagerContainerView: UIView {
 
     /// Where the bar's track is: its bottom edge is the top of the keys the bar rides on.
     var barTrackFrameForTesting: CGRect { barTrack.frame }
+
+    /// How many times the bar has stopped riding on the keys, to go down into them.
+    private(set) var timesBarLeftKeysForTesting = 0
     #endif
 
     /// Puts the bar on top of the keys, or away, and reports how much of this view they cover.
@@ -449,6 +470,10 @@ final class PagerContainerView: UIView {
         let barKeys = isWritingToolsAtWork || keysWhenWritingToolsEnded != nil ? 0 : keys
         // On-screen keys stand well over 120 points. A hardware keyboard leaves no keys, or only a
         // short strip, and the bar stays away. Keys dragged partway down still carry it.
+        #if DEBUG
+        let wasRiding = barRidesOnKeys
+        defer { if wasRiding, !barRidesOnKeys { timesBarLeftKeysForTesting += 1 } }
+        #endif
         if editor == nil || barKeys == 0 {
             barRidesOnKeys = false
         } else if barKeys > 120 {
@@ -460,17 +485,55 @@ final class PagerContainerView: UIView {
         // The track moves exactly like the keys: inside the keyboard's animation it gets the same
         // one. The bar stays on top of the keys all the way down; only once they're nearly gone
         // does it slide in after them, so both leave the screen together.
-        let trackHeight = FormatBar.height + trackHeadroom
+        let trackHeight = barHeight + trackHeadroom
         let track = CGRect(x: 0, y: bounds.height - barKeys - trackHeight, width: bounds.width, height: trackHeight)
-        if barTrack.frame != track { barTrack.frame = track }
+        if barTrack.frame != track {
+            // Keys that jump into place, as the page's do when a drawer over it closes, leave
+            // nothing of an earlier move playing out: the track, still sliding after keys that had
+            // been going down, showed the bar high above them and slid it down onto them.
+            if UIView.inheritedAnimationDuration == 0 { barTrack.layer.removeAllAnimations() }
+            barTrack.frame = track
+        }
         moveBar(keysFrom: laidOutKeys, to: barKeys)
         laidOutKeys = barKeys
 
         formatBar.accessibilityElementsHidden = !barRidesOnKeys
-        let overlap = keys + FormatBar.height - barSink
+        let overlap = keys + barHeight - barSink
         guard abs(overlap - reportedOverlap) > 0.5 else { return }
         reportedOverlap = overlap
         onKeyboardOverlapChange?(overlap)
+    }
+
+    /// Whether a link on `page` can be changed in the bar: the page is being edited, with the bar
+    /// on its keys. With no keys on screen, as with a hardware keyboard, there's no bar to change
+    /// it in. A drawer's fields did take the keys, but sent them down and back up.
+    func canEditLinks(on page: EditorController) -> Bool {
+        barRidesOnKeys && !isWritingToolsAtWork && editingTextView() === page.textView && formatBar.editor === page
+    }
+
+    /// Shows `link` in the bar, to change on the keys, if it can be (`canEditLinks`). Says whether
+    /// it did.
+    @discardableResult
+    func editLinkOnKeys(_ link: EditorController.PageLink, of page: EditorController) -> Bool {
+        guard canEditLinks(on: page) else { return false }
+        return formatBar.editLink(link)
+    }
+
+    /// The bar grew a row for a link, or went back down: it stays on the keys, growing up from
+    /// them, and the page's room for it changes along with it, the link's text kept in view.
+    private func barHeightChanged() {
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+            self.placeBar()
+            self.formatBar.layoutIfNeeded()
+        }
+    }
+
+    /// A page took the keyboard back as a drawer over it went: UIKit brings its keys straight back
+    /// up, with no animation to carry the bar up with them. It slides up out of them on its own.
+    /// Keys coming up with the page carry it as ever.
+    func pageTookKeys() {
+        guard keys > 120, !barRidesOnKeys, editingTextView() != nil, !isWritingToolsAtWork else { return }
+        UIView.animate(withDuration: 0.25) { self.placeBar() }
     }
 
     /// Whether keys that just vanished from under the page being edited may be back in a moment:
@@ -509,18 +572,19 @@ final class PagerContainerView: UIView {
 
     /// How far the bar sinks into keys that stand `keys` points tall.
     private func sink(onKeys keys: CGFloat) -> CGFloat {
-        max(0, FormatBar.height - keys)
+        max(0, barHeight - keys)
     }
 
     private func moveBar(keysFrom start: CGFloat, to end: CGFloat) {
-        let target = barRidesOnKeys ? sink(onKeys: end) : FormatBar.height
+        let target = barRidesOnKeys ? sink(onKeys: end) : barHeight
         let barFrame = { (sink: CGFloat) in
-            CGRect(x: 0, y: self.trackHeadroom + sink, width: self.bounds.width, height: FormatBar.height)
+            CGRect(x: 0, y: self.trackHeadroom + sink, width: self.bounds.width, height: self.barHeight)
         }
         guard target != barSink else {
-            // Still headed to the same place, maybe mid-animation; only the width can change.
-            if formatBar.bounds.width != bounds.width {
-                formatBar.frame.size.width = bounds.width
+            // Still headed to the same place, maybe mid-animation; only its size can change: the
+            // width, and the height as a link comes and goes.
+            if formatBar.bounds.size != barFrame(target).size {
+                formatBar.frame = barFrame(target)
             }
             return
         }
@@ -562,14 +626,14 @@ final class PagerContainerView: UIView {
             // exact, corner included.
             var samples = (0...24).map { CGFloat($0) / 24 }
             if followsKeys, start != end {
-                let corner = (start - FormatBar.height) / (start - end)
+                let corner = (start - barHeight) / (start - end)
                 if corner > 0, corner < 1 { samples.append(corner) }
             }
             progress = samples.sorted()
             animation.keyTimes = progress.map { NSNumber(value: Double($0)) }
             animation.timingFunction = keyboard.timingFunction
         }
-        let centerY = trackHeadroom + FormatBar.height / 2
+        let centerY = trackHeadroom + barHeight / 2
         animation.values = progress.map { centerY + sinkAt($0) }
         layer.add(animation, forKey: Self.sinkKey)
     }

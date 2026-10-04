@@ -1065,6 +1065,36 @@ final class PageScrollView: NSScrollView {
         updateIndicator()
     }
 
+    // MARK: Fading under the dot bar
+
+    /// The page fades out under the dot bar, clear at the panel's edge and whole where the bar
+    /// ends, so text scrolled up under it doesn't crowd the dots. A page blurs as well as fades
+    /// under a toolbar on macOS 26 (its scroll edge effect), but AppKit gives that only to
+    /// titlebars, and nothing public blurs a page under a bar of one's own. The page's colour
+    /// stays as it is, behind: only the text clears.
+    private let edgeFade = CAGradientLayer()
+
+    override func layout() {
+        super.layout()
+        updateEdgeFade()
+    }
+
+    private func updateEdgeFade() {
+        guard let layer else { return }
+        if layer.mask !== edgeFade { layer.mask = edgeFade }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        edgeFade.frame = layer.bounds
+        // Mostly gone through the bar, and whole again where it ends: the square of the way down.
+        let end = min(1, contentInsets.top / max(bounds.height, 1))
+        let steps = [0, 0.25, 0.5, 0.75, 1.0]
+        edgeFade.colors = steps.map { NSColor.black.withAlphaComponent($0 * $0).cgColor } + [NSColor.black.cgColor]
+        edgeFade.locations = steps.map { NSNumber(value: $0 * end) } + [1]
+        edgeFade.startPoint = CGPoint(x: 0.5, y: isFlipped ? 0 : 1)
+        edgeFade.endPoint = CGPoint(x: 0.5, y: isFlipped ? 1 : 0)
+    }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         updateIndicator()

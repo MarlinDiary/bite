@@ -91,8 +91,8 @@ struct MacPanelTests {
     @Test func thePanelShrinksAwayAndCanComeBackMeanwhile() async {
         let panel = panel()
         let window = panel.windowForTesting
-        // Five times as slow, to look at it partway.
-        panel.animateClosingForTesting(slowdown: 5)
+        // Ten times as slow, to look at it partway.
+        panel.animateClosingForTesting(slowdown: 10)
         panel.show()
         panel.hide()
         #expect(!panel.isShown)
@@ -100,10 +100,14 @@ struct MacPanelTests {
         #expect(window.ignoresMouseEvents)
         #expect(panel.isClosingForTesting)
         #expect(panel.closeHasBegunForTesting)
-        // Partway, the window is clearing, its shadow with it.
-        await wait(0.15)
-        #expect(window.alphaValue < 1)
-        #expect(window.alphaValue > 0)
+        // Partway, the window is clearing, its shadow with it. AppKit steps it on the main thread,
+        // which tests running alongside can hold for a moment, so it's looked at until it is.
+        var clearing = false
+        for _ in 0..<40 where !clearing {
+            await wait(0.02)
+            clearing = window.alphaValue < 1 && window.alphaValue > 0
+        }
+        #expect(clearing)
         panel.show()
         #expect(panel.isShown)
         #expect(window.alphaValue == 1)
@@ -112,7 +116,7 @@ struct MacPanelTests {
         #expect(window.isVisible)
         #expect(!window.ignoresMouseEvents)
         panel.hide()
-        await wait(0.9)
+        await wait(1.6)
         #expect(!window.isVisible)
         #expect(window.alphaValue == 1)
         #expect(!panel.isClosingForTesting)

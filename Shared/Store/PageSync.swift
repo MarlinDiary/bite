@@ -2,13 +2,17 @@ import CloudKit
 import Foundation
 import OSLog
 import BiteKit
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Keeps the seven pages the same on every device signed in to the same iCloud account, through
 /// CloudKit. A page changed here goes up as the editor reports it, a moment after typing pauses
 /// and every second while it goes on. While Bite is on screen it asks iCloud every second for
-/// what other devices changed, as iCloud's pushes come late or not at all; at other times the
-/// pushes bring it. Both sides' changes to a page are merged line by line (see `TextMerge`), so
-/// nothing typed on either is lost.
+/// what other devices changed, as iCloud's pushes come late or not at all; on the Mac, with the
+/// panel put away, every half minute, and at other times the pushes bring it. Both sides'
+/// changes to a page are merged line by line (see `TextMerge`), so nothing typed on either is
+/// lost.
 @MainActor
 final class PageSync: CKSyncEngineDelegate {
     private let store: DotStore
@@ -31,11 +35,20 @@ final class PageSync: CKSyncEngineDelegate {
     /// While Bite is on screen, iCloud is asked every second for other devices' changes. While
     /// they're coming in, as another device is typed on, it's asked twice as often; once nothing
     /// has changed here or elsewhere for ten minutes, as with the Mac's panel left open, every
-    /// few seconds.
-    private static let checkInterval: Duration = .seconds(1)
-    private static let busyCheckInterval: Duration = .milliseconds(500)
-    private static let quietCheckInterval: Duration = .seconds(4)
-    private static let quietAfter: Duration = .seconds(600)
+    /// few seconds, until a page is picked or changed here.
+    static let checkInterval: Duration = .seconds(1)
+    static let busyCheckInterval: Duration = .milliseconds(500)
+    static let quietCheckInterval: Duration = .seconds(4)
+    static let quietAfter: Duration = .seconds(600)
+    /// With the Mac's panel put away, iCloud is still asked now and then, so that the panel comes
+    /// up with what was typed elsewhere already in: it used to come up as it was, and change half
+    /// a second later. The phone stops Bite once it's left.
+    static let hiddenCheckInterval: Duration = .seconds(30)
+    #if os(macOS)
+    static let checksWhileHidden = true
+    #else
+    static let checksWhileHidden = false
+    #endif
     private var lastActivity = ContinuousClock.now
     private var checkTask: Task<Void, Never>?
     private var isChecking = false
@@ -111,13 +124,14 @@ final class PageSync: CKSyncEngineDelegate {
             engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
         }
         store.onLocalChange = { [weak self] dot in self?.pageChanged(dot) }
+        store.onSelectionChange = { [weak self] in self?.someoneIsHere() }
         Self.log.info("Started, \(self.saved.pages.compactMap { $0 }.count) pages agreed with iCloud")
         if takesICloudPages {
             Task.detached { try? await engine.fetchChanges() }
         } else {
             sendUnsentPages()
         }
-        if isOnScreen { checkForChanges() }
+        checkForChanges(atOnce: true)
     }
 
     /// Turned off in Settings, nothing more goes up or comes down. What this device and iCloud
@@ -130,6 +144,7 @@ final class PageSync: CKSyncEngineDelegate {
         sendsAgain = false
         checkToken = nil
         store.onLocalChange = nil
+        store.onSelectionChange = nil
         engine = nil
         Self.log.info("Stopped")
         save()
@@ -151,22 +166,42 @@ final class PageSync: CKSyncEngineDelegate {
     /// changes are then brought down at once, and every second or so after (see `checkInterval`).
     var isOnScreen = false {
         didSet {
-            if isOnScreen != oldValue { checkForChanges() }
+            if isOnScreen != oldValue { checkForChanges(atOnce: isOnScreen) }
         }
     }
 
-    private func checkForChanges() {
+    /// Asks iCloud now, or after a wait, and on from then (see `waitBeforeNextCheck`).
+    private func checkForChanges(atOnce: Bool) {
         checkTask?.cancel()
         checkTask = nil
-        guard isOnScreen, engine != nil else { return }
-        lastActivity = .now
+        guard engine != nil, isOnScreen || Self.checksWhileHidden else { return }
+        if isOnScreen { lastActivity = .now }
+        let firstWait = atOnce ? .zero : Self.hiddenCheckInterval
         // Detached, as the sends are (see `scheduleSend`).
         checkTask = Task.detached { [weak self] in
+            try? await Task.sleep(for: firstWait)
             while let sync = self, !Task.isCancelled {
                 let wait = await sync.checkNow()
                 try? await Task.sleep(for: wait)
             }
         }
+    }
+
+    /// Someone's using Bite here: a page was picked, or changed. Checks slowed down after a quiet
+    /// spell are made at once, and every second again from then.
+    private func someoneIsHere() {
+        let wasQuiet = ContinuousClock.now - lastActivity > Self.quietAfter
+        lastActivity = .now
+        if wasQuiet, isOnScreen { checkForChanges(atOnce: true) }
+    }
+
+    /// How long to wait before asking iCloud again: a moment while changes come in from another
+    /// device, a second while Bite is on screen, a few seconds after a quiet spell or when iCloud
+    /// can't be reached, and half a minute while it's off screen.
+    static func waitBeforeNextCheck(onScreen: Bool, tookNew: Bool, failed: Bool, sinceActivity: Duration) -> Duration {
+        guard onScreen else { return hiddenCheckInterval }
+        if tookNew { return busyCheckInterval }
+        return failed || sinceActivity > quietAfter ? quietCheckInterval : checkInterval
     }
 
     /// Asks iCloud for the pages changed since the last check, and takes them in; says how long
@@ -203,14 +238,16 @@ final class PageSync: CKSyncEngineDelegate {
             failed = true
         }
         if tookAny { save() }
-        if tookNew { return Self.busyCheckInterval }
         // Not signed in, offline, or with no pages up yet, it asks again no sooner than when quiet.
-        return failed || .now - lastActivity > Self.quietAfter ? Self.quietCheckInterval : Self.checkInterval
+        let wait = Self.waitBeforeNextCheck(onScreen: isOnScreen, tookNew: tookNew, failed: failed,
+                                            sinceActivity: .now - lastActivity)
+        Self.log.debug("Asked iCloud\(self.isOnScreen ? "" : " off screen", privacy: .public)\(failed ? ", failed" : "", privacy: .public), again in \(String(describing: wait), privacy: .public)")
+        return wait
     }
 
     private func pageChanged(_ dot: Int) {
         guard let engine else { return }
-        lastActivity = .now
+        someoneIsHere()
         engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID(for: dot))])
         scheduleSend()
     }
@@ -232,6 +269,46 @@ final class PageSync: CKSyncEngineDelegate {
             await self?.sendNow()
         }
     }
+
+    #if canImport(UIKit)
+    private var leavingTask = UIBackgroundTaskIdentifier.invalid
+
+    /// Bite is leaving the screen on the phone, which stops it soon after: what's still to go up
+    /// goes now, not a moment later, with time asked of the system to finish sending it. Typed
+    /// just before leaving, it otherwise waited until Bite was opened again.
+    func sendBeforeLeaving() {
+        guard let engine else { return }
+        store.reportPendingEdits()
+        guard isSending || !engine.state.pendingRecordZoneChanges.isEmpty, leavingTask == .invalid else { return }
+        Self.log.info("Sending before Bite leaves the screen")
+        leavingTask = UIApplication.shared.beginBackgroundTask(withName: "Send pages") { [weak self] in
+            MainActor.assumeIsolated { self?.endLeavingTask() }
+        }
+        Task.detached { [weak self] in
+            await self?.sendUntilDone()
+            await self?.endLeavingTask()
+        }
+    }
+
+    private func endLeavingTask() {
+        guard leavingTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(leavingTask)
+        leavingTask = .invalid
+    }
+
+    /// Sends what's waiting to go up, after any send under way, and again for what changed
+    /// meanwhile: a few tries at most, within the time the system gives.
+    private func sendUntilDone() async {
+        let deadline = ContinuousClock.now + .seconds(25)
+        for _ in 0..<3 {
+            while isSending || callsFromTheEngine > 0, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            guard let engine, ContinuousClock.now < deadline, !engine.state.pendingRecordZoneChanges.isEmpty else { return }
+            await sendNow()
+        }
+    }
+    #endif
 
     private func sendNow() async {
         guard let engine else { return }

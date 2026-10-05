@@ -14,7 +14,10 @@ final class DotStore {
     /// modification date, so it lasts.
     @ObservationIgnored private(set) var modified: [Date?]
     var selection: Int {
-        didSet { UserDefaults.standard.set(selection, forKey: Self.selectionKey) }
+        didSet {
+            UserDefaults.standard.set(selection, forKey: Self.selectionKey)
+            if selection != oldValue { onSelectionChange?() }
+        }
     }
 
     @ObservationIgnored private let folder: URL
@@ -30,6 +33,8 @@ final class DotStore {
     @ObservationIgnored var applyInEditor: ((Int, String) -> Void)?
     /// Set by iCloud sync, which is told of every change made here.
     @ObservationIgnored var onLocalChange: ((Int) -> Void)?
+    /// Set by iCloud sync, which is told when another page is picked: someone's using Bite.
+    @ObservationIgnored var onSelectionChange: (() -> Void)?
 
     private static let selectionKey = "selectedDot"
 

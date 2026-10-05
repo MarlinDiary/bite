@@ -24,6 +24,7 @@ struct BiteApp: App {
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             sync.isOnScreen = phase == .active
+            if phase == .background { sync.sendBeforeLeaving() }
         }
     }
 }

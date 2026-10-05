@@ -79,4 +79,38 @@ struct PageSyncTests {
         store.applyRemote(dot: 1, markdown: "again\n")
         #expect(store.revisions[1] == revisions[1] + 1)
     }
+
+    /// Sync hears of another page being picked, someone using Bite, and only when it is another.
+    @Test func pickingAnotherPageIsHeard() {
+        let kept = UserDefaults.standard.object(forKey: "selectedDot")
+        defer { UserDefaults.standard.set(kept, forKey: "selectedDot") }
+        let store = store()
+        var heard = 0
+        store.onSelectionChange = { heard += 1 }
+        let other = (store.selection + 1) % DotPalette.count
+        store.selection = other
+        store.selection = other
+        #expect(heard == 1)
+    }
+
+    /// iCloud is asked every second while Bite is on screen, every half second while changes
+    /// come in from elsewhere, every few seconds after ten quiet minutes or when it can't be
+    /// reached, and every half minute off screen, on the Mac.
+    @Test func howOftenICloudIsAsked() {
+        let wait = { (onScreen: Bool, tookNew: Bool, failed: Bool, quiet: Duration) in
+            PageSync.waitBeforeNextCheck(onScreen: onScreen, tookNew: tookNew, failed: failed, sinceActivity: quiet)
+        }
+        #expect(wait(true, false, false, .seconds(5)) == .seconds(1))
+        #expect(wait(true, true, false, .seconds(5)) == .milliseconds(500))
+        #expect(wait(true, true, false, .seconds(900)) == .milliseconds(500))
+        #expect(wait(true, false, false, .seconds(900)) == .seconds(4))
+        #expect(wait(true, false, true, .seconds(5)) == .seconds(4))
+        #expect(wait(false, true, false, .seconds(5)) == .seconds(30))
+        #expect(wait(false, false, false, .seconds(900)) == .seconds(30))
+        #if os(macOS)
+        #expect(PageSync.checksWhileHidden)
+        #else
+        #expect(!PageSync.checksWhileHidden)
+        #endif
+    }
 }

@@ -1,3 +1,4 @@
+import CoreSpotlight
 import SwiftUI
 import OSLog
 import UIKit
@@ -7,6 +8,7 @@ struct BiteApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var store: DotStore
     @State private var sync: PageSync
+    @State private var spotlight: SpotlightIndex
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -15,12 +17,21 @@ struct BiteApp: App {
         _store = State(initialValue: store)
         _sync = State(initialValue: sync)
         PageSync.shared = sync
+        SceneDelegate.store = store
+        let spotlight = SpotlightIndex(store: store)
+        _spotlight = State(initialValue: spotlight)
+        if SpotlightIndex.runsHere { spotlight.start() }
     }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(store)
+                .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                    // Bite launched by it opened it already, before its first frame.
+                    guard activity !== SceneDelegate.launchActivity else { return }
+                    SpotlightIndex.open(activity, in: store)
+                }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             sync.isOnScreen = phase == .active
@@ -57,5 +68,30 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// useful.
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
         await PageSync.shared?.pushArrived() == true ? .newData : .noData
+    }
+
+    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = SceneDelegate.self
+        return configuration
+    }
+}
+
+/// Opens Bite at a Spotlight result from its very first frame when Spotlight launches it. SwiftUI
+/// hands the result over only once Bite is on screen, and the page Bite was last on showed first,
+/// for a few frames. Brought back from the background, SwiftUI's own handover is in time.
+final class SceneDelegate: NSObject, UIWindowSceneDelegate {
+    /// The app's, which the result is opened in.
+    static var store: DotStore?
+    /// The result Bite was launched at, until SwiftUI has handed it over too.
+    static weak var launchActivity: NSUserActivity?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        guard let store = Self.store else { return }
+        for activity in connectionOptions.userActivities where activity.activityType == CSSearchableItemActionType {
+            Self.launchActivity = activity
+            SpotlightIndex.open(activity, in: store)
+        }
     }
 }

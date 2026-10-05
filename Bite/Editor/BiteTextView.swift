@@ -10,6 +10,9 @@ final class BiteTextView: UITextView {
     private let finalNewlineDelegate = FinalNewlineDelegate()
     private lazy var checkboxTap = UITapGestureRecognizer(target: self, action: #selector(handleCheckboxTap(_:)))
     private lazy var linkTap = UITapGestureRecognizer(target: self, action: #selector(handleLinkTap(_:)))
+    /// Puts found text out as a finger lands. The text view's own `touchesBegan` missed a quick
+    /// tap: UIKit's text tap took the touch before it got there.
+    private let touchDown = TouchDownRecognizer()
     /// Air above the first line, under the dot bar.
     private let airOverText: CGFloat = 24
     /// Room under the last line when scrolled to the end.
@@ -225,6 +228,27 @@ final class BiteTextView: UITextView {
         }
     }
 
+    /// Scrolls `range` into view a little below the dot bar, as at a search result picked
+    /// outside Bite: where the eye goes first, with a few lines before it. In view already, it
+    /// stays where it is.
+    func show(_ range: NSRange) {
+        guard let start = position(from: beginningOfDocument, offset: range.location) else { return }
+        // Text not laid out yet has estimated heights, so a line found far down is where it's
+        // estimated to be. Laid out where the page goes, it's where it really is.
+        for _ in 0..<3 {
+            layoutIfNeeded()
+            let line = caretRect(for: start)
+            guard !line.isNull, !line.isInfinite else { return }
+            let visibleTop = contentOffset.y + topObstruction
+            let visibleBottom = contentOffset.y + bounds.height - bottomObstruction
+            guard line.minY < visibleTop || line.maxY > visibleBottom else { return }
+            let maxOffset = max(-contentInset.top, contentSize.height + contentInset.bottom - bounds.height)
+            let target = min(max(line.minY - topObstruction - (visibleBottom - visibleTop) / 4, -contentInset.top), maxOffset)
+            guard abs(target - contentOffset.y) > 0.5 else { return }
+            setContentOffset(CGPoint(x: contentOffset.x, y: target), animated: false)
+        }
+    }
+
     /// For the page giving the keyboard up to another: it's likely swiped back to.
     func keepKeyboardRoom() {
         keepsKeyboardRoom = true
@@ -279,6 +303,10 @@ final class BiteTextView: UITextView {
         spellCheckingType = checkedSpelling
         NotificationCenter.default.addObserver(self, selector: #selector(preferencesDidChange),
                                                name: Preferences.didChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive),
+                                               name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground),
+                                               name: UIApplication.didEnterBackgroundNotification, object: nil)
         // Smart delete tidies the spaces around a deleted word, and deleted more than it said it
         // would: emptying the last line of a code block took the line break with it, so the line
         // was gone and typing went into the line below.
@@ -287,6 +315,8 @@ final class BiteTextView: UITextView {
         textContainer.lineFragmentPadding = 0
         addGestureRecognizer(checkboxTap)
         addGestureRecognizer(linkTap)
+        touchDown.onTouchDown = { [weak self] in self?.hideFound() }
+        addGestureRecognizer(touchDown)
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: BiteTextView, _) in
             view.setNeedsLayout()
         }
@@ -301,6 +331,7 @@ final class BiteTextView: UITextView {
         // in the same frame.
         updateCodeBackgrounds()
         updateLineMarks()
+        drawFound()
         // Text layout has just run, so the caret rect is final.
         if needsCaretScroll {
             needsCaretScroll = false
@@ -1168,6 +1199,70 @@ final class BiteTextView: UITextView {
     private let linkTarget = CAShapeLayer()
     private var linkTargetRange: NSRange?
 
+    // MARK: Found text
+
+    /// Lights the text a page was opened at, from a search outside Bite (see `FoundLight`). It
+    /// isn't selected: without the keys a selection doesn't show, and with them typing would
+    /// replace it. The caret goes before it instead. Its moment starts once Bite is on screen:
+    /// opened from Spotlight, the page is lit while Bite is still coming up.
+    func showFound(_ range: NSRange) {
+        let layer = foundLight.layer
+        if layer.superlayer !== self.layer {
+            // Over a code block's background, which stays at the bottom.
+            if codeBackgrounds.superlayer === self.layer {
+                self.layer.insertSublayer(layer, above: codeBackgrounds)
+            } else {
+                self.layer.insertSublayer(layer, at: 0)
+            }
+        }
+        foundLight.show(range)
+        drawFound()
+        if window?.windowScene?.activationState == .foregroundActive { foundLight.countDown() }
+    }
+
+    func hideFound(_ fade: FoundLight.Fade = .quick) {
+        foundLight.hide(fade)
+    }
+
+    /// Drawn again whenever the text is laid out, as when the phone turns.
+    private func drawFound() {
+        guard let range = foundLight.range, NSMaxRange(range) <= textStorage.length else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        let path = UIBezierPath()
+        for frame in textFrames(of: range) {
+            path.append(UIBezierPath(roundedRect: frame, cornerRadius: 2))
+        }
+        foundLight.layer.path = path.cgPath
+        foundLight.layer.fillColor = PlatformColor.adaptive(tintColor, alpha: 0.22, darkAlpha: 0.32).resolvedColor(with: traitCollection).cgColor
+    }
+
+    @objc private func didBecomeActive() {
+        foundLight.countDown()
+    }
+
+    @objc private func didEnterBackground() {
+        hideFound(.atOnce)
+    }
+
+    let foundLight = FoundLight()
+
+    #if DEBUG
+    /// The text lit as found, until its light starts to go. For tests.
+    var foundForTesting: NSRange? { foundLight.range }
+
+    /// Where the found text's light is drawn, while it's lit. For tests.
+    var foundLightForTesting: CGRect? {
+        foundLight.range == nil ? nil : foundLight.layer.path?.boundingBoxOfPath
+    }
+
+    /// As a finger landing on the page does. For tests.
+    func touchDownForTesting() {
+        touchDown.onTouchDown()
+    }
+    #endif
+
     #if DEBUG
     /// As a tap at `point` does if it's a link's. Says whether it was.
     func tapLinkForTesting(at point: CGPoint) -> Bool {
@@ -1223,6 +1318,12 @@ final class BiteTextView: UITextView {
         super.touchesBegan(touches, with: event)
     }
 
+    /// A key on a hardware keyboard, a modifier alone aside, puts found text out, as on the Mac.
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: { $0.key?.charactersIgnoringModifiers.isEmpty == false }) { hideFound() }
+        super.pressesBegan(presses, with: event)
+    }
+
     #if DEBUG
     /// Each checkbox click played, true for a tick.
     var checkboxHapticsForTesting: [Bool] = []
@@ -1232,6 +1333,27 @@ final class BiteTextView: UITextView {
         tapCheckbox(at: point)
     }
     #endif
+}
+
+/// Says when a finger lands, whatever comes of it: a tap, a drag, a long press. It recognizes
+/// nothing itself, and holds up neither the touches nor the other gestures.
+private final class TouchDownRecognizer: UIGestureRecognizer {
+    var onTouchDown: () -> Void = {}
+
+    init() {
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        onTouchDown()
+        state = .failed
+    }
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }
 }
 
 /// A selection rectangle in another place, otherwise like UIKit's own. A piece cut off above or

@@ -45,6 +45,9 @@ struct DotPager: UIViewRepresentable {
         store.clearInEditor = { [weak coordinator] dot in
             coordinator?.controllers[dot].clear()
         }
+        store.revealInEditor = { [weak coordinator] dot, line, query in
+            coordinator?.reveal(dot: dot, line: line, query: query)
+        }
         coordinator.scrollView.currentPage = selection
         coordinator.letPageScrollToTop(selection)
         return coordinator.container
@@ -76,20 +79,28 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
     var select: ((Int) -> Void)?
     var showVisiblePage: ((Int) -> Void)?
     var topBarMover: TopBarMover?
-    /// One tick each time the dot bar moves to another dot, including every dot passed on the
-    /// way when jumping several pages.
+    /// One tick each time a finger moves the pager to another page, swiping it or on the dot
+    /// bar. A page opened from elsewhere, as at a Spotlight result, comes on quietly.
     private let haptics = UISelectionFeedbackGenerator()
+    private(set) var ticksForTesting = 0
     private var lastVisiblePage: Int?
     /// Set while a swipe settles, so the keyboard moves over once it lands.
     private var pageAwaitingFocus: Int?
     /// Set while the keyboard waits to move over until the pager is let go of.
     private var isWaitingToPassKeyboard = false
+    /// A search result picked outside Bite, as Spotlight launched it, until the pager is laid out.
+    private var waitingReveal: (dot: Int, line: Int?, query: String)?
 
     override init() {
         super.init()
         scrollView.delegate = self
         scrollView.scrollsToTop = false
         scrollView.pageViews = controllers.map(\.textView)
+        scrollView.onLayout = { [weak self] in
+            guard let self, let waiting = self.waitingReveal else { return }
+            self.waitingReveal = nil
+            self.controllers[waiting.dot].reveal(waiting.query, line: waiting.line)
+        }
         container.onKeyboardOverlapChange = { [weak self] overlap in
             guard let self else { return }
             let isComingUp = overlap > 0 && self.controllers.first?.textView.keyboardOverlap == 0
@@ -153,6 +164,20 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         didSet {
             if oldValue, !isDotBarTouched { dotBarLetGo() }
         }
+    }
+
+    /// Shows `query` on page `dot`, picked outside Bite. At once, so the page comes up already lit
+    /// and scrolled as the pager goes to it: left for a moment later, the light came on a few
+    /// frames after the page as Bite came up from Spotlight. Launched by Spotlight, the pager isn't
+    /// laid out yet, and it waits until it is, before Bite's first frame.
+    func reveal(dot: Int, line: Int?, query: String) {
+        guard controllers.indices.contains(dot) else { return }
+        guard scrollView.bounds.width > 0 else {
+            waitingReveal = (dot, line, query)
+            scrollView.setNeedsLayout()
+            return
+        }
+        controllers[dot].reveal(query, line: line)
     }
 
     /// Selection changed from SwiftUI (the dot bar).
@@ -238,8 +263,14 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         let page = min(max(Int((scrollView.contentOffset.x / width).rounded()), 0), controllers.count - 1)
         guard page != lastVisiblePage else { return }
         // The first position is where the pager starts, not a change.
-        if lastVisiblePage != nil, Preferences.playsHaptics {
+        let byFinger = scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating || isDotBarTouched
+        if lastVisiblePage != nil, byFinger, Preferences.playsHaptics {
             haptics.selectionChanged()
+            ticksForTesting += 1
+        }
+        // Found text on the page left is gone when it's back.
+        if let left = lastVisiblePage, controllers.indices.contains(left) {
+            controllers[left].textView.hideFound()
         }
         lastVisiblePage = page
         letPageScrollToTop(page)
@@ -258,6 +289,10 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         haptics.prepare()
+        // A finger on the page puts found text out, as it does swiping it up or down.
+        if controllers.indices.contains(self.scrollView.currentPage) {
+            controllers[self.scrollView.currentPage].textView.hideFound()
+        }
         // Only the page the drag heads for, and only if it isn't ready yet. Pulled past the first
         // or last page there's none: readying the page behind made the rubber band catch.
         if let ahead = pageAhead(of: self.scrollView.currentPage, in: scrollView),
@@ -769,6 +804,8 @@ final class PagerScrollView: UIScrollView {
         }
     }
     var currentPage = 0
+    /// After the pages are laid out.
+    var onLayout: (() -> Void)?
     private var isChangingPage = false
     private var laidOutWidth: CGFloat = 0
 
@@ -813,6 +850,7 @@ final class PagerScrollView: UIScrollView {
         }
         let contentSize = CGSize(width: size.width * CGFloat(pageViews.count), height: size.height)
         if self.contentSize != contentSize { self.contentSize = contentSize }
+        onLayout?()
     }
 
     /// UIKit scrolls ancestor scroll views to reveal a first responder's caret. That must never

@@ -271,3 +271,58 @@ struct PassingTheKeyboardTests {
         #expect(harness.editing == 4)
     }
 }
+
+/// A page ticks as it comes on only under a finger: swiped to, or picked on the dot bar.
+@MainActor
+struct PageTickTests {
+    @Test func aPageOpenedFromElsewhereComesOnQuietly() {
+        _ = EditorHarness.privatePreferences
+        let pager = DotPagerCoordinator()
+        let frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        let window: UIWindow
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+            window = UIWindow(windowScene: scene)
+        } else {
+            window = UIWindow(frame: frame)
+        }
+        window.frame = frame
+        pager.container.frame = window.bounds
+        window.addSubview(pager.container)
+        EditorHarness.show(window)
+        pager.container.layoutIfNeeded()
+        // As at a Spotlight result.
+        pager.show(page: 1)
+        pager.show(page: 3)
+        #expect(pager.ticksForTesting == 0)
+        pager.isDotBarTouched = true
+        pager.show(page: 4)
+        pager.isDotBarTouched = false
+        #expect(pager.ticksForTesting == 1)
+        window.isHidden = true
+    }
+}
+
+/// Text lit as found from a search outside Bite is put out as its page is left, or as a finger
+/// starts to swipe it away, to be gone when the page is back.
+@MainActor
+struct FoundTextTests {
+    @Test func itGoesAsItsPageIsLeft() {
+        let harness = PagerHarness(editing: 1)
+        let page = harness.pager.controllers[1]
+        #expect(page.reveal("Line 3 of"))
+        #expect(page.textView.foundForTesting != nil)
+        harness.pager.show(page: 4)
+        #expect(page.textView.foundForTesting == nil)
+        harness.window.isHidden = true
+    }
+
+    @Test func itGoesAsAFingerStartsToSwipe() {
+        let harness = PagerHarness(editing: 1)
+        let page = harness.pager.controllers[1]
+        #expect(page.reveal("Line 3 of"))
+        harness.pager.scrollViewWillBeginDragging(harness.scrollView)
+        #expect(page.textView.foundForTesting == nil)
+        #expect(page.textView.foundLight.fadeForTesting == FoundLight.quickFade)
+        harness.window.isHidden = true
+    }
+}

@@ -18,6 +18,7 @@ enum BiteMacApp {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = DotStore(folder: AppDelegate.pagesFolder)
     private lazy var sync = PageSync(store: store)
+    private lazy var spotlight = SpotlightIndex(store: store)
     private var panel: PanelController?
     private var statusItem: StatusItemController?
 
@@ -39,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.registerForRemoteNotifications()
             // iCloud's pushes come late or not at all, so while the panel is up it asks.
             panel.onVisibleChange = { [weak self] visible in self?.sync.isOnScreen = visible }
+        }
+        if SpotlightIndex.runsHere {
+            spotlight.start()
         }
         GlobalShortcut.shared.onPress = { [weak panel] in panel?.toggle() }
         GlobalShortcut.shared.registerSaved()
@@ -65,6 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         return DotStore.defaultFolder
+    }
+
+    /// A page picked in Spotlight (see `SpotlightIndex`).
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        SpotlightIndex.open(userActivity, in: store)
     }
 
     func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

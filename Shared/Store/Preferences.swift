@@ -34,7 +34,15 @@ enum Preferences {
         set { set(newValue, forKey: playsHapticsKey) }
     }
 
+    /// Whether the pages can be found in Spotlight, on this device (see `SpotlightIndex`). On
+    /// unless turned off, as the Notes app's are.
+    static var showsInSpotlight: Bool {
+        get { defaults.object(forKey: showsInSpotlightKey) as? Bool ?? true }
+        set { set(newValue, forKey: showsInSpotlightKey) }
+    }
+
     private static let syncsWithICloudKey = "syncsWithICloud"
+    private static let showsInSpotlightKey = "showsInSpotlight"
     private static let checksSpellingKey = "checksSpelling"
     private static let panelIsGlassKey = "panelIsGlass"
     private static let playsHapticsKey = "playsHaptics"

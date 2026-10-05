@@ -64,6 +64,7 @@ struct SettingsView: View {
     @State private var shortcut = GlobalShortcut.shared.saved
     @State private var opensAtLogin = SMAppService.mainApp.status == .enabled
     @State private var syncsWithICloud = Preferences.syncsWithICloud
+    @State private var showsInSpotlight = Preferences.showsInSpotlight
     @State private var checksSpelling = Preferences.checksSpelling
     @State private var panelIsGlass = Preferences.panelIsGlass
     @State private var isConfirmingReset = false
@@ -92,6 +93,8 @@ struct SettingsView: View {
             Section {
                 Toggle("Sync with iCloud", isOn: $syncsWithICloud)
                     .tint(pageColour)
+                Toggle("Show in Spotlight", isOn: $showsInSpotlight)
+                    .tint(pageColour)
             }
             Section {
                 LabeledContent("Reset All Pages") {
@@ -114,6 +117,9 @@ struct SettingsView: View {
         }
         .onChange(of: syncsWithICloud) {
             Preferences.syncsWithICloud = syncsWithICloud
+        }
+        .onChange(of: showsInSpotlight) {
+            Preferences.showsInSpotlight = showsInSpotlight
         }
         .onChange(of: checksSpelling) {
             Preferences.checksSpelling = checksSpelling

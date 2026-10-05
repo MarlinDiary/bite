@@ -35,6 +35,18 @@ final class DotStore {
     @ObservationIgnored var onLocalChange: ((Int) -> Void)?
     /// Set by iCloud sync, which is told when another page is picked: someone's using Bite.
     @ObservationIgnored var onSelectionChange: (() -> Void)?
+    /// Set by the Spotlight index, which is told of the pages written to disk.
+    @ObservationIgnored var onSave: ((Set<Int>) -> Void)?
+    /// Set by the editors: shows a line on a page, and a search's words on it (see `reveal`). One
+    /// asked for before the editors are there, as Bite opens at a Spotlight result, waits for them.
+    @ObservationIgnored var revealInEditor: ((Int, Int?, String) -> Void)? {
+        didSet {
+            guard let revealInEditor, let waiting = waitingReveal else { return }
+            waitingReveal = nil
+            revealInEditor(waiting.dot, waiting.line, waiting.query)
+        }
+    }
+    @ObservationIgnored private var waitingReveal: (dot: Int, line: Int?, query: String)?
 
     private static let selectionKey = "selectedDot"
 
@@ -87,6 +99,17 @@ final class DotStore {
         } else {
             isEmpty[dot] = Self.isBlank(newValue)
             revisions[dot] += 1
+        }
+    }
+
+    /// Opens a dot's page at `line`, picked in a search outside Bite, showing where `query` is on it.
+    func reveal(dot: Int, line: Int?, query: String) {
+        guard markdown.indices.contains(dot) else { return }
+        selection = dot
+        if let revealInEditor {
+            revealInEditor(dot, line, query)
+        } else {
+            waitingReveal = (dot, line, query)
         }
     }
 
@@ -152,6 +175,7 @@ final class DotStore {
         reportPendingEdits()
         saveTask?.cancel()
         saveTask = nil
+        let saved = unsaved
         for dot in unsaved.sorted() {
             let file = Self.fileURL(for: dot, in: folder)
             try? markdown[dot].write(to: file, atomically: true, encoding: .utf8)
@@ -161,6 +185,7 @@ final class DotStore {
             }
         }
         unsaved.removeAll()
+        if !saved.isEmpty { onSave?(saved) }
     }
 
     private func scheduleSave() {

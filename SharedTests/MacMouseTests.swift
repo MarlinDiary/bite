@@ -71,6 +71,19 @@ struct MacMouseTests {
         #expect(editor.textView.selectedRange().location == 6)
     }
 
+    /// A click puts out the light on text found from a search outside Bite. Here, with the other
+    /// clicks, as the events queued for it are the whole app's.
+    @Test func aClickPutsFoundTextsLightOut() {
+        let editor = editor("Buy oat milk")
+        #expect(editor.controller.reveal("milk"))
+        let onText = point(of: 2, in: editor)
+        NSApp.postEvent(event(.leftMouseUp, at: onText, in: editor), atStart: false)
+        editor.textView.mouseDown(with: event(.leftMouseDown, at: onText, in: editor))
+        #expect(editor.textView.foundForTesting == nil)
+        #expect(editor.textView.foundLight.fadeForTesting == FoundLight.quickFade)
+        #expect(editor.textView.selectedRange().location == 2)
+    }
+
     /// Runs the main run loop in its default mode, as it is once a menu has gone, for `duration`
     /// or until `done`. Other tests' work on it may come first.
     private static func runLoop(for duration: Duration, until done: () -> Bool = { false }) {

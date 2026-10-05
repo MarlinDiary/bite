@@ -331,6 +331,26 @@ struct MacPanelTests {
         #expect(pages[0]?.frame.minX == 0)
     }
 
+    /// Text found from a search outside Bite is lit as the panel comes up on its page, and put out
+    /// as another page is shown, and as the panel is put away, to be gone when they're back.
+    @Test func foundTextGoesWithItsPageOrThePanel() {
+        let store = store()
+        let panel = panel(store)
+        panel.show()
+        for page in panel.controllers {
+            page.load(markdown: "Buy oat milk")
+        }
+        store.reveal(dot: 2, line: 0, query: "milk")
+        let second = panel.controllers[2].textView
+        #expect(second.foundForTesting == NSRange(location: 8, length: 4))
+        store.reveal(dot: 3, line: 0, query: "oat")
+        #expect(second.foundForTesting == nil)
+        let third = panel.controllers[3].textView
+        #expect(third.foundForTesting == NSRange(location: 4, length: 3))
+        panel.hide()
+        #expect(third.foundForTesting == nil)
+    }
+
     /// Picking a dot shows its page, and only its page.
     @Test func eachDotShowsItsOwnPage() {
         let store = store()

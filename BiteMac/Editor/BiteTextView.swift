@@ -526,6 +526,7 @@ final class BiteTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        hideFound()
         let point = convert(event.locationInWindow, from: nil)
         if let location = todoLocation(at: point) {
             editor?.toggleTodo(at: location)
@@ -820,6 +821,75 @@ final class BiteTextView: NSTextView {
     }
     #endif
 
+    // MARK: Found text
+
+    /// Lights the text a page was opened at, from a search outside Bite (see `FoundLight`). It
+    /// isn't selected, or typing would replace it: the caret goes before it. The panel is up by
+    /// now, so its moment starts at once.
+    func showFound(_ range: NSRange) {
+        guard let layer else { return }
+        let light = foundLight.layer
+        if light.superlayer !== layer {
+            // Over a code block's background, which stays at the bottom.
+            if codeBackgrounds.superlayer === layer {
+                layer.insertSublayer(light, above: codeBackgrounds)
+            } else {
+                layer.insertSublayer(light, at: 0)
+            }
+        }
+        foundLight.show(range)
+        drawFound()
+        foundLight.countDown()
+    }
+
+    func hideFound(_ fade: FoundLight.Fade = .quick) {
+        foundLight.hide(fade)
+    }
+
+    /// Drawn again whenever the text is laid out, as when the panel is resized. In the page's
+    /// colour, as the selection is while the panel is key, whether it is or not.
+    private func drawFound() {
+        guard let range = foundLight.range, NSMaxRange(range) <= (textStorage?.length ?? 0) else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        let path = CGMutablePath()
+        for frame in textFrames(of: range) {
+            path.addRoundedRect(in: frame, cornerWidth: 2, cornerHeight: 2)
+        }
+        foundLight.layer.path = path
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            foundLight.layer.fillColor = selectionColor.cgColor
+        }
+    }
+
+    let foundLight = FoundLight()
+
+    override func rightMouseDown(with event: NSEvent) {
+        hideFound()
+        super.rightMouseDown(with: event)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        hideFound()
+        super.scrollWheel(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        hideFound()
+        super.keyDown(with: event)
+    }
+
+    #if DEBUG
+    /// The text lit as found, until its light starts to go. For tests.
+    var foundForTesting: NSRange? { foundLight.range }
+
+    /// Where the found text's light is drawn, while it's lit. For tests.
+    var foundLightForTesting: CGRect? {
+        foundLight.range == nil ? nil : foundLight.layer.path?.boundingBoxOfPath
+    }
+    #endif
+
     /// Where the characters in `range` are drawn, a frame for each line they're on.
     private func textFrames(of range: NSRange) -> [CGRect] {
         guard let layoutManager = textLayoutManager,
@@ -903,6 +973,38 @@ final class BiteTextView: NSTextView {
         if placeToPutBack != nil {
             needsLayout = true
         }
+    }
+
+    /// Another page shown: found text here is put out, to be gone when this one's back.
+    override func viewDidHide() {
+        super.viewDidHide()
+        hideFound(.atOnce)
+    }
+
+    /// Scrolls `range` into view a little below the dot bar, as at a search result picked
+    /// outside Bite: where the eye goes first, with a few lines before it. In view already, it
+    /// stays where it is. Scrolled as a place kept is, laid out where it goes, as TextKit's
+    /// guesses at lines far down would show other text there.
+    func show(_ range: NSRange) {
+        guard let scrollView = enclosingScrollView, !isInView(range.location) else { return }
+        let clipView = scrollView.contentView
+        let visibleHeight = clipView.bounds.height - scrollView.contentInsets.top - scrollView.contentInsets.bottom
+        putBack((range.location, (visibleHeight / 4).rounded()))
+    }
+
+    /// Whether the line `character` is on shows whole, below the dot bar.
+    private func isInView(_ character: Int) -> Bool {
+        guard let layoutManager = textLayoutManager, let scrollView = enclosingScrollView,
+              let viewport = layoutManager.textViewportLayoutController.viewportRange,
+              let location = layoutManager.location(layoutManager.documentRange.location, offsetBy: character),
+              viewport.contains(location), let fragment = layoutManager.textLayoutFragment(for: location) else { return false }
+        let inParagraph = character - layoutManager.offset(from: layoutManager.documentRange.location, to: fragment.rangeInElement.location)
+        guard let line = fragment.textLineFragments.first(where: { NSMaxRange($0.characterRange) > inParagraph })
+            ?? fragment.textLineFragments.last else { return false }
+        let top = fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + textContainerOrigin.y
+        let clip = scrollView.contentView.bounds
+        return top >= clip.minY + scrollView.contentInsets.top
+            && top + line.typographicBounds.height <= clip.maxY - scrollView.contentInsets.bottom
     }
 
     private func putBack(_ place: PlaceOnScreen) {
@@ -1002,10 +1104,11 @@ final class BiteTextView: NSTextView {
         updateDecorations()
     }
 
-    /// Code blocks and the selection, which TextKit's layout leaves to the text view.
+    /// Code blocks, the selection and found text, which TextKit's layout leaves to the text view.
     private func updateDecorations() {
         updateCodeBackgrounds()
         updateSelectionHighlight()
+        drawFound()
     }
 
     override func viewDidMoveToWindow() {

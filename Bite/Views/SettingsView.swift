@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(DotStore.self) private var store
     @State private var syncsWithICloud = Preferences.syncsWithICloud
+    @State private var showsInSpotlight = Preferences.showsInSpotlight
     @State private var checksSpelling = Preferences.checksSpelling
     @State private var playsHaptics = Preferences.playsHaptics
     @State private var isConfirmingReset = false
@@ -16,6 +17,7 @@ struct SettingsView: View {
             Form {
                 Section {
                     Toggle("Sync with iCloud", isOn: $syncsWithICloud)
+                    Toggle("Show in Spotlight", isOn: $showsInSpotlight)
                 }
                 Section {
                     Toggle("Check Spelling", isOn: $checksSpelling)
@@ -42,6 +44,9 @@ struct SettingsView: View {
         }
         .onChange(of: syncsWithICloud) {
             Preferences.syncsWithICloud = syncsWithICloud
+        }
+        .onChange(of: showsInSpotlight) {
+            Preferences.showsInSpotlight = showsInSpotlight
         }
         .onChange(of: checksSpelling) {
             Preferences.checksSpelling = checksSpelling

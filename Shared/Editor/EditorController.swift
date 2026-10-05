@@ -251,6 +251,60 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         #endif
     }
 
+    /// Shows where `query` is on `line`, for a page opened at a search result picked outside Bite:
+    /// lit, with the caret before it, and scrolled into view a little below the top if it isn't in
+    /// view. Not on the line, the line is lit; with no line, the first place on the page it is.
+    /// Words not found together are looked for one at a time, as Spotlight finds a line with each
+    /// of them on it. Returns whether anything was found.
+    @discardableResult
+    func reveal(_ query: String, line: Int? = nil) -> Bool {
+        let text = storage.string as NSString
+        var found: NSRange?
+        if let line, let lineRange = Self.range(ofLine: line, in: text) {
+            found = Self.range(of: query, in: text, within: lineRange) ?? (lineRange.length > 0 ? lineRange : nil)
+        }
+        guard let range = found ?? Self.range(of: query, in: text, within: NSRange(location: 0, length: text.length)) else {
+            return false
+        }
+        caretGoesToEnd = false
+        let caret = NSRange(location: range.location, length: 0)
+        #if canImport(UIKit)
+        textView.selectedRange = caret
+        #else
+        textView.setSelectedRange(caret)
+        #endif
+        textView.show(range)
+        textView.showFound(range)
+        return true
+    }
+
+    /// Where `query` first is in `text` within `range`, whatever its case or accents, or else the
+    /// first of its words that is there.
+    static func range(of query: String, in text: NSString, within range: NSRange) -> NSRange? {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        for wanted in [query] + words where !wanted.isEmpty {
+            let found = text.range(of: wanted, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], range: range)
+            if found.location != NSNotFound { return found }
+        }
+        return nil
+    }
+
+    /// The text of the page's line `line`, counting from 0, without its line break: each of the
+    /// document's blocks is a line of the text.
+    static func range(ofLine line: Int, in text: NSString) -> NSRange? {
+        var count = 0
+        var found: NSRange?
+        text.enumerateSubstrings(in: NSRange(location: 0, length: text.length), options: [.byParagraphs, .substringNotRequired]) { _, range, _, stop in
+            if count == line {
+                found = range
+                stop.pointee = true
+            }
+            count += 1
+        }
+        return found
+    }
+
     #if canImport(UIKit)
     /// Readies the page to be moved to with the keyboard up: it shows up scrolled to its caret,
     /// which goes to the end the first time, as it will when the page is focused.
@@ -390,6 +444,10 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         bar.tintColor = theme.accent
         bar.refresh()
         onBeginEditing?()
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        textView.hideFound()
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
@@ -1765,6 +1823,9 @@ final class EditorController: NSObject, EditorTextViewDelegate {
 
     @objc private func storageWillProcessEditing(_ notification: Notification) {
         guard storage.editedMask.contains(.editedCharacters) else { return }
+        // Whatever changed the text, typing or another device, found text has had its moment.
+        // Its light goes at once, fading or not: left to fade, it stayed where the text had been.
+        textView.hideFound(.atOnce)
         let edited = storage.editedRange
         let delta = storage.changeInLength
         if isApplyingEdit {

@@ -102,6 +102,9 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         store.clearInEditor = { [weak self] dot in
             self?.controllers[dot].clear()
         }
+        store.revealInEditor = { [weak self] dot, line, query in
+            self?.reveal(dot: dot, line: line, query: query)
+        }
         storeDidChange()
         observeStore()
         if !forTesting {
@@ -278,6 +281,17 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
             controller.load(markdown: store.markdown[controller.dot])
         }
         showPage(store.selection)
+    }
+
+    /// A line picked in Spotlight: the panel comes up on its page, with the line in view and lit
+    /// from its first frame.
+    private func reveal(dot: Int, line: Int?, query: String) {
+        if isShown {
+            showPage(dot)
+        } else {
+            show()
+        }
+        controllers[dot].reveal(query, line: line)
     }
 
     private func showPage(_ page: Int) {
@@ -622,6 +636,10 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         panel.orderOut(nil)
         resetAfterClosing()
         panel.alphaValue = 1
+        // Found text has had its moment: it's gone when the panel's back.
+        for controller in controllers {
+            controller.textView.hideFound(.atOnce)
+        }
     }
 
     /// Shown again while it goes, it's back as it was at once.

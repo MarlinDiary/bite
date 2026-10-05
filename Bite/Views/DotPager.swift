@@ -467,6 +467,10 @@ final class PagerContainerView: UIView {
     /// Whether the bar's track is moving, in an animation of its own or one it's carried by.
     var barTrackIsMovingForTesting: Bool { !(barTrack.layer.animationKeys() ?? []).isEmpty }
 
+    /// How much the bar's track shows, and whether it's fading.
+    var barTrackAlphaForTesting: CGFloat { barTrack.alpha }
+    var barTrackIsFadingForTesting: Bool { barTrack.layer.animation(forKey: "opacity") != nil }
+
     /// UIKit saying the keys are going, as it does turning the phone upright.
     func keyboardWillHideForTesting() {
         keysWillGo()
@@ -480,6 +484,7 @@ final class PagerContainerView: UIView {
     private func placeBar() {
         var keys = self.keys
         let editor = editingTextView()
+        let keysWere = measuredKeys
         if keys > measuredKeys { keysAreGoing = false }
         if keys == 0, measuredKeys > 0, keysMayComeRightBack(to: editor) || keysTurnWithPhone(editor) {
             holdVanishedKeys(measuredKeys)
@@ -530,6 +535,7 @@ final class PagerContainerView: UIView {
         }
         moveBar(keysFrom: laidOutKeys, to: barKeys)
         laidOutKeys = barKeys
+        fadeBar(keys: keys, keysWere: keysWere, editor: editor)
 
         // On a phone on its side the keys leave the page a few lines, and the dot bar goes up out
         // of their way while they're up (user, 2026-10-05), with them, and comes back as they go.
@@ -576,6 +582,25 @@ final class PagerContainerView: UIView {
     func pageTookKeys() {
         guard keys > 120, !barRidesOnKeys, editingTextView() != nil, !isWritingToolsAtWork else { return }
         UIView.animate(withDuration: 0.25) { self.placeBar() }
+    }
+
+    /// On a phone on its side the system takes the keys away at once, though it says they slide
+    /// down as they do upright (iOS 27, a plain text view's too). The bar, left on its own, stood
+    /// still for a moment and then slid down through where they had been (user, 2026-10-05). It
+    /// fades as it goes, from the moment they're gone, and is whole again as keys come back. Keys
+    /// a finger swipes away carry it down as ever.
+    private func fadeBar(keys: CGFloat, keysWere: CGFloat, editor: UITextView?) {
+        let keysGoAtOnce = keys == 0 && keysWere > 0 && UIView.inheritedAnimationDuration > 0 && !isWritingToolsAtWork
+            && editor?.isTracking != true
+            && traitCollection.verticalSizeClass == .compact && traitCollection.userInterfaceIdiom == .phone
+        if keysGoAtOnce {
+            UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+                self.barTrack.alpha = 0
+            }
+        } else if keys > 0, barTrack.alpha < 1 {
+            barTrack.layer.removeAnimation(forKey: "opacity")
+            UIView.performWithoutAnimation { barTrack.alpha = 1 }
+        }
     }
 
     /// Whether the phone turned a moment ago.

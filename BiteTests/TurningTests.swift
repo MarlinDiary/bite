@@ -164,6 +164,41 @@ struct TurningTests {
         _ = window
     }
 
+    /// On a phone on its side the system takes the keys away at once, though it says they slide
+    /// down: the format bar fades as it goes, from that moment, and is whole again as keys come
+    /// back. Upright it goes down with the keys' slide, whole.
+    @Test func theFormatBarFadesAsTheKeysDropOnItsSide() async {
+        let (pager, window) = pager(on: 0)
+        let container = pager.container
+        pager.controllers[0].textView.becomeFirstResponder()
+        let keys = { (height: CGFloat, animated: Bool) in
+            let place = {
+                container.keysForTesting = height
+                container.setNeedsLayout()
+                container.layoutIfNeeded()
+            }
+            if animated { UIView.animate(withDuration: 0.38, animations: place) } else { place() }
+        }
+        keys(300, false)
+        container.keyboardWillHideForTesting()
+        keys(0, true)
+        #expect(container.barTrackAlphaForTesting == 1)
+        #expect(!container.barTrackIsFadingForTesting)
+
+        turn(container, to: Self.onItsSide, in: window)
+        keys(200, true)
+        #expect(container.barTrackAlphaForTesting == 1)
+        // Past the turn, which holds keys gone for a moment.
+        await wait(0.7)
+        container.keyboardWillHideForTesting()
+        keys(0, true)
+        #expect(container.barTrackAlphaForTesting == 0)
+        #expect(container.barTrackIsFadingForTesting)
+        keys(200, true)
+        #expect(container.barTrackAlphaForTesting == 1)
+        #expect(!container.barTrackIsFadingForTesting)
+    }
+
     /// As Notes' toolbar does, the format bar takes the trailing half of a phone on its side, and
     /// the lines' starts stay in view beside it.
     @Test func theFormatBarTakesTheTrailingHalfOnItsSide() {

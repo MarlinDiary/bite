@@ -56,6 +56,8 @@ final class PageSync: CKSyncEngineDelegate {
     private var checkToken: CKServerChangeToken?
     /// Asked too often, or busy, iCloud says when to come back.
     private var checksPausedUntil: ContinuousClock.Instant?
+    /// Whether the last check brought a page changed elsewhere.
+    private var lastCheckBroughtChanges = false
     /// The text of each page on its way up. The same text in a fetch, before word that it went up,
     /// is this device's own (see `took`).
     private var sending: [Int: String] = [:]
@@ -156,10 +158,16 @@ final class PageSync: CKSyncEngineDelegate {
         engine?.state.add(pendingRecordZoneChanges: unsent.map { .saveRecord(recordID(for: $0)) })
     }
 
-    /// A push from iCloud, as another device changed a page: brought down at once.
-    func pushArrived() async {
+    /// A push from iCloud, as another device changed a page: brought down at once. Says whether a
+    /// page came in, which the phone tells the system, to be woken for pushes as often as is useful.
+    @discardableResult
+    func pushArrived() async -> Bool {
         Self.log.info("Push came in")
+        #if canImport(UIKit)
+        if !isOnScreen { return await syncInBackground("push") }
+        #endif
         await checkNow()
+        return lastCheckBroughtChanges
     }
 
     /// Set while Bite is on screen, the Mac's panel up or the app in front. Other devices'
@@ -209,6 +217,7 @@ final class PageSync: CKSyncEngineDelegate {
     /// Bite comes to the front.
     @discardableResult
     private func checkNow() async -> Duration {
+        lastCheckBroughtChanges = false
         if let paused = checksPausedUntil, .now < paused { return paused - .now }
         guard let engine, !isChecking else { return Self.checkInterval }
         isChecking = true
@@ -238,6 +247,7 @@ final class PageSync: CKSyncEngineDelegate {
             failed = true
         }
         if tookAny { save() }
+        lastCheckBroughtChanges = tookNew
         // Not signed in, offline, or with no pages up yet, it asks again no sooner than when quiet.
         let wait = Self.waitBeforeNextCheck(onScreen: isOnScreen, tookNew: tookNew, failed: failed,
                                             sinceActivity: .now - lastActivity)
@@ -294,6 +304,33 @@ final class PageSync: CKSyncEngineDelegate {
         guard leavingTask != .invalid else { return }
         UIApplication.shared.endBackgroundTask(leavingTask)
         leavingTask = .invalid
+    }
+
+    /// The system lets Bite run for a moment while it's off screen: for a push from iCloud, or a
+    /// background refresh Bite asked for (see `BackgroundSync`). Other devices' changes come down
+    /// and are written to disk at once, as Bite is stopped again right after, and whatever's still
+    /// to go up goes. Says whether a page came in.
+    @discardableResult
+    func syncInBackground(_ reason: String) async -> Bool {
+        guard engine != nil else { return false }
+        Self.log.info("Syncing in the background, for \(reason, privacy: .public)")
+        await checkNow()
+        let broughtChanges = lastCheckBroughtChanges
+        sendUnsentPages()
+        await sendUntilDone()
+        store.saveNow()
+        Self.noteBackgroundSync(reason, broughtChanges: broughtChanges)
+        return broughtChanges
+    }
+
+    /// The last few times Bite synced in the background, and why, newest last: whether the system
+    /// lets it, which can't be seen otherwise, can be read off the phone.
+    static let backgroundSyncsKey = "backgroundSyncs"
+
+    private static func noteBackgroundSync(_ reason: String, broughtChanges: Bool) {
+        let entry = "\(Date.now.ISO8601Format()) \(reason)\(broughtChanges ? ", brought changes" : "")"
+        let entries = (UserDefaults.standard.stringArray(forKey: backgroundSyncsKey) ?? []) + [entry]
+        UserDefaults.standard.set(Array(entries.suffix(20)), forKey: backgroundSyncsKey)
     }
 
     /// Sends what's waiting to go up, after any send under way, and again for what changed

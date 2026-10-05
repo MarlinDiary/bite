@@ -38,6 +38,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(store: store)))
         window.title = "Settings"
         window.styleMask = [.titled, .closable]
+        window.level = PanelController.levelAbove
         window.isReleasedWhenClosed = false
         window.delegate = self
         return window
@@ -50,6 +51,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             NSApp.hide(nil)
         }
     }
+
+    #if DEBUG
+    func windowForTesting(store: DotStore) -> NSWindow {
+        makeWindow(store: store)
+    }
+    #endif
 }
 
 struct SettingsView: View {

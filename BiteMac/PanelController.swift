@@ -54,6 +54,12 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     private var closeSlowdown = 1.0
 
     static let topBarHeight = TopBar.height
+    /// Over every app's windows, their floating ones too, and over the Dock (user, 2026-10-05).
+    /// Menus, an input method's candidates and help tags are higher still, over it.
+    static let level = NSWindow.Level.statusBar
+    /// Bite's other windows, over the panel: Settings (user, 2026-10-05), and AppKit's spelling
+    /// panels, which float, under it.
+    static let levelAbove = NSWindow.Level(rawValue: level.rawValue + 1)
     private static let sizeKey = "panelSize"
 
     /// A panel for a test leaves the app in use active, and hears neither the person's clicks nor
@@ -78,7 +84,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.minSize = NSSize(width: 320, height: 280)
-        panel.level = .floating
+        panel.level = Self.level
         panel.delegate = self
         panel.onCancel = { [weak self] in self?.hide() }
         background.frame = NSRect(origin: .zero, size: Self.savedSize)

@@ -122,6 +122,25 @@ struct MacPanelTests {
         #expect(!panel.isClosingForTesting)
     }
 
+    /// The panel stays over every app's windows, and Bite's other windows over the panel:
+    /// Settings, and AppKit's spelling panels, which float.
+    @Test func thePanelIsOverEveryAppAndBitesOtherWindowsOverIt() {
+        #expect(panel().windowForTesting.level == .statusBar)
+        #expect(PanelController.levelAbove.rawValue > PanelController.level.rawValue)
+        #expect(PanelController.levelAbove.rawValue < NSWindow.Level.popUpMenu.rawValue)
+        #expect(SettingsWindowController().windowForTesting(store: store()).level == PanelController.levelAbove)
+
+        let textView = BiteTextView()
+        textView.configure()
+        let checker = NSSpellChecker.shared
+        textView.showGuessPanel(nil)
+        textView.orderFrontSubstitutionsPanel(nil)
+        #expect(checker.spellingPanel.level == PanelController.levelAbove)
+        #expect(checker.substitutionsPanel.level == PanelController.levelAbove)
+        checker.spellingPanel.orderOut(nil)
+        checker.substitutionsPanel.orderOut(nil)
+    }
+
     /// The ring's right click has Bite's own commands, none of the page's.
     @Test func theRingsMenuIsBitesOwn() {
         let menu = panel().makeRingMenu()

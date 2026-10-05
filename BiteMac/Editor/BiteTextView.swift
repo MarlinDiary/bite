@@ -460,6 +460,20 @@ final class BiteTextView: NSTextView {
         return super.validateMenuItem(menuItem)
     }
 
+    // MARK: Spelling
+
+    /// AppKit's spelling panel floats, which put it under the panel: it comes up over it.
+    override func showGuessPanel(_ sender: Any?) {
+        NSSpellChecker.shared.spellingPanel.level = PanelController.levelAbove
+        super.showGuessPanel(sender)
+    }
+
+    /// The text menu's Show Substitutions, over the panel too.
+    override func orderFrontSubstitutionsPanel(_ sender: Any?) {
+        NSSpellChecker.shared.substitutionsPanel.level = PanelController.levelAbove
+        super.orderFrontSubstitutionsPanel(sender)
+    }
+
     // MARK: Dragging
 
     /// Text dragged within a page would be moved by AppKit straight in the text storage, out of

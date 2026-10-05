@@ -361,6 +361,11 @@ final class PagerContainerView: UIView {
     /// gone, then a few milliseconds later that they're back. Following that, the bar dipped and
     /// bounced back as Siri came, and fell and then dropped back down from above as it went.
     private var keysThatVanished: CGFloat?
+    /// The size this view was last laid out at, and when it last changed, as the phone turned.
+    /// Turning upright, UIKit takes the keys down, says they're going, and puts them straight back
+    /// up for the new way up: the bar went down into them and was gone for the turn.
+    private var laidOutSize: CGSize = .zero
+    private var turnedAt: ContinuousClock.Instant?
     private var vanishedKeysRelease = 0
     /// The keys as last measured, before any held in their place.
     private var measuredKeys: CGFloat = 0
@@ -424,6 +429,10 @@ final class PagerContainerView: UIView {
     /// comes or goes.
     override func layoutSubviews() {
         super.layoutSubviews()
+        if bounds.size != laidOutSize {
+            if laidOutSize != .zero { turnedAt = .now }
+            laidOutSize = bounds.size
+        }
         placeBar()
     }
 
@@ -442,6 +451,14 @@ final class PagerContainerView: UIView {
     /// Where the bar's track is: its bottom edge is the top of the keys the bar rides on.
     var barTrackFrameForTesting: CGRect { barTrack.frame }
 
+    /// Whether the bar's track is moving, in an animation of its own or one it's carried by.
+    var barTrackIsMovingForTesting: Bool { !(barTrack.layer.animationKeys() ?? []).isEmpty }
+
+    /// UIKit saying the keys are going, as it does turning the phone upright.
+    func keyboardWillHideForTesting() {
+        keysWillGo()
+    }
+
     /// How many times the bar has stopped riding on the keys, to go down into them.
     private(set) var timesBarLeftKeysForTesting = 0
     #endif
@@ -451,7 +468,7 @@ final class PagerContainerView: UIView {
         var keys = self.keys
         let editor = editingTextView()
         if keys > measuredKeys { keysAreGoing = false }
-        if keys == 0, measuredKeys > 0, keysMayComeRightBack(to: editor) {
+        if keys == 0, measuredKeys > 0, keysMayComeRightBack(to: editor) || keysTurnWithPhone(editor) {
             holdVanishedKeys(measuredKeys)
         }
         measuredKeys = keys
@@ -490,8 +507,12 @@ final class PagerContainerView: UIView {
         if barTrack.frame != track {
             // Keys that jump into place, as the page's do when a drawer over it closes, leave
             // nothing of an earlier move playing out: the track, still sliding after keys that had
-            // been going down, showed the bar high above them and slid it down onto them.
-            if UIView.inheritedAnimationDuration == 0 { barTrack.layer.removeAllAnimations() }
+            // been going down, showed the bar high above them and slid it down onto them. Not while
+            // the phone turns: the turn's own animation carries the track with this view's bottom,
+            // and the keys for the new way up come a moment into the turn, outside it. Put straight
+            // where it ends, the track went below the bottom, out of sight for the turn upright.
+            let isInTurn = (layer.animationKeys() ?? []).contains { $0.hasPrefix("bounds") }
+            if UIView.inheritedAnimationDuration == 0, !isInTurn { barTrack.layer.removeAllAnimations() }
             barTrack.frame = track
         }
         moveBar(keysFrom: laidOutKeys, to: barKeys)
@@ -536,6 +557,19 @@ final class PagerContainerView: UIView {
         UIView.animate(withDuration: 0.25) { self.placeBar() }
     }
 
+    /// Whether the phone turned a moment ago.
+    private var isTurning: Bool {
+        guard let turnedAt else { return false }
+        return ContinuousClock.now - turnedAt < .milliseconds(600)
+    }
+
+    /// Whether keys that just vanished from under the page being edited are being turned with the
+    /// phone, to come straight back for the new way up, whatever UIKit said.
+    private func keysTurnWithPhone(_ editor: UITextView?) -> Bool {
+        guard let editor, isTurning else { return false }
+        return (editor as? BiteTextView)?.isResigning != true
+    }
+
     /// Whether keys that just vanished from under the page being edited may be back in a moment:
     /// nothing put them away, and nothing said they were going.
     private func keysMayComeRightBack(to editor: UITextView?) -> Bool {
@@ -563,7 +597,8 @@ final class PagerContainerView: UIView {
 
     @objc private func keysWillGo() {
         keysAreGoing = true
-        letVanishedKeysGo()
+        // Said as the phone turns upright, of keys coming straight back.
+        if !isTurning { letVanishedKeysGo() }
     }
 
     @objc private func keysWillCome() {
@@ -719,17 +754,19 @@ final class PagerScrollView: UIScrollView {
         super.layoutSubviews()
         let size = bounds.size
         guard size.width > 0 else { return }
+        // After a resize (first layout, rotation), the current page goes back in place first. The
+        // pages narrowing under the old place, as the phone turned upright, put the pager on the
+        // last page for a moment, which it reported, with a tick, and the dot bar stayed on it.
+        if size.width != laidOutWidth {
+            laidOutWidth = size.width
+            contentOffset = CGPoint(x: CGFloat(currentPage) * size.width, y: 0)
+        }
         for (index, view) in pageViews.enumerated() {
             let frame = CGRect(x: CGFloat(index) * size.width, y: 0, width: size.width, height: size.height)
             if view.frame != frame { view.frame = frame }
         }
         let contentSize = CGSize(width: size.width * CGFloat(pageViews.count), height: size.height)
         if self.contentSize != contentSize { self.contentSize = contentSize }
-        // After a resize (first layout, rotation), put the current page back in place.
-        if size.width != laidOutWidth {
-            laidOutWidth = size.width
-            contentOffset = CGPoint(x: CGFloat(currentPage) * size.width, y: 0)
-        }
     }
 
     /// UIKit scrolls ancestor scroll views to reveal a first responder's caret. That must never

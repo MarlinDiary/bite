@@ -306,7 +306,7 @@ final class BiteTextView: UITextView {
         // Text layout has just run, so the caret rect is final.
         if needsCaretScroll {
             needsCaretScroll = false
-            scrollCaretIntoView(animated: true)
+            if placeAcrossTurn == nil { scrollCaretIntoView(animated: true) }
         }
     }
 
@@ -349,6 +349,8 @@ final class BiteTextView: UITextView {
         let sides = safeSides
         let textInsets = UIEdgeInsets(top: topTextInset - topBarHeight, left: 22 + sides.left, bottom: bottomTextInset, right: 22 + sides.right)
         if textContainerInset != textInsets {
+            // Set before, the room beside the Dynamic Island changes as the phone turns.
+            if textContainerInset.left > 0 { beginTurn() }
             textContainerInset = textInsets
         }
         let insets = UIEdgeInsets(top: topObstruction, left: 0,
@@ -356,12 +358,17 @@ final class BiteTextView: UITextView {
         if contentInset != insets {
             // What's on screen stays put when the top inset first arrives or the safe area changes.
             let shift = insets.top - contentInset.top
+            let offset = contentOffset.y - shift
             contentInset = insets
+            // From where it was, not from where UIKit put it as the inset changed, and within the
+            // page: left past its top, as after a turn back upright, UIKit put it back once the
+            // turn was over, a jump.
             if shift != 0 {
-                contentOffset.y -= shift
+                contentOffset.y = min(max(offset, -insets.top), max(-insets.top, contentSize.height + insets.bottom - bounds.height))
             }
         }
         updateScrollIndicatorInsets()
+        keepPlaceAcrossTurn()
     }
 
     /// The indicator runs from just under the dot bar down to the format bar or, with the keyboard
@@ -373,6 +380,100 @@ final class BiteTextView: UITextView {
         let insets = UIEdgeInsets(top: safeTop + topBarHeight, left: 0, bottom: max(wantedKeyboardOverlap, cornerClearance), right: 0)
         if verticalScrollIndicatorInsets != insets {
             verticalScrollIndicatorInsets = insets
+        }
+    }
+
+    // MARK: Turning the phone
+
+    /// The line kept in place while the page reflows to a new width, as when the phone turns: the
+    /// caret's line while typing with it in view, otherwise the line at the top. The lines reflow
+    /// and the dot bar and the keys move, and that line stays as far below the dot bar as it was.
+    /// The page used to keep its scroll position in points, which after the reflow showed other
+    /// text; and typing, it scrolled to the caret by the keys' height from before the turn, too
+    /// far, then back again once the turn was over.
+    private var placeAcrossTurn: PlaceOnPage?
+    /// The page's width, the place on it, its selection and where it was scrolled to as the turn
+    /// underway began.
+    private var turnStart: (width: CGFloat, place: PlaceOnPage, selection: NSRange, offset: CGFloat)?
+    /// The same from before the last turn, with where the page was left after it. Turned back with
+    /// nothing changed meanwhile, the page goes back to just that place: kept in view of the keys
+    /// on a phone on its side, the caret's line otherwise came back near the top.
+    private var placeBeforeLastTurn: (width: CGFloat, place: PlaceOnPage, selection: NSRange, offsetAfter: CGFloat)?
+    /// Which turn is underway, so an earlier one's end doesn't end a later one.
+    private var turnUnderway = 0
+
+    private typealias PlaceOnPage = (location: Int, belowTop: CGFloat)
+
+    override var frame: CGRect {
+        willSet {
+            if newValue.width != frame.width { beginTurn(toWidth: newValue.width) }
+        }
+    }
+
+    /// Called before the lines reflow, by whichever change comes first: the page's width, or the
+    /// room beside the Dynamic Island, which turning upright takes away first.
+    private func beginTurn(toWidth width: CGFloat? = nil) {
+        guard frame.width > 0, window != nil, !isTracking else { return }
+        if turnStart == nil, let place = placeToKeep() {
+            turnStart = (frame.width, place, selectedRange, contentOffset.y)
+            placeAcrossTurn = place
+        }
+        if let width, let start = turnStart, let before = placeBeforeLastTurn, before.width == width,
+           before.selection == start.selection, abs(before.offsetAfter - start.offset) < 0.5 {
+            placeAcrossTurn = before.place
+        }
+        turnUnderway += 1
+        let turn = turnUnderway
+        // The keys turn a moment after the page, in the same animation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.turnUnderway == turn else { return }
+            if let start = self.turnStart {
+                self.placeBeforeLastTurn = (start.width, start.place, start.selection, self.contentOffset.y)
+            }
+            self.turnStart = nil
+            self.placeAcrossTurn = nil
+        }
+    }
+
+    /// The caret's line if it's being typed in and in view, else the line at the top, and how far
+    /// below the dot bar it is, by the insets the page is scrolled by.
+    private func placeToKeep() -> PlaceOnPage? {
+        let visibleTop = contentOffset.y + contentInset.top
+        let visibleBottom = contentOffset.y + bounds.height - bottomObstruction
+        if isFirstResponder, let end = selectedTextRange?.end {
+            let caret = caretRect(for: end)
+            if !caret.isNull, !caret.isInfinite, caret.maxY > visibleTop, caret.minY < visibleBottom {
+                return (offset(from: beginningOfDocument, to: end), caret.minY - visibleTop)
+            }
+        }
+        guard let top = closestPosition(to: CGPoint(x: textContainerInset.left, y: max(visibleTop, textContainerInset.top))) else {
+            return nil
+        }
+        let line = caretRect(for: top)
+        guard !line.isNull, !line.isInfinite else { return nil }
+        return (offset(from: beginningOfDocument, to: top), line.minY - visibleTop)
+    }
+
+    /// Puts the kept line back as far below the dot bar as it was, in the lines as they now
+    /// reflow, and the caret in view of the keys as they now stand. It runs again as each part of
+    /// the turn arrives, from where the line was, so it ends where the last of them leaves it.
+    private func keepPlaceAcrossTurn() {
+        guard let place = placeAcrossTurn else { return }
+        guard !isTracking else {
+            placeAcrossTurn = nil
+            return
+        }
+        guard let position = position(from: beginningOfDocument, offset: place.location) else { return }
+        let line = caretRect(for: position)
+        guard !line.isNull, !line.isInfinite else { return }
+        let top = -contentInset.top
+        let end = max(top, contentSize.height + contentInset.bottom - bounds.height)
+        var target = min(max(line.minY - place.belowTop - contentInset.top, top), end)
+        if isFirstResponder, keyboardOverlap > 0, let caretTarget = caretScrollTarget(from: target) {
+            target = caretTarget
+        }
+        if abs(target - contentOffset.y) > 0.5 {
+            contentOffset.y = target
         }
     }
 
@@ -411,15 +512,16 @@ final class BiteTextView: UITextView {
     }
 
     /// Where the page scrolls to for the caret to be in view (see `scrollCaretIntoView`), or nil
-    /// if it's in view where the page is.
-    private func caretScrollTarget() -> CGFloat? {
+    /// if it's in view where the page is, or where it would be scrolled to `offset`.
+    private func caretScrollTarget(from offset: CGFloat? = nil) -> CGFloat? {
         guard let position = selectedTextRange?.end else { return nil }
         let caret = caretRect(for: position)
         guard !caret.isNull, !caret.isInfinite else { return nil }
-        let visibleTop = contentOffset.y + topObstruction
-        let visibleBottom = contentOffset.y + bounds.height - bottomObstruction
+        let start = offset ?? contentOffset.y
+        let visibleTop = start + topObstruction
+        let visibleBottom = start + bounds.height - bottomObstruction
         let comfort = min(96, max(0, (visibleBottom - visibleTop) * 0.25))
-        var target = contentOffset.y
+        var target = start
         if caret.maxY + comfort > visibleBottom {
             // Settle a little past the threshold: an empty line's caret sits a few points higher
             // than the same line once it has text, and that shouldn't cause a second nudge.
@@ -429,7 +531,7 @@ final class BiteTextView: UITextView {
         }
         let maxOffset = max(-contentInset.top, contentSize.height + contentInset.bottom - bounds.height)
         target = min(max(target, -contentInset.top), maxOffset)
-        guard abs(target - contentOffset.y) > 0.5 else { return nil }
+        guard abs(target - start) > 0.5 else { return nil }
         return target
     }
 

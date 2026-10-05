@@ -26,7 +26,9 @@ struct RootView: View {
                 .animation(washChangesAtOnce ? nil : .easeInOut(duration: 0.35), value: visiblePage)
 
             // Full height at all times; the text views handle the keyboard with their own insets.
-            DotPager(selection: $store.selection, visiblePage: Binding(get: { visiblePage }, set: { reportedPage = $0 }),
+            // Read as it is now, not as it was when the view was last drawn: two pages reported in a
+            // row took the second for no change.
+            DotPager(selection: $store.selection, visiblePage: Binding(get: { reportedPage ?? store.selection }, set: { reportedPage = $0 }),
                      isDotBarTouched: isDotBarTouched)
                 .ignoresSafeArea()
 

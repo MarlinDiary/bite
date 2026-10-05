@@ -1,0 +1,176 @@
+import Testing
+import UIKit
+@testable import Bite
+
+/// Turning the phone: the pager stays on its page, a page keeps its place, and the format bar turns
+/// with the keys.
+@MainActor
+struct TurningTests {
+    private static let upright = CGRect(x: 0, y: 0, width: 402, height: 874)
+    private static let onItsSide = CGRect(x: 0, y: 0, width: 874, height: 402)
+
+    private func window(_ frame: CGRect) -> UIWindow {
+        let window: UIWindow
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+            window = UIWindow(windowScene: scene)
+        } else {
+            window = UIWindow(frame: frame)
+        }
+        window.frame = frame
+        EditorHarness.show(window)
+        return window
+    }
+
+    private func pager(on page: Int) -> (DotPagerCoordinator, UIWindow) {
+        let pager = DotPagerCoordinator()
+        let window = window(Self.upright)
+        pager.container.frame = window.bounds
+        window.addSubview(pager.container)
+        for controller in pager.controllers {
+            controller.load(markdown: "Page \(controller.dot)")
+        }
+        pager.container.layoutIfNeeded()
+        pager.scrollView.go(to: page)
+        return (pager, window)
+    }
+
+    private func turn(_ view: UIView, to frame: CGRect, in window: UIWindow) {
+        window.frame = frame
+        view.frame = window.bounds
+        view.layoutIfNeeded()
+    }
+
+    /// A page of paragraphs long enough to wrap differently either way up.
+    private func page(in window: UIWindow) -> EditorController {
+        let page = EditorController(dot: 1, accent: .systemBlue)
+        page.textView.frame = window.bounds
+        window.addSubview(page.textView)
+        let paragraph = String(repeating: "The quick brown fox jumps over the lazy dog. ", count: 6)
+        page.load(markdown: (1...30).map { "Paragraph \($0). \(paragraph)" }.joined(separator: "\n\n"))
+        page.textView.layoutIfNeeded()
+        return page
+    }
+
+    /// The character starting the line at the top of what shows, under the dot bar.
+    private func topCharacter(of textView: BiteTextView) -> Int {
+        let point = CGPoint(x: textView.textContainerInset.left + 1, y: textView.contentOffset.y + textView.contentInset.top + 1)
+        let position = textView.closestPosition(to: point) ?? textView.beginningOfDocument
+        return textView.offset(from: textView.beginningOfDocument, to: position)
+    }
+
+    /// How far below the dot bar the line with `location` in it starts.
+    private func lineTop(of location: Int, in textView: BiteTextView) -> CGFloat {
+        let position = textView.position(from: textView.beginningOfDocument, offset: location) ?? textView.beginningOfDocument
+        return textView.caretRect(for: position).minY - (textView.contentOffset.y + textView.contentInset.top)
+    }
+
+    private func wait(_ seconds: Double) async {
+        try? await Task.sleep(for: .seconds(seconds))
+    }
+
+    /// Turned upright again, the pages narrowed under the pager's old place and put it on the last
+    /// page for a moment, which it reported, and the dot bar was left on it.
+    @Test func thePagerStaysOnItsPage() {
+        let (pager, window) = pager(on: 4)
+        var reported: [Int] = []
+        pager.showVisiblePage = { reported.append($0) }
+        for frame in [Self.onItsSide, Self.upright, Self.onItsSide, Self.upright] {
+            turn(pager.container, to: frame, in: window)
+            #expect(pager.scrollView.contentOffset.x == 4 * frame.width)
+        }
+        #expect(reported.isEmpty)
+    }
+
+    /// The line at the top stays at the top as the lines reflow, and turned back with nothing
+    /// changed, the page is back just where it was.
+    @Test func aPageKeepsTheLineAtItsTop() async {
+        let window = window(Self.upright)
+        let textView = page(in: window).textView
+        textView.contentOffset.y = 900
+        textView.layoutIfNeeded()
+        let location = topCharacter(of: textView)
+        let below = lineTop(of: location, in: textView)
+        turn(textView, to: Self.onItsSide, in: window)
+        #expect(abs(lineTop(of: location, in: textView) - below) < 1)
+        #expect(abs(textView.contentOffset.y - 900) > 100)
+        await wait(0.7)
+        turn(textView, to: Self.upright, in: window)
+        #expect(abs(textView.contentOffset.y - 900) < 1)
+    }
+
+    /// Typing, the caret stays in view of the keys as they turn too, and turned back, the page is
+    /// where it was. It used to scroll by the keys' height from before the turn, too far, and then
+    /// back once the turn was over.
+    @Test func typingTheCaretStaysInViewOfTheKeys() async {
+        let window = window(Self.upright)
+        let page = page(in: window)
+        let textView = page.textView
+        textView.keyboardOverlap = 336
+        page.focus()
+        textView.selectedRange = NSRange(location: 2500, length: 0)
+        textView.layoutIfNeeded()
+        await wait(0.5)
+        // Scrolled to where the caret is well in view, a little below the dot bar.
+        let caretTop = textView.caretRect(for: textView.selectedTextRange!.end).minY
+        textView.contentOffset.y = caretTop - textView.contentInset.top - 100
+        textView.layoutIfNeeded()
+        let before = textView.contentOffset.y
+        // The test window doesn't turn, so its safe area stays upright: shorter keys leave the
+        // page as much room as a phone on its side has.
+        turn(textView, to: Self.onItsSide, in: window)
+        textView.keyboardOverlap = 150
+        textView.layoutIfNeeded()
+        let caret = textView.caretRect(for: textView.selectedTextRange!.end)
+        #expect(caret.minY >= textView.contentOffset.y + textView.contentInset.top - 1)
+        #expect(caret.maxY <= textView.contentOffset.y + textView.bounds.height - 150 + 1)
+        await wait(0.7)
+        turn(textView, to: Self.upright, in: window)
+        textView.keyboardOverlap = 336
+        textView.layoutIfNeeded()
+        #expect(abs(textView.contentOffset.y - before) < 1)
+    }
+
+
+    /// Turning upright, the keys for the new way up come a moment into the turn, outside its
+    /// animation. The format bar's track keeps the turn's animation, which carries it with the
+    /// bottom of the screen: put straight where it ends, it went below the bottom for the turn.
+    @Test func theFormatBarTurnsWithTheKeys() {
+        let (pager, window) = pager(on: 0)
+        let container = pager.container
+        pager.controllers[0].focus()
+        container.keysForTesting = 180
+        turn(container, to: Self.onItsSide, in: window)
+        UIView.animate(withDuration: 0.3) {
+            window.frame = Self.upright
+            container.frame = window.bounds
+            container.layoutIfNeeded()
+        }
+        #expect(container.barTrackIsMovingForTesting)
+        container.keysForTesting = 320
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(container.barTrackIsMovingForTesting)
+        #expect(container.barTrackFrameForTesting.maxY == Self.upright.height - 320)
+    }
+
+    /// Turning upright, UIKit also says the keys are going, and they can read nothing for a moment
+    /// before they're back for the new way up: the bar stays on them.
+    @Test func theFormatBarStaysOnTheKeysAsTheyTurnUpright() {
+        let (pager, window) = pager(on: 0)
+        let container = pager.container
+        pager.controllers[0].focus()
+        container.keysForTesting = 180
+        turn(container, to: Self.onItsSide, in: window)
+        let left = container.timesBarLeftKeysForTesting
+        turn(container, to: Self.upright, in: window)
+        container.keyboardWillHideForTesting()
+        container.keysForTesting = 0
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        container.keysForTesting = 320
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(container.timesBarLeftKeysForTesting == left)
+        #expect(container.barTrackFrameForTesting.maxY == Self.upright.height - 320)
+    }
+}

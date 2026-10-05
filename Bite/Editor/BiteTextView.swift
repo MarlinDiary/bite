@@ -10,10 +10,8 @@ final class BiteTextView: UITextView {
     private let finalNewlineDelegate = FinalNewlineDelegate()
     private lazy var checkboxTap = UITapGestureRecognizer(target: self, action: #selector(handleCheckboxTap(_:)))
     private lazy var linkTap = UITapGestureRecognizer(target: self, action: #selector(handleLinkTap(_:)))
-    /// How far below the safe area the dot bar reaches; text scrolled higher is behind it.
-    private let topBarHeight: CGFloat = 50
-    /// Where the first line starts, below the safe area. Leaves some air under the dot bar.
-    private let topTextInset: CGFloat = 74
+    /// Air above the first line, under the dot bar.
+    private let airOverText: CGFloat = 24
     /// Room under the last line when scrolled to the end.
     private let bottomTextInset: CGFloat = 28
     /// More room under the last line while typing, so the line being written can sit a couple
@@ -347,7 +345,7 @@ final class BiteTextView: UITextView {
     /// running on under it. The air around the text is the text container's inset.
     private func updateInsets() {
         let sides = safeSides
-        let textInsets = UIEdgeInsets(top: topTextInset - topBarHeight, left: 22 + sides.left, bottom: bottomTextInset, right: 22 + sides.right)
+        let textInsets = UIEdgeInsets(top: airOverText, left: 22 + sides.left, bottom: bottomTextInset, right: 22 + sides.right)
         if textContainerInset != textInsets {
             // Set before, the room beside the Dynamic Island changes as the phone turns.
             if textContainerInset.left > 0 { beginTurn() }
@@ -358,7 +356,7 @@ final class BiteTextView: UITextView {
         if contentInset != insets {
             // What's on screen stays put when the top inset first arrives or the safe area changes.
             let shift = insets.top - contentInset.top
-            let offset = contentOffset.y - shift
+            let offset = textStaysPut ? contentOffset.y : contentOffset.y - shift
             contentInset = insets
             // From where it was, not from where UIKit put it as the inset changed, and within the
             // page: left past its top, as after a turn back upright, UIKit put it back once the
@@ -377,7 +375,7 @@ final class BiteTextView: UITextView {
     /// content inset it can follow a keyboard that's being swiped away, since it never moves the
     /// text.
     private func updateScrollIndicatorInsets() {
-        let insets = UIEdgeInsets(top: safeTop + topBarHeight, left: 0, bottom: max(wantedKeyboardOverlap, cornerClearance), right: 0)
+        let insets = UIEdgeInsets(top: topObstruction, left: 0, bottom: max(wantedKeyboardOverlap, cornerClearance), right: 0)
         if verticalScrollIndicatorInsets != insets {
             verticalScrollIndicatorInsets = insets
         }
@@ -595,9 +593,28 @@ final class BiteTextView: UITextView {
         return line.typographicBounds.height - font.lineHeight
     }
 
+    /// Where the dot bar stops covering the page, or the top of the screen while it's away.
     private var topObstruction: CGFloat {
-        safeTop + topBarHeight
+        if isTopBarAway { return safeTop }
+        let sides = safeSides
+        let placement = TopBarPlacement(safeTop: safeTop, safeSides: max(sides.left, sides.right),
+                                        width: window?.bounds.width ?? bounds.width)
+        return placement.top + TopBarPlacement.reach
     }
+
+    /// Set while the dot bar is up out of the way of the keys, on a phone on its side. The page's
+    /// room under it goes and comes back with it, the text staying where it is, unless the page is
+    /// at its top, where it stays.
+    var isTopBarAway = false {
+        didSet {
+            guard isTopBarAway != oldValue else { return }
+            textStaysPut = contentOffset.y > -contentInset.top + 0.5
+            updateInsets()
+            textStaysPut = false
+        }
+    }
+    /// Set while the top inset changes for the dot bar going or coming back (see `isTopBarAway`).
+    private var textStaysPut = false
 
     private var bottomObstruction: CGFloat {
         max(keyboardOverlap, safeBottom)

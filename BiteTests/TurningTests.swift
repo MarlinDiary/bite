@@ -2,8 +2,8 @@ import Testing
 import UIKit
 @testable import Bite
 
-/// Turning the phone: the pager stays on its page, a page keeps its place, and the format bar turns
-/// with the keys.
+/// Turning the phone: the pager stays on its page and a page keeps its place, and on a phone on
+/// its side the dot bar goes up out of the way of the keys and the format bar takes half the width.
 @MainActor
 struct TurningTests {
     private static let upright = CGRect(x: 0, y: 0, width: 402, height: 874)
@@ -130,6 +130,45 @@ struct TurningTests {
         #expect(abs(textView.contentOffset.y - before) < 1)
     }
 
+    /// On a phone on its side the keys leave the page a few lines: the dot bar goes up out of their
+    /// way while they're up, and comes back as they go. Upright, it stays.
+    @Test func theDotBarGoesUpOutOfTheWayOfTheKeysOnItsSide() {
+        let (pager, window) = pager(on: 2)
+        var reported: [Bool] = []
+        pager.showTopBarAway = { isAway, _ in reported.append(isAway) }
+        let container = pager.container
+        pager.controllers[2].focus()
+        container.keysForTesting = 300
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(reported.isEmpty)
+        container.traitOverrides.verticalSizeClass = .compact
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(reported == [true])
+        #expect(pager.controllers.allSatisfy { $0.textView.isTopBarAway })
+        pager.controllers[2].textView.resignFirstResponder()
+        container.keysForTesting = 0
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(reported == [true, false])
+        #expect(!pager.controllers[2].textView.isTopBarAway)
+        _ = window
+    }
+
+    /// As Notes' toolbar does, the format bar takes the trailing half of a phone on its side, and
+    /// the lines' starts stay in view beside it.
+    @Test func theFormatBarTakesTheTrailingHalfOnItsSide() {
+        let (pager, window) = pager(on: 0)
+        let bar = FormatBar.shared
+        bar.layoutIfNeeded()
+        #expect(bar.glassFrameForTesting.minX < 20)
+        // A window wider than it's tall is short: its size class is compact.
+        turn(pager.container, to: Self.onItsSide, in: window)
+        bar.layoutIfNeeded()
+        #expect(abs(bar.glassFrameForTesting.minX - bar.bounds.midX) < 1)
+        #expect(bar.glassFrameForTesting.maxX > bar.bounds.maxX - 20)
+    }
 
     /// Turning upright, the keys for the new way up come a moment into the turn, outside its
     /// animation. The format bar's track keeps the turn's animation, which carries it with the
@@ -172,5 +211,15 @@ struct TurningTests {
         container.layoutIfNeeded()
         #expect(container.timesBarLeftKeysForTesting == left)
         #expect(container.barTrackFrameForTesting.maxY == Self.upright.height - 320)
+    }
+
+    /// Where the system puts a navigation bar's buttons, measured on the iPhone 17, Air and 17e.
+    @Test func theDotBarSitsWhereANavigationBarsButtonsDo() {
+        let iPhone17 = TopBarPlacement(safeTop: 62, safeSides: 0, width: 402)
+        #expect(iPhone17.top == 62 && iPhone17.side == 16)
+        let air = TopBarPlacement(safeTop: 68, safeSides: 0, width: 420)
+        #expect(air.top == 68 && air.side == 20)
+        let onItsSide = TopBarPlacement(safeTop: 0, safeSides: 62, width: 912)
+        #expect(onItsSide.top == 24 && onItsSide.side == 38)
     }
 }

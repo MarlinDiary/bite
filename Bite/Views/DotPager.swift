@@ -14,6 +14,8 @@ struct DotPager: UIViewRepresentable {
     @Binding var visiblePage: Int
     /// Set while a finger is on the dot bar.
     var isDotBarTouched = false
+    /// Set while the dot bar is up out of the way of the keys, on a phone on its side.
+    @Binding var isTopBarAway: Bool
     @Environment(DotStore.self) private var store
 
     func makeCoordinator() -> DotPagerCoordinator {
@@ -56,6 +58,13 @@ struct DotPager: UIViewRepresentable {
         coordinator.showVisiblePage = { page in
             if visible.wrappedValue != page { visible.wrappedValue = page }
         }
+        let away = $isTopBarAway
+        coordinator.showTopBarAway = { isAway, animation in
+            // Told from inside the pager's layout, which SwiftUI may be running.
+            DispatchQueue.main.async {
+                withAnimation(animation) { away.wrappedValue = isAway }
+            }
+        }
         for controller in coordinator.controllers where controller.loadedRevision != store.revisions[controller.dot] {
             controller.loadedRevision = store.revisions[controller.dot]
             controller.load(markdown: store.markdown[controller.dot])
@@ -72,6 +81,7 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
     var scrollView: PagerScrollView { container.scrollView }
     var select: ((Int) -> Void)?
     var showVisiblePage: ((Int) -> Void)?
+    var showTopBarAway: ((Bool, Animation?) -> Void)?
     /// One tick each time the dot bar moves to another dot, including every dot passed on the
     /// way when jumping several pages.
     private let haptics = UISelectionFeedbackGenerator()
@@ -97,6 +107,11 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
                     self.prepareNeighbors(of: self.scrollView.currentPage)
                 }
             }
+        }
+        container.onTopBarAwayChange = { [weak self] isAway, animation in
+            guard let self else { return }
+            self.controllers.forEach { $0.textView.isTopBarAway = isAway }
+            self.showTopBarAway?(isAway, animation)
         }
         container.editingTextView = { [weak self] in
             if let page = self?.controllers.first(where: { $0.textView.isFirstResponder }) { return page.textView }
@@ -330,6 +345,9 @@ final class PagerContainerView: UIView {
     let scrollView = PagerScrollView()
     /// Reports how much of this view the keyboard and the format bar cover.
     var onKeyboardOverlapChange: ((CGFloat) -> Void)?
+    /// Reports the dot bar going up out of the way of the keys, or coming back, with the keys'
+    /// animation, for SwiftUI.
+    var onTopBarAwayChange: ((Bool, Animation?) -> Void)?
     /// The editor that has the keyboard, if any. The bar only ever shows for one.
     var editingTextView: () -> UITextView? = { nil }
     /// Set while Writing Tools is at work on the page being edited. It brings controls of its own,
@@ -379,6 +397,7 @@ final class PagerContainerView: UIView {
     private let barTrack = PassthroughView()
     private let formatBar = FormatBar.shared
     private var reportedOverlap: CGFloat = 0
+    private var reportedTopBarAway = false
     /// Whether on-screen keys are up, with the bar on top of them.
     private var barRidesOnKeys = false
     /// How far the bar has slid down into the keys: 0 while it sits on top of them, its full
@@ -517,6 +536,14 @@ final class PagerContainerView: UIView {
         }
         moveBar(keysFrom: laidOutKeys, to: barKeys)
         laidOutKeys = barKeys
+
+        // On a phone on its side the keys leave the page a few lines, and the dot bar goes up out
+        // of their way while they're up (user, 2026-10-05), with them, and comes back as they go.
+        let isTopBarAway = barRidesOnKeys && (!keysAreGoing || isTurning) && traitCollection.verticalSizeClass == .compact
+        if isTopBarAway != reportedTopBarAway {
+            reportedTopBarAway = isTopBarAway
+            onTopBarAwayChange?(isTopBarAway, keysAnimation())
+        }
 
         formatBar.accessibilityElementsHidden = !barRidesOnKeys
         let overlap = keys + barHeight - barSink
@@ -674,6 +701,17 @@ final class PagerContainerView: UIView {
     }
 
     private static let sinkKey = "sink"
+
+    /// The animation the keys are moving with, as SwiftUI's, or none outside one.
+    private func keysAnimation() -> Animation? {
+        guard UIView.inheritedAnimationDuration > 0 else { return nil }
+        let keyboard = keyboardAnimation()
+        if let spring = keyboard as? CASpringAnimation {
+            return .interpolatingSpring(mass: Double(spring.mass), stiffness: Double(spring.stiffness),
+                                        damping: Double(spring.damping), initialVelocity: Double(spring.initialVelocity))
+        }
+        return .easeInOut(duration: keyboard?.duration ?? UIView.inheritedAnimationDuration)
+    }
 
     /// The animation UIKit just gave the track, which is the keyboard's.
     private func keyboardAnimation() -> CAPropertyAnimation? {

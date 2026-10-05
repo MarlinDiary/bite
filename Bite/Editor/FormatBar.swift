@@ -142,9 +142,14 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         glassHeight = glass.heightAnchor.constraint(equalToConstant: Self.rowHeight)
         rowsHeightConstraint = linkRows.heightAnchor.constraint(equalToConstant: rowsHeight)
 
+        fullWidthLeading = glass.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 12)
+        trailingHalfLeading = glass.leadingAnchor.constraint(equalTo: centerXAnchor)
+        updateWidth()
+        registerForTraitChanges([UITraitVerticalSizeClass.self]) { (bar: Self, _) in
+            bar.updateWidth()
+        }
         NSLayoutConstraint.activate([
             // Clear of the Dynamic Island and the rounded corners in landscape.
-            glass.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 12),
             glass.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -12),
             glass.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
             glassHeight,
@@ -195,6 +200,17 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// On a phone on its side the glass takes the trailing half, as Notes' toolbar does: the keys
+    /// leave the page a few lines, and the lines' starts stay in view beside it, down to the keys.
+    private var fullWidthLeading: NSLayoutConstraint!
+    private var trailingHalfLeading: NSLayoutConstraint!
+
+    private func updateWidth() {
+        let isHalf = traitCollection.verticalSizeClass == .compact
+        NSLayoutConstraint.deactivate([isHalf ? fullWidthLeading : trailingHalfLeading])
+        NSLayoutConstraint.activate([isHalf ? trailingHalfLeading : fullWidthLeading])
     }
 
     /// Only the glass takes touches; the clear margin around it belongs to the text behind.
@@ -789,6 +805,11 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     var showsPutKeysAwayForTesting: Bool {
         guard let button = buttons[.dismiss] else { return false }
         return button.alpha > 0 && button.isUserInteractionEnabled && !button.accessibilityElementsHidden
+    }
+
+    /// Where the glass is in the bar.
+    var glassFrameForTesting: CGRect {
+        subviews.first { $0 is UIVisualEffectView }?.frame ?? .zero
     }
     #endif
 }

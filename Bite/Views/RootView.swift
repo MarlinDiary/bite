@@ -13,8 +13,8 @@ struct RootView: View {
     @State private var washChangesAtOnce = false
     /// Set while a finger is on the dot bar.
     @State private var isDotBarTouched = false
-    /// Set while the dot bar is up out of the way of the keys, on a phone on its side.
-    @State private var isTopBarAway = false
+    /// Moves the dot bar up out of the way of the keys on a phone on its side, for the pager.
+    @State private var topBarMover = TopBarMover()
 
     var body: some View {
         @Bindable var store = store
@@ -35,17 +35,18 @@ struct RootView: View {
                 // Read as it is now, not as it was when the view was last drawn: two pages reported in
                 // a row took the second for no change.
                 DotPager(selection: $store.selection, visiblePage: Binding(get: { reportedPage ?? store.selection }, set: { reportedPage = $0 }),
-                         isDotBarTouched: isDotBarTouched, isTopBarAway: $isTopBarAway)
+                         isDotBarTouched: isDotBarTouched, topBarMover: topBarMover)
                     .ignoresSafeArea()
 
-                TopBar(selection: $store.selection, visiblePage: visiblePage, onTap: { washChangesAtOnce = true },
-                       onTouch: { isDotBarTouched = $0 })
+                // Up and away with the keys as they come, and back down with them as they go.
+                TopBarHost(mover: topBarMover, lift: placement.top + DotSwitcher.height + 8,
+                           content: TopBar(selection: $store.selection, visiblePage: visiblePage,
+                                           onTap: { washChangesAtOnce = true }, onTouch: { isDotBarTouched = $0 })
+                               .environment(store)
+                               .tint(accent))
+                    .frame(height: DotSwitcher.height)
                     .padding(.top, placement.top)
                     .padding(.horizontal, placement.side)
-                    // Up and away with the keys as they come, and back down with them as they go.
-                    .offset(y: isTopBarAway ? -(placement.top + DotSwitcher.height + 8) : 0)
-                    .opacity(isTopBarAway ? 0 : 1)
-                    .allowsHitTesting(!isTopBarAway)
                     .ignoresSafeArea()
             }
         }
@@ -57,6 +58,8 @@ struct RootView: View {
         }
     }
 }
+
+
 
 private struct TopBar: View {
     @Binding var selection: Int

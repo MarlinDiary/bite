@@ -131,28 +131,36 @@ struct TurningTests {
     }
 
     /// On a phone on its side the keys leave the page a few lines: the dot bar goes up out of their
-    /// way while they're up, and comes back as they go. Upright, it stays.
+    /// way while they're up, and comes back as they go. Upright, it stays. It moves in the keys' own
+    /// animation, in UIKit, which the phone holding the main thread as the keys come can't stop.
     @Test func theDotBarGoesUpOutOfTheWayOfTheKeysOnItsSide() {
         let (pager, window) = pager(on: 2)
-        var reported: [Bool] = []
-        pager.showTopBarAway = { isAway, _ in reported.append(isAway) }
+        let mover = TopBarMover()
+        let bar = UIView()
+        mover.attachForTesting(bar, lift: 76)
+        pager.topBarMover = mover
         let container = pager.container
         pager.controllers[2].focus()
         container.keysForTesting = 300
         container.setNeedsLayout()
         container.layoutIfNeeded()
-        #expect(reported.isEmpty)
+        #expect(!mover.isAway)
         container.traitOverrides.verticalSizeClass = .compact
-        container.setNeedsLayout()
-        container.layoutIfNeeded()
-        #expect(reported == [true])
+        UIView.animate(withDuration: 0.3) {
+            container.setNeedsLayout()
+            container.layoutIfNeeded()
+        }
+        #expect(mover.isAway)
         #expect(pager.controllers.allSatisfy { $0.textView.isTopBarAway })
+        #expect(bar.alpha == 0 && bar.transform.ty == -76)
+        #expect(bar.layer.animation(forKey: "opacity") != nil)
         pager.controllers[2].textView.resignFirstResponder()
         container.keysForTesting = 0
         container.setNeedsLayout()
         container.layoutIfNeeded()
-        #expect(reported == [true, false])
+        #expect(!mover.isAway)
         #expect(!pager.controllers[2].textView.isTopBarAway)
+        #expect(bar.alpha == 1 && bar.transform == .identity)
         _ = window
     }
 

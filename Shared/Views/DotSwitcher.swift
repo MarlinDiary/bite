@@ -28,6 +28,8 @@ struct DotSwitcher: View {
     static let scale: CGFloat = 1
     #endif
     static let height = 44 * scale
+    /// The capsule's width: the dots, and the space at either end.
+    static let width = (CGFloat(DotPalette.count) * 30 + 2 * 8) * scale
 
     private let dotWidth = 30 * scale
     private let inset = 8 * scale

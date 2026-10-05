@@ -16,7 +16,8 @@ final class BiteTextView: NSTextView {
     init() {
         let layoutManager = NSTextLayoutManager()
         let container = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
-        container.widthTracksTextView = true
+        // Its width is the column's, set as the view's changes (see `setFrameSize`).
+        container.widthTracksTextView = false
         layoutManager.textContainer = container
         contentStorage.delegate = finalNewlineDelegate
         contentStorage.addTextLayoutManager(layoutManager)
@@ -845,12 +846,133 @@ final class BiteTextView: NSTextView {
     /// The margin each side of the text, at least.
     static let sideMargin: CGFloat = 20
 
+    /// The column is as wide as the view less its margins, up to the widest, and the margins take
+    /// the rest. It's set apart from the view: past the widest, a panel widened only moves the
+    /// column, with nothing laid out again. Following the view, it changed by a point at every
+    /// other step, as the margins were rounded, and the page was laid out again each time.
     override func setFrameSize(_ newSize: NSSize) {
+        let column = min(Self.widestText, max(0, newSize.width - 2 * Self.sideMargin))
+        // A new column lays the page out again, and the line at the top is put back after.
+        let place = placeToPutBack == nil && textContainer.map { $0.size.width != column } == true ? placeOnScreen() : nil
         super.setFrameSize(newSize)
-        let margin = max(Self.sideMargin, ((newSize.width - Self.widestText) / 2).rounded(.down))
+        if let container = textContainer, container.size.width != column {
+            container.size = NSSize(width: column, height: container.size.height)
+        }
+        let margin = max(Self.sideMargin, ((newSize.width - column) / 2).rounded(.down))
         if textContainerInset.width != margin {
             textContainerInset = NSSize(width: margin, height: textContainerInset.height)
         }
+        if let place {
+            putBack(place)
+        }
+    }
+
+    // MARK: Keeping the place
+
+    /// Where the line at the top of what shows starts in the text, and how far its top is from
+    /// the top of what shows, where the dot bar ends: the line as it wraps, so that the lines
+    /// above it wrapping again don't move it. Kept as a count of characters: the page may change
+    /// meanwhile, as another device's change comes in, and TextKit's locations with it.
+    private typealias PlaceOnScreen = (character: Int, offset: CGFloat)
+
+    /// The line to put back where it was, as the page is next laid out while it shows.
+    private var placeToPutBack: PlaceOnScreen?
+    /// The line at the top as a live resize began.
+    private var placeAcrossLiveResize: PlaceOnScreen?
+
+    override func viewWillStartLiveResize() {
+        super.viewWillStartLiveResize()
+        placeAcrossLiveResize = isHiddenOrHasHiddenAncestor ? nil : placeOnScreen()
+    }
+
+    /// AppKit keeps the first character that showed as a live resize began, and as it ends,
+    /// scrolls its line's top to the top of what shows: a line partly scrolled away, as under the
+    /// dot bar, came back whole as the panel's edge was let go, and the page jumped by up to a
+    /// line, though nothing had changed. That line is put back as it was.
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        guard let place = placeAcrossLiveResize else { return }
+        placeAcrossLiveResize = nil
+        putBack(place)
+    }
+
+    /// The other dots' pages, hidden, follow the panel's width too: theirs is put back as they're
+    /// shown.
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        if placeToPutBack != nil {
+            needsLayout = true
+        }
+    }
+
+    private func putBack(_ place: PlaceOnScreen) {
+        placeToPutBack = place
+        needsLayout = true
+    }
+
+    private func placeOnScreen() -> PlaceOnScreen? {
+        guard let layoutManager = textLayoutManager, let scrollView = enclosingScrollView else { return nil }
+        let top = scrollView.contentView.bounds.minY + scrollView.contentInsets.top - textContainerOrigin.y
+        guard let first = layoutManager.textLayoutFragment(for: CGPoint(x: 0, y: max(0, top))) else { return nil }
+        let document = layoutManager.documentRange.location
+        var place: PlaceOnScreen?
+        var fragments = 0
+        // The first line mostly below the top, a few paragraphs on at most: one above it, mostly
+        // behind the bar, may wrap again without moving it.
+        layoutManager.enumerateTextLayoutFragments(from: first.rangeInElement.location) { fragment in
+            let frame = fragment.layoutFragmentFrame
+            let paragraph = layoutManager.offset(from: document, to: fragment.rangeInElement.location)
+            for line in fragment.textLineFragments {
+                place = (paragraph + line.characterRange.location, frame.minY + line.typographicBounds.minY - top)
+                if frame.minY + line.typographicBounds.midY >= top { return false }
+            }
+            fragments += 1
+            return fragments < 8
+        }
+        return place
+    }
+
+    /// How much of the text above the line kept is laid out with it, in characters: enough to
+    /// take in what's behind the dot bar and a little more, whatever the paragraphs.
+    private static let laidOutAbove = 2000
+
+    /// Scrolls the place's line back where it was, by where it now is.
+    ///
+    /// Laid out again for a new width, TextKit guesses at the height of the lines not laid out
+    /// yet, and AppKit, keeping what shows in place by those guesses, scrolled the page on: by a
+    /// line or more at each step of the panel's edge dragged, and further each time, with nothing
+    /// to show at times. `layingOut`, before AppKit lays out what shows, the line is laid out
+    /// first, with a little of the text above it, behind the dot bar and past it, and what shows
+    /// below it: AppKit then finds them all laid out where they're seen. Nothing further up is
+    /// laid out, which on a long page took long at every step.
+    private func scroll(to place: PlaceOnScreen, layingOut: Bool = false) {
+        guard let layoutManager = textLayoutManager, let scrollView = enclosingScrollView else { return }
+        let clipView = scrollView.contentView
+        let document = layoutManager.documentRange
+        let length = layoutManager.offset(from: document.location, to: document.endLocation)
+        let character = min(max(0, place.character), length)
+        guard let location = layoutManager.location(document.location, offsetBy: character),
+              let paragraph = layoutManager.textLayoutFragment(for: location)?.rangeInElement.location else { return }
+        // What's above it goes first: laid out after, by AppKit, it could push the line down.
+        let above = min(Self.laidOutAbove, layoutManager.offset(from: document.location, to: paragraph))
+        let start = layingOut ? layoutManager.location(paragraph, offsetBy: -above) ?? paragraph : paragraph
+        var lineTop: CGFloat?
+        layoutManager.enumerateTextLayoutFragments(from: start, options: layingOut ? [.ensuresLayout] : []) { fragment in
+            let frame = fragment.layoutFragmentFrame
+            if lineTop == nil, fragment.rangeInElement.location.compare(paragraph) != .orderedAscending {
+                let inParagraph = character - layoutManager.offset(from: document.location, to: fragment.rangeInElement.location)
+                let line = fragment.textLineFragments.first { NSMaxRange($0.characterRange) > inParagraph } ?? fragment.textLineFragments.last
+                lineTop = frame.minY + (line?.typographicBounds.minY ?? 0)
+            }
+            guard let lineTop else { return true }
+            // On down to the bottom of what shows.
+            return layingOut && frame.maxY < lineTop - place.offset - scrollView.contentInsets.top + clipView.bounds.height
+        }
+        guard let lineTop else { return }
+        let top = lineTop + textContainerOrigin.y - place.offset - scrollView.contentInsets.top
+        guard abs(clipView.bounds.minY - top) > 0.5 else { return }
+        clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: top))
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     // MARK: Code blocks
@@ -862,7 +984,16 @@ final class BiteTextView: NSTextView {
     }
 
     override func layout() {
+        let place = isHiddenOrHasHiddenAncestor ? nil : placeToPutBack
+        if let place {
+            scroll(to: place, layingOut: true)
+        }
         super.layout()
+        if let place {
+            placeToPutBack = nil
+            // AppKit, keeping what shows in place by its own reckoning, may have moved it again.
+            scroll(to: place)
+        }
         updateDecorations()
     }
 

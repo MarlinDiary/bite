@@ -20,6 +20,34 @@ struct RemoteChangeTests {
         #expect(EditorFuzzTests.problems(in: editor).isEmpty)
     }
 
+    /// Where each line is laid out, from the top, the whole page laid out first.
+    private func lineTops(_ editor: EditorHarness) -> [CGFloat] {
+        #if canImport(UIKit)
+        editor.textView.layoutIfNeeded()
+        #else
+        editor.textView.layoutSubtreeIfNeeded()
+        #endif
+        guard let manager = editor.textView.textLayoutManager else { return [] }
+        manager.ensureLayout(for: manager.documentRange)
+        var tops: [CGFloat] = []
+        manager.enumerateTextLayoutFragments(from: manager.documentRange.location, options: [.ensuresLayout]) { fragment in
+            tops.append(fragment.layoutFragmentFrame.minY)
+            return true
+        }
+        return tops
+    }
+
+    /// Lines added at the end go as far below the last as lines loaded so do: the line that had
+    /// been last, laid out as the page's end, kept no room below it. The page to match is laid out
+    /// before the other is made, which with keys up takes them from it.
+    @Test func linesAddedAtTheEndAreSpacedAsIfLoaded() {
+        let loaded = lineTops(EditorHarness("Shopping\n- [ ] eggs\n- [ ] milk"))
+        let editor = EditorHarness("Shopping\n- [ ] eggs")
+        _ = lineTops(editor)
+        editor.controller.applyRemote(markdown: "Shopping\n- [ ] eggs\n- [ ] milk\n")
+        #expect(lineTops(editor) == loaded)
+    }
+
     @Test func aCaretAboveTheChangeStaysPut() {
         let editor = EditorHarness("first\nsecond\nthird")
         editor.moveCaret(line: 0, column: 2)

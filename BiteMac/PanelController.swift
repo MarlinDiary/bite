@@ -105,6 +105,9 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         store.revealInEditor = { [weak self] dot, line, query in
             self?.reveal(dot: dot, line: line, query: query)
         }
+        store.showInEditor = { [weak self] dot in
+            self?.bringUp(dot)
+        }
         storeDidChange()
         observeStore()
         if !forTesting {
@@ -286,12 +289,17 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     /// A line picked in Spotlight: the panel comes up on its page, with the line in view and lit
     /// from its first frame.
     private func reveal(dot: Int, line: Int?, query: String) {
+        bringUp(dot)
+        controllers[dot].reveal(query, line: line)
+    }
+
+    /// The panel comes up on `dot`'s page, picked already, as Siri or Spotlight asked.
+    private func bringUp(_ dot: Int) {
         if isShown {
             showPage(dot)
         } else {
             show()
         }
-        controllers[dot].reveal(query, line: line)
     }
 
     private func showPage(_ page: Int) {

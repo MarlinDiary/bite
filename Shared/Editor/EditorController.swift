@@ -176,6 +176,9 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         if lines.count == old.count {
             var first = 0
             while first < old.count, first < new.count, old[first] == new[first] { first += 1 }
+            // Lines added after the last one take it in too. Laid out as the page's end, with no
+            // room below it, it was left so, and the new lines came straight under it.
+            if first == old.count, first < new.count, first > 0 { first -= 1 }
             var oldEnd = old.count, newEnd = new.count
             while oldEnd > first, newEnd > first, old[oldEnd - 1] == new[newEnd - 1] {
                 oldEnd -= 1

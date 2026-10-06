@@ -47,6 +47,9 @@ final class DotStore {
         }
     }
     @ObservationIgnored private var waitingReveal: (dot: Int, line: Int?, query: String)?
+    /// Set by the Mac's panel, which comes up on a page asked for from Siri or Shortcuts. The
+    /// phone's comes up with Bite, which the system brings to the front.
+    @ObservationIgnored var showInEditor: ((Int) -> Void)?
 
     private static let selectionKey = "selectedDot"
 
@@ -111,6 +114,37 @@ final class DotStore {
         } else {
             waitingReveal = (dot, line, query)
         }
+    }
+
+    /// Shows a dot's page, as asked from Siri or Shortcuts.
+    func open(dot: Int) {
+        guard markdown.indices.contains(dot) else { return }
+        selection = dot
+        showInEditor?(dot)
+    }
+
+    /// Adds `text` to the end of a dot's page, from Siri or Shortcuts, as if typed there (see
+    /// `PageAddition`): after any typing not reported yet, and into the editor as another device's
+    /// change comes in, the caret staying where it was. Written to disk at once, as Bite may be
+    /// stopped right after, run just for this. Says whether anything was added.
+    @discardableResult
+    func add(_ text: String, asToDo: Bool, to dot: Int) -> Bool {
+        guard markdown.indices.contains(dot) else { return false }
+        reportPendingEdits()
+        let newValue = PageAddition.markdown(markdown[dot], adding: text, asToDo: asToDo)
+        guard newValue != markdown[dot] else { return false }
+        markdown[dot] = newValue
+        modified[dot] = .now
+        unsaved.insert(dot)
+        if let applyInEditor {
+            applyInEditor(dot, newValue)
+        } else {
+            isEmpty[dot] = Self.isBlank(newValue)
+            revisions[dot] += 1
+        }
+        saveNow()
+        onLocalChange?(dot)
+        return true
     }
 
     func update(dot: Int, isEmpty empty: Bool) {

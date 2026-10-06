@@ -334,6 +334,8 @@ struct MacPanelTests {
     /// Text found from a search outside Bite is lit as the panel comes up on its page, and put out
     /// as another page is shown, and as the panel is put away, to be gone when they're back.
     @Test func foundTextGoesWithItsPageOrThePanel() {
+        let original = UserDefaults.standard.object(forKey: "selectedDot")
+        defer { UserDefaults.standard.set(original, forKey: "selectedDot") }
         let store = store()
         let panel = panel(store)
         panel.show()
@@ -349,6 +351,23 @@ struct MacPanelTests {
         #expect(third.foundForTesting == NSRange(location: 4, length: 3))
         panel.hide()
         #expect(third.foundForTesting == nil)
+    }
+
+    /// A page opened from Siri or Shortcuts: the panel comes up on it, or goes to it.
+    @Test func aPageOpenedFromSiriBringsThePanelUp() {
+        let original = UserDefaults.standard.object(forKey: "selectedDot")
+        defer { UserDefaults.standard.set(original, forKey: "selectedDot") }
+        let store = store()
+        let panel = panel(store)
+        let pages = panel.controllers.map { $0.textView.enclosingScrollView }
+        #expect(!panel.isShown)
+        store.open(dot: 5)
+        #expect(panel.isShown)
+        #expect(pages[5]?.isHidden == false)
+        store.open(dot: 2)
+        #expect(pages[2]?.isHidden == false)
+        #expect(pages[5]?.isHidden == true)
+        panel.hide()
     }
 
     /// Picking a dot shows its page, and only its page.

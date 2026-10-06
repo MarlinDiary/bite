@@ -1,3 +1,4 @@
+import AppIntents
 import CoreSpotlight
 import SwiftUI
 import OSLog
@@ -18,6 +19,10 @@ struct BiteApp: App {
         _sync = State(initialValue: sync)
         PageSync.shared = sync
         SceneDelegate.store = store
+        // The pages Siri and Shortcuts work on (see `PageIntents`). Asked for the pages each
+        // shortcut is shown for, Shortcuts names their groups.
+        AppDependencyManager.shared.add(dependency: store)
+        BiteShortcuts.updateAppShortcutParameters()
         let spotlight = SpotlightIndex(store: store)
         _spotlight = State(initialValue: spotlight)
         if SpotlightIndex.runsHere { spotlight.start() }

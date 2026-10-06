@@ -1,3 +1,4 @@
+import AppIntents
 import AppKit
 import OSLog
 
@@ -21,6 +22,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var spotlight = SpotlightIndex(store: store)
     private var panel: PanelController?
     private var statusItem: StatusItemController?
+
+    override init() {
+        super.init()
+        // The pages Siri and Shortcuts work on (see `PageIntents`). Asked for the pages each
+        // shortcut is shown for, Shortcuts names their groups.
+        let store = store
+        AppDependencyManager.shared.add(dependency: store)
+        BiteShortcuts.updateAppShortcutParameters()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG

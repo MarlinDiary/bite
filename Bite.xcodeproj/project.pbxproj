@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		B17E00000000000000000012 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E00000000000000000011 /* BiteKit */; };
 		B17E00000000000000000033 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E00000000000000000034 /* BiteKit */; };
+		B17E0000000000000000005F /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E0000000000000000005E /* BiteKit */; };
 		B17E0000000000000000005C /* BiteControls.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B17E00000000000000000050 /* BiteControls.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -63,6 +64,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				OpenBiteIntent.swift,
+				ToDoTicks.swift,
 			);
 			target = B17E00000000000000000006 /* Bite */;
 		};
@@ -139,6 +141,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B17E0000000000000000005F /* BiteKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -189,6 +192,9 @@
 				B17E00000000000000000051 /* BiteControls */,
 			);
 			name = BiteControls;
+			packageProductDependencies = (
+				B17E0000000000000000005E /* BiteKit */,
+			);
 			productName = BiteControls;
 			productReference = B17E00000000000000000050 /* BiteControls.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -439,6 +445,7 @@
 		B17E00000000000000000057 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/BiteControls.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 33G9D6C5H4;
@@ -468,6 +475,7 @@
 		B17E00000000000000000058 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/BiteControls.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 33G9D6C5H4;
@@ -914,6 +922,11 @@
 			productName = BiteKit;
 		};
 		B17E00000000000000000034 /* BiteKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
+			productName = BiteKit;
+		};
+		B17E0000000000000000005E /* BiteKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
 			productName = BiteKit;

@@ -7,6 +7,17 @@
 		<string>com.chenyeni.bite.refresh</string>
 		<string>com.chenyeni.bite.processing</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.chenyeni.bite</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.chenyeni.bite</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

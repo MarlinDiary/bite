@@ -1,4 +1,5 @@
 import AppIntents
+import BiteKit
 import CoreSpotlight
 import SwiftUI
 import OSLog
@@ -10,6 +11,7 @@ struct BiteApp: App {
     @State private var store: DotStore
     @State private var sync: PageSync
     @State private var spotlight: SpotlightIndex
+    @State private var widgets: WidgetShelf
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -26,29 +28,51 @@ struct BiteApp: App {
         let spotlight = SpotlightIndex(store: store)
         _spotlight = State(initialValue: spotlight)
         if SpotlightIndex.runsHere { spotlight.start() }
+        // Takes in to-dos ticked in widgets since Bite last ran, too.
+        _widgets = State(initialValue: WidgetShelf(store: store))
     }
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(store)
-                .onContinueUserActivity(CSSearchableItemActionType) { activity in
-                    // Bite launched by it opened it already, before its first frame.
-                    guard activity !== SceneDelegate.launchActivity else { return }
-                    SpotlightIndex.open(activity, in: store)
-                }
-                .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
-                    ScreenChoices.apply()
-                }
+            #if DEBUG
+            if CommandLine.arguments.contains("-glassSwatches") {
+                GlassSwatches()
+            } else {
+                root
+            }
+            #else
+            root
+            #endif
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             sync.isOnScreen = phase == .active
-            if phase == .active { ScreenChoices.apply() }
+            if phase == .active {
+                ScreenChoices.apply()
+                // To-dos ticked in a widget while Bite was away.
+                widgets.update()
+            }
             if phase == .background {
                 sync.sendBeforeLeaving()
                 if PageSync.runsHere { BackgroundSync.schedule() }
             }
         }
+    }
+
+    private var root: some View {
+        RootView()
+            .environment(store)
+            .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                // Bite launched by it opened it already, before its first frame.
+                guard activity !== SceneDelegate.launchActivity else { return }
+                SpotlightIndex.open(activity, in: store)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
+                ScreenChoices.apply()
+            }
+            // A widget, tapped, opens the page it shows.
+            .onOpenURL { link in
+                if let page = PageTurns.page(openedBy: link) { store.open(dot: page) }
+            }
     }
 }
 
@@ -106,6 +130,11 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
         for activity in connectionOptions.userActivities where activity.activityType == CSSearchableItemActionType {
             Self.launchActivity = activity
             SpotlightIndex.open(activity, in: store)
+        }
+        // So is a widget's page, when a tap on the widget launches Bite. SwiftUI hands the link
+        // over too, after, to the same page.
+        for context in connectionOptions.urlContexts {
+            if let page = PageTurns.page(openedBy: context.url) { store.open(dot: page) }
         }
     }
 }

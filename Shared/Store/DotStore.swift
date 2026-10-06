@@ -37,6 +37,9 @@ final class DotStore {
     @ObservationIgnored var onSelectionChange: (() -> Void)?
     /// Set by the Spotlight index, which is told of the pages written to disk.
     @ObservationIgnored var onSave: ((Set<Int>) -> Void)?
+    /// Set on the phone by its widgets' copy of the pages (see `WidgetShelf`), which is told when
+    /// pages are written to disk.
+    @ObservationIgnored var onSaveForWidgets: (() -> Void)?
     /// Set by the editors: shows a line on a page, and a search's words on it (see `reveal`). One
     /// asked for before the editors are there, as Bite opens at a Spotlight result, waits for them.
     @ObservationIgnored var revealInEditor: ((Int, Int?, String) -> Void)? {
@@ -131,7 +134,23 @@ final class DotStore {
     func add(_ text: String, asToDo: Bool, to dot: Int) -> Bool {
         guard markdown.indices.contains(dot) else { return false }
         reportPendingEdits()
-        let newValue = PageAddition.markdown(markdown[dot], adding: text, asToDo: asToDo)
+        return takeIn(PageAddition.markdown(markdown[dot], adding: text, asToDo: asToDo), on: dot)
+    }
+
+    /// Ticks a to-do off, or on again, from a widget (see `PageToDos`), as `add` adds one. Says
+    /// whether the page changed.
+    @discardableResult
+    func tick(_ tick: PageTick) -> Bool {
+        guard markdown.indices.contains(tick.page) else { return false }
+        reportPendingEdits()
+        guard let newValue = PageToDos.markdown(markdown[tick.page], ticking: tick) else { return false }
+        return takeIn(newValue, on: tick.page)
+    }
+
+    /// A change made outside the editors, from Siri or a widget: into the editor as another
+    /// device's change comes in, the caret staying where it was, and written to disk at once, as
+    /// Bite may be stopped right after, run just for this.
+    private func takeIn(_ newValue: String, on dot: Int) -> Bool {
         guard newValue != markdown[dot] else { return false }
         markdown[dot] = newValue
         modified[dot] = .now
@@ -219,7 +238,10 @@ final class DotStore {
             }
         }
         unsaved.removeAll()
-        if !saved.isEmpty { onSave?(saved) }
+        if !saved.isEmpty {
+            onSave?(saved)
+            onSaveForWidgets?()
+        }
     }
 
     private func scheduleSave() {

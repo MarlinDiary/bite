@@ -2,10 +2,13 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// Bite's controls, for Control Center, the Lock Screen and the Action button.
+/// Bite's widgets, a page and the to-dos from every page, on the Home Screen or the Lock Screen,
+/// and its control, for Control Center, the Lock Screen and the Action button.
 @main
 struct BiteControlBundle: WidgetBundle {
     var body: some Widget {
+        PageWidget()
+        ToDosWidget()
         OpenBiteControl()
     }
 }

@@ -10,10 +10,14 @@ struct SettingsView: View {
     @State private var showsInSpotlight = Preferences.showsInSpotlight
     @State private var checksSpelling = Preferences.checksSpelling
     @State private var playsHaptics = Preferences.playsHaptics
+    @State private var locksPortrait = Preferences.locksPortrait
+    @State private var keepsScreenOn = Preferences.keepsScreenOn
     @State private var isConfirmingReset = false
 
     var body: some View {
         NavigationStack {
+            // Each section answers one question, with no header to say so: where the pages go, how
+            // Bite is to use, how it looks, and starting over.
             Form {
                 Section {
                     Toggle("Sync with iCloud", isOn: $syncsWithICloud)
@@ -22,6 +26,11 @@ struct SettingsView: View {
                 Section {
                     Toggle("Check Spelling", isOn: $checksSpelling)
                     Toggle("Haptics", isOn: $playsHaptics)
+                    // An iPad's Bite is a window of any shape, which no way up suits better.
+                    if UIDevice.current.userInterfaceIdiom == .phone {
+                        Toggle("Lock to Portrait", isOn: $locksPortrait)
+                    }
+                    Toggle("Keep Screen On", isOn: $keepsScreenOn)
                 }
                 AppIconPicker()
                 Section {
@@ -53,6 +62,12 @@ struct SettingsView: View {
         }
         .onChange(of: playsHaptics) {
             Preferences.playsHaptics = playsHaptics
+        }
+        .onChange(of: locksPortrait) {
+            Preferences.locksPortrait = locksPortrait
+        }
+        .onChange(of: keepsScreenOn) {
+            Preferences.keepsScreenOn = keepsScreenOn
         }
     }
 }

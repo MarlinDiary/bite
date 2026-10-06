@@ -37,9 +37,13 @@ struct BiteApp: App {
                     guard activity !== SceneDelegate.launchActivity else { return }
                     SpotlightIndex.open(activity, in: store)
                 }
+                .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
+                    ScreenChoices.apply()
+                }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             sync.isOnScreen = phase == .active
+            if phase == .active { ScreenChoices.apply() }
             if phase == .background {
                 sync.sendBeforeLeaving()
                 if PageSync.runsHere { BackgroundSync.schedule() }
@@ -73,6 +77,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// useful.
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
         await PageSync.shared?.pushArrived() == true ? .newData : .noData
+    }
+
+    /// Upright only, when Settings says so (see `ScreenChoices`).
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        ScreenChoices.orientations
     }
 
     func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession,

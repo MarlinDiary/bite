@@ -119,6 +119,27 @@ struct SettingsTests {
         #expect(editor.textView.isTypingCode)
         #expect(editor.textView.spellCheckingType == .no)
     }
+
+    /// The screen stays on while Bite is in front, and a phone's Bite stays upright, only when
+    /// chosen.
+    @Test func theScreenStaysOnAndBiteUprightOnlyWhenChosen() {
+        defer {
+            Preferences.keepsScreenOn = false
+            Preferences.locksPortrait = false
+            ScreenChoices.apply()
+        }
+        #expect(!Preferences.keepsScreenOn)
+        #expect(!Preferences.locksPortrait)
+        ScreenChoices.apply()
+        #expect(!UIApplication.shared.isIdleTimerDisabled)
+        #expect(AppDelegate().application(.shared, supportedInterfaceOrientationsFor: nil) == .allButUpsideDown)
+
+        Preferences.keepsScreenOn = true
+        Preferences.locksPortrait = true
+        ScreenChoices.apply()
+        #expect(UIApplication.shared.isIdleTimerDisabled)
+        #expect(AppDelegate().application(.shared, supportedInterfaceOrientationsFor: nil) == .portrait)
+    }
     #else
     /// The Mac's panel is a page unless Liquid Glass is chosen in Settings, and follows the choice
     /// at once.

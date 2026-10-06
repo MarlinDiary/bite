@@ -41,11 +41,28 @@ enum Preferences {
         set { set(newValue, forKey: showsInSpotlightKey) }
     }
 
+    /// On a phone, whether Bite stays upright when the phone is turned on its side. Off unless
+    /// turned on.
+    static var locksPortrait: Bool {
+        get { defaults.bool(forKey: locksPortraitKey) }
+        set { set(newValue, forKey: locksPortraitKey) }
+    }
+
+    /// On the phone, whether the screen stays on while Bite is in front, rather than dimming and
+    /// locking when Auto-Lock says. The phone's own Always On display is the system's alone. Off
+    /// unless turned on.
+    static var keepsScreenOn: Bool {
+        get { defaults.bool(forKey: keepsScreenOnKey) }
+        set { set(newValue, forKey: keepsScreenOnKey) }
+    }
+
     private static let syncsWithICloudKey = "syncsWithICloud"
     private static let showsInSpotlightKey = "showsInSpotlight"
     private static let checksSpellingKey = "checksSpelling"
     private static let panelIsGlassKey = "panelIsGlass"
     private static let playsHapticsKey = "playsHaptics"
+    private static let locksPortraitKey = "locksPortrait"
+    private static let keepsScreenOnKey = "keepsScreenOn"
 
     private static func set(_ value: Bool, forKey key: String) {
         guard defaults.object(forKey: key) as? Bool != value else { return }

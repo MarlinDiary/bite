@@ -2,16 +2,22 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// Bite's widgets, a page and the to-dos from every page, on the Home Screen or the Lock Screen,
-/// and its control, for Control Center, the Lock Screen and the Action button.
+/// Bite's widgets, a page, the pages turned in place, and the to-dos from every page, on the Home
+/// Screen, the Lock Screen or the Mac's desktop, and on the phone its control, for Control Center,
+/// the Lock Screen and the Action button. The Mac's Bite is in the menu bar already.
 @main
 struct BiteControlBundle: WidgetBundle {
     var body: some Widget {
+        SinglePageWidget()
         PageWidget()
         ToDosWidget()
+        #if os(iOS)
         OpenBiteControl()
+        #endif
     }
 }
+
+#if os(iOS)
 
 /// Bite's ring, opening Bite. The system's own Open App can open Bite too, but shows its icon,
 /// shrunk into the control.
@@ -31,3 +37,4 @@ struct OpenBiteControl: ControlWidget {
         .description("Opens Bite on the page last used.")
     }
 }
+#endif

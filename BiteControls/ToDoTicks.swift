@@ -3,12 +3,13 @@ import Foundation
 import OSLog
 import BiteKit
 
-/// Ticks a to-do off, or on again, from a widget, without opening Bite. It runs in Bite, started
-/// out of sight if it isn't running, as a Live Activity's buttons do: on the widgets' copy of the
-/// page first, which they show it by, then onto the page itself and up to iCloud at once (see
-/// `WidgetShelf`). Run in the widgets' own process, the tick waited for Bite to be opened before
-/// it reached the page, or iCloud.
-struct ToggleToDoIntent: AppIntent, LiveActivityIntent {
+/// Ticks a to-do off, or on again, from a widget, without opening Bite. On the phone it runs in
+/// Bite, started out of sight if it isn't running, as a Live Activity's buttons do: on the widgets'
+/// copy of the page first, which they show it by, then onto the page itself and up to iCloud at
+/// once (see `WidgetShelf`). Run in the widgets' own process, the tick waited for Bite to be
+/// opened before it reached the page, or iCloud. The Mac runs it in the widgets' process, which
+/// tells Bite, in the menu bar, to take it.
+struct ToggleToDoIntent: AppIntent {
     static let title: LocalizedStringResource = "Tick Off To-Do"
     static let isDiscoverable = false
 
@@ -40,6 +41,10 @@ struct ToggleToDoIntent: AppIntent, LiveActivityIntent {
     }
 }
 
+#if os(iOS)
+extension ToggleToDoIntent: LiveActivityIntent {}
+#endif
+
 nonisolated enum ToDoTicks {
     static let log = Logger(subsystem: "com.chenyeni.bite", category: "widgets")
 
@@ -55,6 +60,12 @@ nonisolated enum ToDoTicks {
     static func leave(_ tick: PageTick) {
         guard let folder = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: PageShelf.appGroup) else { return }
         let shelf = PageShelf(folder: folder)
+        #if os(macOS)
+        defer {
+            DistributedNotificationCenter.default().postNotificationName(PageShelf.ticksLeft, object: nil, userInfo: nil,
+                                                                         deliverImmediately: true)
+        }
+        #endif
         try? shelf.leave(tick)
         try? shelf.noteShown(tick)
         log.info("Ticked in a widget: page \(tick.page), line \(tick.block), done \(tick.done)")

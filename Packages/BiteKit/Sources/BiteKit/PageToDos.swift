@@ -33,8 +33,18 @@ public enum PageToDos {
 }
 
 extension PageShelf {
-    /// The folder Bite shares with its widgets.
+    /// The folder Bite shares with its widgets. The Mac's is named for the team, as a Mac's app
+    /// groups are: one named as the phone's needs the signing profile to allow it, which the Mac's
+    /// don't.
+    #if os(macOS)
+    public static let appGroup = "33G9D6C5H4.com.chenyeni.bite"
+    #else
     public static let appGroup = "group.com.chenyeni.bite"
+    #endif
+
+    /// Said by a widget that has left a tick, for Bite, running, to take it at once: on the Mac,
+    /// where a widget's tick is run in the widget's own process.
+    public static let ticksLeft = Notification.Name("\(appGroup).ticksLeft")
 
     private var ticksFile: URL {
         folder.appending(path: "Ticks.json")

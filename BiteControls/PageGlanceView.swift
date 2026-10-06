@@ -1,6 +1,5 @@
 import AppIntents
 import SwiftUI
-import UIKit
 import WidgetKit
 import BiteKit
 
@@ -22,7 +21,7 @@ nonisolated struct GlanceMetrics {
     var markerWidth: CGFloat { 28 * scale }
     var indentStep: CGFloat { 24 * scale }
     var quoteIndent: CGFloat { 18 * scale }
-    var capHeight: CGFloat { UIFont.systemFont(ofSize: body).capHeight }
+    var capHeight: CGFloat { PlatformFont.systemFont(ofSize: body).capHeight }
 
     /// Where a list line's text starts, as in the editor: deeper than six levels lines up with six.
     func listTextX(indent: Int) -> CGFloat {
@@ -30,8 +29,8 @@ nonisolated struct GlanceMetrics {
     }
 
     /// The height of a row of text in a font of `size`.
-    static func row(_ size: CGFloat, weight: UIFont.Weight = .regular) -> CGFloat {
-        UIFont.systemFont(ofSize: size, weight: weight).lineHeight
+    static func row(_ size: CGFloat, weight: PlatformFont.Weight = .regular) -> CGFloat {
+        PlatformFont.systemFont(ofSize: size, weight: weight).lineHeight
     }
 }
 
@@ -155,7 +154,7 @@ struct PageGlanceView: View {
         .frame(height: kind == .divider ? 1 + metrics.body * 0.8 : part.isBlank ? metrics.body * 0.75 : nil)
         .overlay {
             Rectangle()
-                .fill(Color(uiColor: .separator))
+                .fill(Color.systemSeparator)
                 .frame(height: 1)
                 .opacity(kind == .divider ? 1 : 0)
         }
@@ -236,7 +235,7 @@ struct PageGlanceView: View {
 
     private func attributed(_ line: PageGlance.Line) -> AttributedString {
         let isDone = line.kind == .todo && line.isChecked
-        let primary = Color(uiColor: .label), secondary = Color(uiColor: .secondaryLabel)
+        let primary = Color.systemLabel, secondary = Color.systemSecondaryLabel
         var result = AttributedString()
         for run in line.runs {
             var part = AttributedString(run.text)
@@ -292,7 +291,7 @@ struct PageGlanceView: View {
             return PartFit(gap: gap, row: GlanceMetrics.row(metrics.body), spacing: 0, splits: false)
         case .line(let line):
             let (size, weight) = size(for: line.kind)
-            let uiWeight: UIFont.Weight = weight == .bold ? .bold : weight == .semibold ? .semibold : .regular
+            let uiWeight: PlatformFont.Weight = weight == .bold ? .bold : weight == .semibold ? .semibold : .regular
             return PartFit(gap: gap, row: GlanceMetrics.row(size, weight: uiWeight), spacing: rowSpacing(line.kind), splits: true)
         case .quote, .code:
             return PartFit(gap: gap, row: GlanceMetrics.row(metrics.body), spacing: 0, splits: false)
@@ -437,20 +436,12 @@ struct Checkbox: View {
 extension DotColor {
     /// The colour, in light appearance or dark.
     var color: Color {
-        Color(uiColor: UIColor { [light, dark] traits in UIColor(hex: traits.userInterfaceStyle == .dark ? dark : light) })
+        Color(platform: .adaptive(light: light, dark: dark))
     }
 
     /// The colour made lighter or darker by `delta` in OKLab, in light appearance or dark.
     func shade(_ delta: Double) -> Color {
-        Color(uiColor: UIColor { [light, dark] traits in
-            UIColor(hex: ColorMath.adjustingLightness(traits.userInterfaceStyle == .dark ? dark : light, by: delta))
-        })
-    }
-}
-
-extension UIColor {
-    convenience init(hex: UInt32) {
-        self.init(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-                  blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+        Color(platform: .adaptive(light: ColorMath.adjustingLightness(light, by: delta),
+                                  dark: ColorMath.adjustingLightness(dark, by: delta)))
     }
 }

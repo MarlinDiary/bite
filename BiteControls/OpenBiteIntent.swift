@@ -1,5 +1,6 @@
 import AppIntents
 
+#if os(iOS)
 /// What Bite's control does: opens Bite as its icon does, on the page last used. Bite has this file
 /// too, as it's Bite that runs it, brought up for it.
 struct OpenBiteIntent: AppIntent {
@@ -14,3 +15,4 @@ struct OpenBiteIntent: AppIntent {
         .result()
     }
 }
+#endif

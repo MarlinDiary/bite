@@ -37,6 +37,8 @@ struct PageToDosTests {
         #expect(glance.lines.map(\.block) == [0, 1, 3])
         #expect(glance.withoutTitle().lines.map(\.text) == ["eggs"])
         #expect(PageGlance(markdown: "Plain\n- [ ] a").withoutTitle().lines.count == 2)
+        // A page with only its title keeps it: left out, the page would show as empty.
+        #expect(PageGlance(markdown: "# Title\n\n").withoutTitle().lines.map(\.text) == ["Title"])
     }
 
     /// Left by a widget, taken by Bite once, in order.

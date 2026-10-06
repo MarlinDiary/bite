@@ -1,6 +1,5 @@
 import AppIntents
 import SwiftUI
-import UIKit
 import WidgetKit
 import BiteKit
 
@@ -13,7 +12,7 @@ struct ToDosWidget: Widget {
         }
         .configurationDisplayName("To-Dos")
         .description("The to-dos still to do on every page. Tick one off right here.")
-        .supportedFamilies(WidgetFamily.bites(byTheClock: true))
+        .supportedFamilies(WidgetFamily.homeScreen + WidgetFamily.lockScreen(byTheClock: true))
         .contentMarginsDisabled()
     }
 }
@@ -106,6 +105,7 @@ struct ToDosView: View {
     @ViewBuilder
     private var content: some View {
         switch family {
+        #if os(iOS)
         case .accessoryCircular:
             ToDoCount(count: entry.open)
         case .accessoryInline:
@@ -128,6 +128,7 @@ struct ToDosView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+        #endif
         default:
             let isEmpty = entry.toDos.isEmpty
             ZStack(alignment: .topLeading) {
@@ -198,7 +199,7 @@ private struct ToDoRow: View {
         let done = toDo.line.isChecked
         let label = Text(toDo.line.text)
             .font(.system(size: ToDoMetrics.font))
-            .foregroundStyle(Color(uiColor: done ? .secondaryLabel : .label))
+            .foregroundStyle(done ? Color.systemSecondaryLabel : Color.systemLabel)
             .strikethrough(done)
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -210,41 +211,17 @@ private struct ToDoRow: View {
     }
 }
 
-/// With nothing left to do: "All done", its full stop one of Bite's dots, and a wish for the time
-/// of day, in the middle.
+/// With nothing left to do: "All done", its full stop the dot of Bite's icon, and a wish for the
+/// time of day.
 private struct AllDone: View {
     let date: Date
-    @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        let (title, wish): (CGFloat, CGFloat) = switch family {
-        case .accessoryRectangular: (20, 13)
-        case .systemSmall: (30, 13)
-        case .systemMedium: (34, 15)
-        case .systemLarge: (40, 17)
-        default: (44, 17)
-        }
-        VStack(spacing: title * 0.1) {
-            HStack(alignment: .firstTextBaseline, spacing: title * 0.04) {
-                Text("All done")
-                    .font(.system(size: title, weight: .bold))
-                Circle()
-                    .fill(DotPalette.colors[1].color)
-                    .frame(width: title * 0.2, height: title * 0.2)
-                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] }
-                    .widgetAccentable()
-            }
-            Text(TimeOfDay.wish(at: date))
-                .font(.system(size: wish))
-                .foregroundStyle(Color(uiColor: .secondaryLabel))
-        }
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
+        DotStatement(title: "All done", ink: DotPalette.colors[1], line: TimeOfDay.wish(at: date))
     }
 }
 
+#if os(iOS)
 /// How many to-dos there are, in Bite's ring, on the Lock Screen.
 private struct ToDoCount: View {
     let count: Int
@@ -271,3 +248,4 @@ private struct ToDoCount: View {
         .accessibilityLabel(count == 0 ? "Nothing to do" : count == 1 ? "1 to-do" : "\(count) to-dos")
     }
 }
+#endif

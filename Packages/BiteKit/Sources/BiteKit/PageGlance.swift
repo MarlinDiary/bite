@@ -49,13 +49,13 @@ public struct PageGlance: Sendable, Hashable {
     }
 
     /// The page without its title: its first line, when that's a heading, and the empty line
-    /// after it.
+    /// after it. A page with nothing else on it keeps it, rather than showing as if empty.
     public func withoutTitle() -> PageGlance {
         guard lines.first?.kind.isHeading == true else { return self }
         var glance = self
         glance.lines.removeFirst()
         if glance.lines.first?.isBlank == true { glance.lines.removeFirst() }
-        return glance
+        return glance.isEmpty ? self : glance
     }
 
     /// What the page is about, for a line next to the clock: its first line with words on it.

@@ -1,5 +1,6 @@
 import AppIntents
 import AppKit
+import BiteKit
 import OSLog
 
 /// Bite on the Mac lives in the menu bar: a ring there opens the seven dots in a panel below it.
@@ -22,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var spotlight = SpotlightIndex(store: store)
     private var panel: PanelController?
     private var statusItem: StatusItemController?
+    private var widgets: WidgetShelf?
 
     override init() {
         super.init()
@@ -43,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.statusItem = statusItem
         self.panel = panel
         self.statusItem = statusItem
+        // The pages for the widgets on the desktop, and the to-dos ticked there while Bite was out.
+        widgets = WidgetShelf(store: store)
         NSApp.mainMenu = MainMenu.make()
         if PageSync.runsHere {
             sync.start()
@@ -79,6 +83,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         return DotStore.defaultFolder
+    }
+
+    /// A widget clicked on the desktop: the panel comes up on the page it shows.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            if let page = PageTurns.page(openedBy: url) { store.open(dot: page) }
+        }
     }
 
     /// A page picked in Spotlight (see `SpotlightIndex`).

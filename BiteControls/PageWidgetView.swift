@@ -14,11 +14,14 @@ enum WidgetCorner {
     static var gap: CGFloat { radius - control / 2 }
 }
 
-/// A page on its dot's faint wash, as in Bite. A small one turns by an arrow in its corner, a
-/// medium one by the dots down its side, a large one by the dot bar across its top. On the Lock
-/// Screen it's the page's first lines, or Bite's ring.
+/// A page on its dot's faint wash, as in Bite. One that turns does it by an arrow in its corner when
+/// small, the dots down its side when medium, the dot bar across its top when bigger; one that
+/// doesn't is the page alone, as far as the edges. On the Lock Screen it's the page's first lines,
+/// or Bite's ring.
 struct PageWidgetView: View {
     let entry: PageEntry
+    /// Whether it turns to the other pages, or stays on the one it's set to.
+    var turns = true
     @Environment(\.widgetFamily) private var family
     @Environment(\.widgetContentMargins) private var margins
     @Environment(\.colorScheme) private var colorScheme
@@ -35,8 +38,25 @@ struct PageWidgetView: View {
 
     var body: some View {
         content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                if showsEmptyPage {
+                    DotStatement(title: DotPalette.colors[entry.page].name, ink: ink, line: "Nothing here yet")
+                }
+            }
             .widgetURL(PageTurns.link(to: entry.page))
             .modifier(OwnBackground(isOnHomeScreen: family.isOnHomeScreen) { PageWash(ink: ink) })
+    }
+
+    /// A page with nothing on it, in a widget with no dots to tell it by, says so, by the page's name:
+    /// left blank, it looked like a widget that hadn't loaded. A bigger widget that turns has its
+    /// dots, and the Lock Screen's ring has room for no words.
+    private var showsEmptyPage: Bool {
+        guard entry.glance.isEmpty else { return false }
+        #if os(iOS)
+        if family == .accessoryCircular { return false }
+        #endif
+        return !turns || family == .systemSmall
     }
 
     @ViewBuilder
@@ -44,15 +64,19 @@ struct PageWidgetView: View {
         switch family {
         case .systemSmall:
             // The arrow in the top corner, beside the first line, as the "…" button is beside
-            // Bite's dot bar, on whole pixels, as its glass was pictured.
+            // Bite's dot bar, on whole pixels, as its glass was pictured. With no other page to
+            // turn to, there's none, and the line has the room.
+            let next = turns ? PageTurns.next(after: entry.page, isEmpty: entry.isEmpty) : entry.page
             GeometryReader { proxy in
                 ZStack(alignment: .topLeading) {
                     PageGlanceView(glance: entry.glance, page: entry.page, ink: ink, metrics: GlanceMetrics(scale: 0.76),
-                                   firstPartTrailing: WidgetCorner.gap + WidgetCorner.control + 6 - margins.trailing,
+                                   firstPartTrailing: next == entry.page ? 0 : WidgetCorner.gap + WidgetCorner.control + 6 - margins.trailing,
                                    safeBottom: PageLines.bottom)
                         .padding(EdgeInsets(top: margins.top, leading: margins.leading, bottom: 0, trailing: margins.trailing))
-                    NextPageButton(entry: entry)
-                        .offset(x: onPixels(proxy.size.width - WidgetCorner.gap - WidgetCorner.control), y: WidgetCorner.gap)
+                    if next != entry.page {
+                        NextPageButton(entry: entry, next: next)
+                            .offset(x: onPixels(proxy.size.width - WidgetCorner.gap - WidgetCorner.control), y: WidgetCorner.gap)
+                    }
                 }
             }
         case .systemMedium:
@@ -60,23 +84,29 @@ struct PageWidgetView: View {
                 PageGlanceView(glance: entry.glance, page: entry.page, ink: ink, metrics: GlanceMetrics(scale: 0.78),
                                safeBottom: PageLines.bottom)
                     .padding(EdgeInsets(top: margins.top, leading: margins.leading, bottom: 0,
-                                        trailing: WidgetCorner.radius + DotColumn.dot / 2 + 10))
-                DotColumn(entry: entry)
+                                        trailing: turns ? WidgetCorner.radius + DotColumn.dot / 2 + 10 : margins.trailing))
+                if turns {
+                    DotColumn(entry: entry)
+                }
             }
+        #if os(iOS)
         case .accessoryCircular:
             PageRing(entry: entry)
         case .accessoryRectangular:
             PageGlanceView(glance: entry.glance, page: entry.page, ink: ink,
                            metrics: GlanceMetrics(scale: 0.8, flatHeadings: true), ticks: false)
+        #endif
         default:
-            // Large, and taller: a page as tall as the Home Screen's (iOS 27), and an iPad's extra
-            // large one, at the iPad's own bigger size.
+            // Large, and bigger: one as tall as a page (iOS and macOS 27), and the extra large one
+            // of an iPad or a Mac's desktop, at a bigger size.
             VStack(spacing: 12) {
-                GlassDotBar(entry: entry)
-                    .padding(.top, WidgetCorner.gap)
+                if turns {
+                    GlassDotBar(entry: entry)
+                        .padding(.top, WidgetCorner.gap)
+                }
                 PageGlanceView(glance: entry.glance, page: entry.page, ink: ink,
                                metrics: GlanceMetrics(scale: family == .systemExtraLarge ? 0.9 : 0.84), safeBottom: PageLines.bottom)
-                    .padding(EdgeInsets(top: 0, leading: margins.leading, bottom: 0, trailing: margins.trailing))
+                    .padding(EdgeInsets(top: turns ? 0 : margins.top, leading: margins.leading, bottom: 0, trailing: margins.trailing))
             }
         }
     }
@@ -92,7 +122,11 @@ enum PageLines {
 nonisolated extension WidgetFamily {
     /// Not one of the Lock Screen's, which have no background of their own.
     var isOnHomeScreen: Bool {
+        #if os(iOS)
         ![.accessoryCircular, .accessoryRectangular, .accessoryInline].contains(self)
+        #else
+        true
+        #endif
     }
 }
 
@@ -190,29 +224,62 @@ private struct DotColumn: View {
     }
 }
 
-/// Turns a small widget to the next page with something on it, as Bite's "…" button looks. With no
-/// other page, it's only there faintly.
-private struct NextPageButton: View {
-    let entry: PageEntry
+/// A word or two in bold, its full stop one of Bite's dots, over a quieter line, in the middle of a
+/// widget: "All done" when nothing's left to do, a page's name when there's nothing on it.
+struct DotStatement: View {
+    let title: String
+    let ink: DotColor
+    let line: String
+    @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        let next = PageTurns.next(after: entry.page, isEmpty: entry.isEmpty)
-        let size = CGSize(width: WidgetCorner.control, height: WidgetCorner.control)
-        let arrow = Image(systemName: "chevron.right")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(DotPalette.colors[entry.page].color)
-            .frame(width: size.width, height: size.height)
-            .background(Glass(shape: .circle, page: entry.page, size: size))
-            .widgetAccentable()
-        if next == entry.page {
-            arrow.opacity(0.4)
-        } else {
-            Button(intent: TurnPageIntent(widget: entry.widget, page: next)) {
-                arrow
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Next page")
+        let (titleSize, lineSize): (CGFloat, CGFloat) = switch family {
+        #if os(iOS)
+        case .accessoryRectangular: (20, 13)
+        #endif
+        case .systemSmall: (30, 13)
+        case .systemMedium: (34, 15)
+        case .systemLarge: (40, 17)
+        default: (44, 17)
         }
+        VStack(spacing: titleSize * 0.1) {
+            HStack(alignment: .firstTextBaseline, spacing: titleSize * 0.04) {
+                Text(title)
+                    .font(.system(size: titleSize, weight: .bold))
+                Circle()
+                    .fill(ink.color)
+                    .frame(width: titleSize * 0.2, height: titleSize * 0.2)
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] }
+                    .widgetAccentable()
+            }
+            Text(line)
+                .font(.system(size: lineSize))
+                .foregroundStyle(Color.systemSecondaryLabel)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Turns a small widget to `next`, the next page with something on it, as Bite's "…" button looks.
+private struct NextPageButton: View {
+    let entry: PageEntry
+    let next: Int
+
+    var body: some View {
+        let size = CGSize(width: WidgetCorner.control, height: WidgetCorner.control)
+        Button(intent: TurnPageIntent(widget: entry.widget, page: next)) {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DotPalette.colors[entry.page].color)
+                .frame(width: size.width, height: size.height)
+                .background(Glass(shape: .circle, page: entry.page, size: size))
+                .widgetAccentable()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Next page")
     }
 }
 
@@ -246,6 +313,7 @@ private struct Glass: View {
     }
 }
 
+#if os(iOS)
 /// Bite's ring on the Lock Screen, as its icon has it, opening Bite on the page.
 private struct PageRing: View {
     let entry: PageEntry
@@ -264,6 +332,7 @@ private struct PageRing: View {
         .accessibilityLabel("\(DotPalette.colors[entry.page].name) page")
     }
 }
+#endif
 
 /// A dot as in Bite's dot bar: a ring that's solid when selected, set into its capsule, darker
 /// toward the top edge, where a fine inner shadow falls. Everything as the app has it, at this size.

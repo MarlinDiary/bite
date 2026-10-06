@@ -23,26 +23,6 @@ struct WidgetShelfTests {
         }
     }
 
-    /// A to-do ticked in a widget, which the system runs in Bite, goes onto the page at once,
-    /// and to disk, before Bite may be stopped again.
-    @Test func aTickFromAWidgetGoesOntoThePageAtOnce() throws {
-        let root = FileManager.default.temporaryDirectory.appending(path: "WidgetTakeTests-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let pages = root.appending(path: "Dots")
-        let store = DotStore(folder: pages)
-        store.update(dot: 1, markdown: "- [ ] tea\n")
-        store.saveNow()
-        let copy = PageShelf(folder: root.appending(path: "Shelf"))
-        let shelf = WidgetShelf(store: store, folder: copy.folder)
-        try withExtendedLifetime(shelf) {
-            try copy.leave(PageTick(page: 1, block: 0, text: "tea", done: true))
-            ToDoTicks.take()
-            #expect(store.markdown[1] == "- [x] tea\n")
-            #expect(DotStore(folder: pages).markdown[1] == "- [x] tea\n")
-            #expect(copy.read()?[1] == "- [x] tea\n")
-        }
-    }
-
     /// To-dos ticked in a widget while Bite wasn't running go onto the page as Bite opens, once,
     /// and the widgets' copy keeps them.
     @Test func toDosTickedInAWidgetGoOntoThePage() throws {
@@ -65,4 +45,26 @@ struct WidgetShelfTests {
             #expect(copy.takeTicks().isEmpty)
         }
     }
+
+    #if os(macOS)
+    /// A widget on the Mac's desktop ticks a to-do in its own process and says so: Bite, running
+    /// in the menu bar, takes it onto the page at once.
+    @Test func aTickSaidByAWidgetIsTakenAtOnce() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "WidgetSaidTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = DotStore(folder: root.appending(path: "Dots"))
+        store.update(dot: 1, markdown: "- [ ] tea\n")
+        store.saveNow()
+        let copy = PageShelf(folder: root.appending(path: "Shelf"))
+        let shelf = WidgetShelf(store: store, folder: copy.folder)
+        try copy.leave(PageTick(page: 1, block: 0, text: "tea", done: true))
+        DistributedNotificationCenter.default().postNotificationName(PageShelf.ticksLeft, object: nil, userInfo: nil,
+                                                                     deliverImmediately: true)
+        for _ in 0..<100 where store.markdown[1] != "- [x] tea\n" {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(store.markdown[1] == "- [x] tea\n")
+        withExtendedLifetime(shelf) {}
+    }
+    #endif
 }

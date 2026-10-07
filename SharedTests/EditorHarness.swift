@@ -43,6 +43,7 @@ final class EditorHarness {
         let defaults = UserDefaults(suiteName: "BiteTests")!
         defaults.removePersistentDomain(forName: "BiteTests")
         Preferences.defaults = defaults
+        Preferences.keepCopy(in: nil)
     }()
 
     init(_ markdown: String = "") {

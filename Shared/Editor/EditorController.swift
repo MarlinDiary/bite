@@ -36,9 +36,12 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     /// A link to change in the format bar: the link button's, which may be a new one to make, or
     /// one tapped while the page is being edited.
     var onEditLink: ((PageLink) -> Void)?
-    /// Goes where a tapped link goes, out of the app. Tests catch it instead.
+    /// Goes where a tapped link goes, out of the app. Tests catch it instead. The phone's share
+    /// extension can't open anything, so there nowhere.
     var openURL: (URL) -> Void = { url in
-        #if canImport(UIKit)
+        #if canImport(UIKit) && SHARE_EXTENSION
+        return
+        #elseif canImport(UIKit)
         UIApplication.shared.open(url)
         #else
         NSWorkspace.shared.open(url)
@@ -288,6 +291,17 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         }
         focus()
         textView.requestCaretScroll()
+    }
+
+    /// Whether the page shows its end, scrolled there or all of it on screen, or is kept there.
+    var isAtEnd: Bool {
+        textView.keepsEnd || textView.showsEnd
+    }
+
+    /// Brings the end of the page into view, as for a page shared to, where what's shared goes,
+    /// and keeps it there as the page settles, until it's touched.
+    func showEnd() {
+        textView.keepsEnd = true
     }
 
     /// Shows where `query` is on `line`, for a page opened at a search result picked outside Bite:

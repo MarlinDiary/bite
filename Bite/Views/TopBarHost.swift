@@ -79,14 +79,19 @@ final class TopBarController<Content: View>: UIViewController {
 }
 
 /// Takes touches only on the bar's own controls, the dots' capsule in the middle and the "…"
-/// button at the end. Elsewhere along it they go to the page behind, as they did with the bar
-/// in SwiftUI.
+/// button at the end, and in the share extension its buttons at either end. Elsewhere along it
+/// they go to the page behind, as they did with the bar in SwiftUI.
 private final class TopBarView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let height = DotSwitcher.height
         let capsule = CGRect(x: bounds.midX - DotSwitcher.width / 2, y: 0, width: DotSwitcher.width, height: height)
         let menu = CGRect(x: bounds.maxX - height, y: 0, width: height, height: height)
-        guard capsule.contains(point) || menu.contains(point) else { return nil }
+        #if SHARE_EXTENSION
+        let start = CGRect(x: 0, y: 0, width: height, height: height)
+        #else
+        let start = CGRect.null
+        #endif
+        guard capsule.contains(point) || menu.contains(point) || start.contains(point) else { return nil }
         let view = super.hitTest(point, with: event)
         return view === self ? nil : view
     }

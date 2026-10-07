@@ -46,7 +46,68 @@ struct WidgetShelfTests {
         }
     }
 
+    /// A page shared to while Bite wasn't running goes in as Bite opens, once, onto the page as it
+    /// is, and the widgets' copy keeps it.
+    @Test func pagesSharedToGoInAsBiteOpens() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "WidgetAdditionsTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pages = root.appending(path: "Dots")
+        let first = DotStore(folder: pages)
+        first.update(dot: 4, markdown: "# Reading\n- [ ] a book\n")
+        first.update(dot: 5, markdown: "Notes\n")
+        first.saveNow()
+        let copy = PageShelf(folder: root.appending(path: "Shelf"))
+        try copy.leave(PageShare(page: 4, before: "# Reading\n- [ ] a book\n",
+                                 after: "# Reading\n- [ ] a book\n- [ ] [A site](https://example.com)\n"))
+        // Changed in Bite since the extension read it: both changes are kept.
+        try copy.leave(PageShare(page: 5, before: "Note\n", after: "Note\nmore notes\n"))
+
+        let store = DotStore(folder: pages)
+        let shelf = WidgetShelf(store: store, folder: copy.folder)
+        withExtendedLifetime(shelf) {
+            #expect(store.markdown[4] == "# Reading\n- [ ] a book\n- [ ] [A site](https://example.com)\n")
+            #expect(store.markdown[5] == "Notes\nmore notes\n")
+            #expect(DotStore(folder: pages).markdown[5] == store.markdown[5])
+            #expect(copy.read()?[4] == store.markdown[4])
+            #expect(copy.takeShares().isEmpty)
+        }
+    }
+
+    /// Where Bite's share extension opens: the page Bite was last on, from as Bite opens.
+    @Test func thePageLastOnIsWhereSharingOpens() {
+        let root = FileManager.default.temporaryDirectory.appending(path: "LastPageTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = DotStore(folder: root.appending(path: "Dots"))
+        let copy = PageShelf(folder: root.appending(path: "Shelf"))
+        let shelf = WidgetShelf(store: store, folder: copy.folder)
+        withExtendedLifetime(shelf) {
+            #expect(copy.readLastPage() == store.selection)
+            store.selection = 2
+            store.selection = 6
+            #expect(copy.readLastPage() == 6)
+        }
+    }
+
     #if os(macOS)
+    /// A page shared to on the Mac, where Bite is running in the menu bar, goes in at once.
+    @Test func aPageSharedToOnTheMacGoesInAtOnce() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "WidgetSharedTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = DotStore(folder: root.appending(path: "Dots"))
+        store.update(dot: 1, markdown: "Ideas\n")
+        store.saveNow()
+        let copy = PageShelf(folder: root.appending(path: "Shelf"))
+        let shelf = WidgetShelf(store: store, folder: copy.folder)
+        try copy.leave(PageShare(page: 1, before: "Ideas\n", after: "Ideas\nanother\n"))
+        DistributedNotificationCenter.default().postNotificationName(PageShelf.sharesLeft, object: nil, userInfo: nil,
+                                                                     deliverImmediately: true)
+        for _ in 0..<100 where store.markdown[1] != "Ideas\nanother\n" {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(store.markdown[1] == "Ideas\nanother\n")
+        withExtendedLifetime(shelf) {}
+    }
+
     /// A widget on the Mac's desktop ticks a to-do in its own process and says so: Bite, running
     /// in the menu bar, takes it onto the page at once.
     @Test func aTickSaidByAWidgetIsTakenAtOnce() async throws {

@@ -465,13 +465,17 @@ final class BiteTextView: NSTextView {
 
     /// AppKit's spelling panel floats, which put it under the panel: it comes up over it.
     override func showGuessPanel(_ sender: Any?) {
+        #if !SHARE_EXTENSION
         NSSpellChecker.shared.spellingPanel.level = PanelController.levelAbove
+        #endif
         super.showGuessPanel(sender)
     }
 
     /// The text menu's Show Substitutions, over the panel too.
     override func orderFrontSubstitutionsPanel(_ sender: Any?) {
+        #if !SHARE_EXTENSION
         NSSpellChecker.shared.substitutionsPanel.level = PanelController.levelAbove
+        #endif
         super.orderFrontSubstitutionsPanel(sender)
     }
 
@@ -527,6 +531,7 @@ final class BiteTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         hideFound()
+        keepsEnd = false
         let point = convert(event.locationInWindow, from: nil)
         if let location = todoLocation(at: point) {
             editor?.toggleTodo(at: location)
@@ -703,7 +708,7 @@ final class BiteTextView: NSTextView {
             let add = NSMenuItem(title: "Add Link…", action: #selector(addLink(_:)), keyEquivalent: "k")
             add.target = self
             menu.insertItem(.separator(), at: 0)
-            menu.insertItem(aimed(MainMenu.format(withLink: false)), at: 0)
+            menu.insertItem(aimed(FormatMenu.make(withLink: false)), at: 0)
             menu.insertItem(add, at: 0)
             return menu
         }
@@ -882,11 +887,13 @@ final class BiteTextView: NSTextView {
 
     override func scrollWheel(with event: NSEvent) {
         hideFound()
+        keepsEnd = false
         super.scrollWheel(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
         hideFound()
+        keepsEnd = false
         super.keyDown(with: event)
     }
 
@@ -980,7 +987,7 @@ final class BiteTextView: NSTextView {
     /// shown.
     override func viewDidUnhide() {
         super.viewDidUnhide()
-        if placeToPutBack != nil {
+        if placeToPutBack != nil || keepsEnd {
             needsLayout = true
         }
     }
@@ -989,6 +996,41 @@ final class BiteTextView: NSTextView {
     override func viewDidHide() {
         super.viewDidHide()
         hideFound(.atOnce)
+    }
+
+    /// Set to keep the end of the page in view as the page is laid out and takes the panel's size,
+    /// until it's clicked, scrolled or typed in: a page shared to opens at its end, where what's
+    /// shared goes.
+    var keepsEnd = false {
+        didSet { if keepsEnd { needsLayout = true } }
+    }
+
+    /// Whether the end of the page shows: scrolled there, or the whole page in view.
+    var showsEnd: Bool {
+        guard let scrollView = enclosingScrollView else { return true }
+        return scrollView.contentView.bounds.maxY - scrollView.contentInsets.bottom >= frame.maxY - 2
+    }
+
+    /// Scrolls to the end of the page. Laying out, the last of it is laid out where it goes first,
+    /// enough to fill what shows: the end TextKit guessed at, from lines it hadn't laid out, was
+    /// short of the real one, and the clip view, scrolled there, didn't stop at the page's end.
+    private func scrollToEnd(layingOut: Bool = false) {
+        guard let layoutManager = textLayoutManager, let scrollView = enclosingScrollView else { return }
+        let document = layoutManager.documentRange
+        let length = layoutManager.offset(from: document.location, to: document.endLocation)
+        let start = layoutManager.location(document.endLocation, offsetBy: -min(Self.laidOutAbove, length)) ?? document.location
+        var bottom: CGFloat?
+        layoutManager.enumerateTextLayoutFragments(from: start, options: layingOut ? [.ensuresLayout] : []) { fragment in
+            bottom = fragment.layoutFragmentFrame.maxY
+            return true
+        }
+        guard let bottom else { return }
+        let clipView = scrollView.contentView
+        let end = bottom + textContainerOrigin.y + textContainerInset.height + scrollView.contentInsets.bottom - clipView.bounds.height
+        let top = max(-scrollView.contentInsets.top, end)
+        guard abs(clipView.bounds.minY - top) > 0.5 else { return }
+        clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: top))
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     /// Scrolls `range` into view a little below the dot bar, as at a search result picked
@@ -1096,15 +1138,22 @@ final class BiteTextView: NSTextView {
     }
 
     override func layout() {
-        let place = isHiddenOrHasHiddenAncestor ? nil : placeToPutBack
+        let isShown = !isHiddenOrHasHiddenAncestor
+        // Kept at its end, the page has no other place to keep.
+        if isShown, keepsEnd { placeToPutBack = nil }
+        let place = isShown ? placeToPutBack : nil
         if let place {
             scroll(to: place, layingOut: true)
+        } else if isShown, keepsEnd {
+            scrollToEnd(layingOut: true)
         }
         super.layout()
         if let place {
             placeToPutBack = nil
             // AppKit, keeping what shows in place by its own reckoning, may have moved it again.
             scroll(to: place)
+        } else if isShown, keepsEnd {
+            scrollToEnd()
         }
         updateDecorations()
     }

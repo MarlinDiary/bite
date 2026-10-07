@@ -17,6 +17,13 @@ struct TopBarPlacement: Equatable {
 
     init(safeTop: CGFloat, safeSides: CGFloat, width: CGFloat) {
         let margin: CGFloat = width >= 414 ? 20 : 16
+        #if SHARE_EXTENSION
+        // In the share sheet, where the system puts a sheet's buttons: 16 points in from its top and
+        // sides, clear of its rounded corners.
+        top = 16
+        side = 16
+        return
+        #endif
         if safeTop > 0 {
             top = safeTop
             side = margin

@@ -51,6 +51,12 @@ struct DotPager: UIViewRepresentable {
         store.startLineInEditor = { [weak coordinator] dot, asToDo in
             coordinator?.startLine(on: dot, asToDo: asToDo)
         }
+        store.showEndInEditor = { [weak coordinator] dot in
+            coordinator?.controllers[dot].showEnd()
+        }
+        store.pageIsAtEnd = { [weak coordinator] dot in
+            coordinator?.controllers[dot].isAtEnd ?? true
+        }
         coordinator.scrollView.currentPage = selection
         coordinator.letPageScrollToTop(selection)
         return coordinator.container

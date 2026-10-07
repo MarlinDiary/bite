@@ -37,6 +37,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
         DebugSnapshot.prepare()
+        // A snapshot's choices are its own, not for Bite's extensions.
+        if !DebugSnapshot.isRequested {
+            Preferences.keepCopy(in: UserDefaults(suiteName: PageShelf.appGroup))
+        }
+        #else
+        // For Bite's extensions, which can't read the choices in Settings.
+        Preferences.keepCopy(in: UserDefaults(suiteName: PageShelf.appGroup))
         #endif
         let panel = PanelController(store: store)
         let statusItem = StatusItemController()

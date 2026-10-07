@@ -15,6 +15,7 @@ struct DotSwitcher: View {
     /// false once it's lifted.
     var onTouch: (Bool) -> Void = { _ in }
     @Environment(DotStore.self) private var store
+    @Environment(\.dotColors) private var dotColors
     /// The dot under the finger while one is down on the bar.
     @State private var touchedDot: Int?
     /// Whether a finger is down on the bar. Unlike `onEnded`, this also ends when the system
@@ -42,7 +43,7 @@ struct DotSwitcher: View {
         HStack(spacing: 0) {
             ForEach(0..<DotPalette.count, id: \.self) { dot in
                 let isSelected = highlighted == dot
-                let hasContent = !store.isEmpty[dot]
+                let hasContent = dotColors.isColoured(dot, isSelected: isSelected, isEmpty: store.isEmpty)
                 // An empty page's grey isn't lit: lit past white, a grey is white.
                 DotIndicator(ink: hasContent ? DotPalette.colors[dot] : DotPalette.empty, isSelected: isSelected,
                              glows: dotGlows && hasContent)
@@ -97,6 +98,27 @@ struct DotSwitcher: View {
     private func dot(at x: CGFloat) -> Int {
         min(max(Int(((x - inset) / dotWidth).rounded(.down)), 0), DotPalette.count - 1)
     }
+}
+
+/// Which dots the dot bar shows in their colour: those whose page has something on it, as Bite's
+/// does. The share extension's, where each page shows what's shared at its end, shows each page as
+/// Add would leave it: the page on screen with what's shared, as it is, and the others with their
+/// own lines, `ownIsEmpty`. What's shared taken off a page with nothing else on it, its dot is
+/// empty again.
+enum DotColors {
+    case byContent
+    case asAdded(ownIsEmpty: [Bool])
+
+    func isColoured(_ dot: Int, isSelected: Bool, isEmpty: [Bool]) -> Bool {
+        switch self {
+        case .byContent: !isEmpty[dot]
+        case .asAdded(let ownIsEmpty): isSelected ? !isEmpty[dot] : !ownIsEmpty[dot]
+        }
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var dotColors: DotColors = .byContent
 }
 
 /// A ring that is solid when selected. It looks set into the capsule rather than sitting on top:

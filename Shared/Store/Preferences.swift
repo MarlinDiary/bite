@@ -4,8 +4,20 @@ import Foundation
 /// a change is posted as `didChange`, which the pages and iCloud sync follow.
 enum Preferences {
     static let didChange = Notification.Name("BitePreferencesDidChange")
-    /// The tests' own in place of the app's, so they don't change the person's choices.
+    /// The tests' own in place of the app's, so they don't change the person's choices. In Bite's
+    /// share extension, Bite's copy (see `keepCopy`).
     static var defaults = UserDefaults.standard
+    /// Where Bite keeps a copy of the choices for its extensions, which can't read its own, so a page
+    /// shared to looks as it does in Bite. None in tests and snapshots, whose choices are their own.
+    private(set) static var copy: UserDefaults?
+
+    /// Keeps a copy of every choice in `copy` from now on, starting with each as it is now.
+    static func keepCopy(in copy: UserDefaults?) {
+        self.copy = copy
+        for key in keys {
+            copy?.set(defaults.object(forKey: key), forKey: key)
+        }
+    }
 
     /// Whether the pages sync through iCloud. On unless turned off.
     static var syncsWithICloud: Bool {
@@ -71,10 +83,13 @@ enum Preferences {
     private static let locksPortraitKey = "locksPortrait"
     private static let keepsScreenOnKey = "keepsScreenOn"
     private static let dotGlowsKey = "dotGlows"
+    private static let keys = [syncsWithICloudKey, showsInSpotlightKey, checksSpellingKey, panelIsGlassKey, playsHapticsKey,
+                               locksPortraitKey, keepsScreenOnKey, dotGlowsKey]
 
     private static func set(_ value: Bool, forKey key: String) {
         guard defaults.object(forKey: key) as? Bool != value else { return }
         defaults.set(value, forKey: key)
+        copy?.set(value, forKey: key)
         NotificationCenter.default.post(name: didChange, object: nil)
     }
 }

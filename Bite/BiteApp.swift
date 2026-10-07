@@ -15,6 +15,8 @@ struct BiteApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        // For Bite's extensions, which can't read the choices in Settings.
+        Preferences.keepCopy(in: UserDefaults(suiteName: PageShelf.appGroup))
         let store = DotStore()
         let sync = PageSync(store: store)
         _store = State(initialValue: store)

@@ -16,7 +16,10 @@ final class DotStore {
     var selection: Int {
         didSet {
             UserDefaults.standard.set(selection, forKey: Self.selectionKey)
-            if selection != oldValue { onSelectionChange?() }
+            if selection != oldValue {
+                onSelectionChange?()
+                onSelectionForExtensions?(selection)
+            }
         }
     }
 
@@ -40,6 +43,8 @@ final class DotStore {
     /// Set on the phone by its widgets' copy of the pages (see `WidgetShelf`), which is told when
     /// pages are written to disk.
     @ObservationIgnored var onSaveForWidgets: (() -> Void)?
+    /// Set by the same, which is told when another page is picked: where the share extension opens.
+    @ObservationIgnored var onSelectionForExtensions: ((Int) -> Void)?
     /// Set by the editors: shows a line on a page, and a search's words on it (see `reveal`). One
     /// asked for before the editors are there, as Bite opens at a Spotlight result, waits for them.
     @ObservationIgnored var revealInEditor: ((Int, Int?, String) -> Void)? {
@@ -61,6 +66,20 @@ final class DotStore {
         }
     }
     @ObservationIgnored private var waitingLine: (dot: Int, asToDo: Bool)?
+    /// Set by the editors: brings a page's end into view (see `showEnd`). Those asked for before the
+    /// editors are there wait for them.
+    @ObservationIgnored var showEndInEditor: ((Int) -> Void)? {
+        didSet {
+            guard let showEndInEditor else { return }
+            let waiting = waitingEnds
+            waitingEnds = []
+            waiting.sorted().forEach(showEndInEditor)
+        }
+    }
+    @ObservationIgnored private var waitingEnds: Set<Int> = []
+    /// Set by the editors: whether a page shows its end, as the share extension keeps a page at its
+    /// end as what's shared at its end changes.
+    @ObservationIgnored var pageIsAtEnd: ((Int) -> Bool)?
     /// Set by the Mac's panel, which comes up on a page asked for from Siri or Shortcuts. The
     /// phone's comes up with Bite, which the system brings to the front.
     @ObservationIgnored var showInEditor: ((Int) -> Void)?
@@ -142,6 +161,17 @@ final class DotStore {
         }
     }
 
+    /// Brings the end of a dot's page into view, on screen or not, as Bite's share extension shows
+    /// each page with what's shared at its end.
+    func showEnd(dot: Int) {
+        guard markdown.indices.contains(dot) else { return }
+        if let showEndInEditor {
+            showEndInEditor(dot)
+        } else {
+            waitingEnds.insert(dot)
+        }
+    }
+
     /// Shows a dot's page, as asked from Siri or Shortcuts.
     func open(dot: Int) {
         guard markdown.indices.contains(dot) else { return }
@@ -158,6 +188,14 @@ final class DotStore {
         guard markdown.indices.contains(dot) else { return false }
         reportPendingEdits()
         return takeIn(PageAddition.markdown(markdown[dot], adding: text, asToDo: asToDo), on: dot)
+    }
+
+    /// Takes in a page as Bite's share extension left it (see `PageShare`), as `add` adds.
+    @discardableResult
+    func take(_ share: PageShare) -> Bool {
+        guard markdown.indices.contains(share.page) else { return false }
+        reportPendingEdits()
+        return takeIn(share.applied(to: markdown[share.page]), on: share.page)
     }
 
     /// Ticks a to-do off, or on again, from a widget (see `PageToDos`), as `add` adds one. Says
@@ -276,7 +314,9 @@ final class DotStore {
         }
     }
 
-    private static func fileURL(for dot: Int, in folder: URL) -> URL {
+    /// Where a dot's page is kept in `folder`: as the share extension lays the pages out for a store
+    /// of its own, too.
+    static func fileURL(for dot: Int, in folder: URL) -> URL {
         folder.appending(path: "dot-\(dot + 1).md")
     }
 }

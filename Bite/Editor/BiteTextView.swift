@@ -197,6 +197,7 @@ final class BiteTextView: UITextView {
         if became, keepsPlace { selectionNotToScrollTo = selectedRange }
         // Moving to this page with the keyboard already up: nothing else will tell it.
         if became {
+            keepsEnd = false
             keepsKeyboardRoom = false
             applyKeyboardInset()
         }
@@ -246,6 +247,34 @@ final class BiteTextView: UITextView {
             let target = min(max(line.minY - topObstruction - (visibleBottom - visibleTop) / 4, -contentInset.top), maxOffset)
             guard abs(target - contentOffset.y) > 0.5 else { return }
             setContentOffset(CGPoint(x: contentOffset.x, y: target), animated: false)
+        }
+    }
+
+    /// Set to keep the end of the page in view as the page takes its size and its lines are laid
+    /// out, until it's touched or takes the keys: a page shared to opens at its end, where what's
+    /// shared goes. Scrolled there only once, it was left short of it as the share sheet settled.
+    var keepsEnd = false {
+        didSet { if keepsEnd { setNeedsLayout() } }
+    }
+
+    /// Whether the end of the page shows: scrolled there, or the whole page in view.
+    var showsEnd: Bool {
+        contentOffset.y >= endOffset - 2
+    }
+
+    /// How far the page scrolls to have its end at the bottom of what shows.
+    private var endOffset: CGFloat {
+        max(-contentInset.top, contentSize.height + contentInset.bottom - bounds.height)
+    }
+
+    private func keepEndInView() {
+        guard keepsEnd, bounds.height > 0 else { return }
+        // TextKit guesses at the height of lines it hasn't laid out. Those at the end, laid out as
+        // they come into view, make the page longer or shorter, and its end somewhere else.
+        for _ in 0..<4 {
+            guard abs(contentOffset.y - endOffset) > 0.5 else { return }
+            setContentOffset(CGPoint(x: contentOffset.x, y: endOffset), animated: false)
+            textLayoutManager?.textViewportLayoutController.layoutViewport()
         }
     }
 
@@ -315,7 +344,10 @@ final class BiteTextView: UITextView {
         textContainer.lineFragmentPadding = 0
         addGestureRecognizer(checkboxTap)
         addGestureRecognizer(linkTap)
-        touchDown.onTouchDown = { [weak self] in self?.hideFound() }
+        touchDown.onTouchDown = { [weak self] in
+            self?.hideFound()
+            self?.keepsEnd = false
+        }
         addGestureRecognizer(touchDown)
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: BiteTextView, _) in
             view.setNeedsLayout()
@@ -327,6 +359,7 @@ final class BiteTextView: UITextView {
         super.layoutSubviews()
         // SwiftUI hosts this view edge to edge, so its own safe area is zero; the window's isn't.
         updateInsets()
+        keepEndInView()
         // Text layout has just run here too, so the code blocks and the lines' marks can follow it
         // in the same frame.
         updateCodeBackgrounds()
@@ -1107,7 +1140,7 @@ final class BiteTextView: UITextView {
     /// opens the page's links from its actions.
     override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
         get {
-            let links = (editor?.links() ?? []).prefix(20)
+            let links = Self.opensLinks ? (editor?.links() ?? []).prefix(20) : []
             let opens = links.map { link in
                 UIAccessibilityCustomAction(name: "Open \(link.text)") { [weak self] _ in
                     self?.editor?.openLink(at: link.range.location)
@@ -1121,10 +1154,21 @@ final class BiteTextView: UITextView {
 
     /// Whether a tap at `point` is a link's: it opens the link, or, while the page is being edited,
     /// changes it in the format bar on the keys. With no bar there, as with a hardware keyboard, a
-    /// link's text is text on a page being edited, and a tap puts the caret in it.
+    /// link's text is text on a page being edited, and a tap puts the caret in it. In the share
+    /// extension, where nothing opens, it's text on a page not being edited too.
     private func tapsLink(at point: CGPoint) -> Bool {
         if isBeingEdited, editor?.canEditLinkInBar() != true { return false }
+        if !isBeingEdited, !Self.opensLinks { return false }
         return linkLocation(at: point) != nil
+    }
+
+    /// Whether a link opens where it goes: not from the share extension, which can't open anything.
+    private static var opensLinks: Bool {
+        #if SHARE_EXTENSION
+        false
+        #else
+        true
+        #endif
     }
 
     /// The page has the keys, or they've moved over to one of its links in the format bar.

@@ -13,6 +13,10 @@
 		B17E0000000000000000005C /* BiteControls.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B17E00000000000000000050 /* BiteControls.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B17E00000000000000000075 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E00000000000000000076 /* BiteKit */; };
 		B17E0000000000000000007D /* BiteMacWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B17E00000000000000000070 /* BiteMacWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B17E00000000000000000085 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E00000000000000000086 /* BiteKit */; };
+		B17E0000000000000000008C /* BiteShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B17E00000000000000000080 /* BiteShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B17E00000000000000000095 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E00000000000000000096 /* BiteKit */; };
+		B17E0000000000000000009C /* BiteMacShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B17E00000000000000000090 /* BiteMacShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -44,6 +48,20 @@
 			remoteGlobalIDString = B17E00000000000000000071;
 			remoteInfo = BiteMacWidgets;
 		};
+		B17E0000000000000000008A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B17E00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B17E00000000000000000081;
+			remoteInfo = BiteShare;
+		};
+		B17E0000000000000000009A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B17E00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B17E00000000000000000091;
+			remoteInfo = BiteMacShare;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -54,6 +72,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				B17E0000000000000000005C /* BiteControls.appex in Embed Foundation Extensions */,
+				B17E0000000000000000008C /* BiteShare.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -65,6 +84,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				B17E0000000000000000007D /* BiteMacWidgets.appex in Embed Foundation Extensions */,
+				B17E0000000000000000009C /* BiteMacShare.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -78,6 +98,8 @@
 		B17E00000000000000000045 /* BiteMacTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BiteMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B17E00000000000000000050 /* BiteControls.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteControls.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B17E00000000000000000070 /* BiteMacWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteMacWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B17E00000000000000000080 /* BiteShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B17E00000000000000000090 /* BiteMacShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteMacShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -89,11 +111,77 @@
 			);
 			target = B17E00000000000000000006 /* Bite */;
 		};
+		B17E0000000000000000008F /* Exceptions for "Shared" folder in "BiteShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Editor/AttributedDocument.swift",
+				"Editor/BlockLayoutFragment.swift",
+				"Editor/EditorController.swift",
+				"Editor/EditorTheme.swift",
+				"Editor/FormatAction.swift",
+				"Editor/FoundLight.swift",
+				"Store/DotStore.swift",
+				"Store/Preferences.swift",
+				"Store/SampleContent.swift",
+				"Support/DotColor+Platform.swift",
+				"Support/Platform.swift",
+				"Views/DotSwitcher.swift",
+			);
+			target = B17E00000000000000000081 /* BiteShare */;
+		};
+		B17E000000000000000000A0 /* Exceptions for "Bite" folder in "BiteShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Editor/BiteTextView.swift",
+				"Editor/FormatBar.swift",
+				"Support/HardwareKeyboard.swift",
+				"Views/DotPager.swift",
+				"Views/PagesView.swift",
+				"Views/TopBarHost.swift",
+				"Views/TopBarPlacement.swift",
+			);
+			target = B17E00000000000000000081 /* BiteShare */;
+		};
+		B17E0000000000000000009F /* Exceptions for "Shared" folder in "BiteMacShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Editor/AttributedDocument.swift",
+				"Editor/BlockLayoutFragment.swift",
+				"Editor/EditorController.swift",
+				"Editor/EditorTheme.swift",
+				"Editor/FormatAction.swift",
+				"Editor/FoundLight.swift",
+				"Store/DotStore.swift",
+				"Store/Preferences.swift",
+				"Store/SampleContent.swift",
+				"Support/DotColor+Platform.swift",
+				"Support/Platform.swift",
+				"Views/DotSwitcher.swift",
+			);
+			target = B17E00000000000000000091 /* BiteMacShare */;
+		};
+		B17E000000000000000000A1 /* Exceptions for "BiteMac" folder in "BiteMacShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Editor/BiteTextView.swift",
+				"Editor/FormatMenu.swift",
+				"LinkBubble.swift",
+				"LinkCard.swift",
+				"MenuRow.swift",
+				"PageSwiper.swift",
+				"PanelPages.swift",
+				"TopBar.swift",
+			);
+			target = B17E00000000000000000091 /* BiteMacShare */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B17E00000000000000000005 /* Bite */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B17E000000000000000000A0 /* Exceptions for "Bite" folder in "BiteShare" target */,
+			);
 			path = Bite;
 			sourceTree = "<group>";
 		};
@@ -104,11 +192,18 @@
 		};
 		B17E00000000000000000030 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B17E0000000000000000008F /* Exceptions for "Shared" folder in "BiteShare" target */,
+				B17E0000000000000000009F /* Exceptions for "Shared" folder in "BiteMacShare" target */,
+			);
 			path = Shared;
 			sourceTree = "<group>";
 		};
 		B17E00000000000000000031 /* BiteMac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B17E000000000000000000A1 /* Exceptions for "BiteMac" folder in "BiteMacShare" target */,
+			);
 			path = BiteMac;
 			sourceTree = "<group>";
 		};
@@ -123,6 +218,11 @@
 				B17E0000000000000000005D /* Exceptions for "BiteControls" folder in "Bite" target */,
 			);
 			path = BiteControls;
+			sourceTree = "<group>";
+		};
+		B17E0000000000000000008E /* BiteShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BiteShare;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -174,6 +274,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B17E00000000000000000083 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B17E00000000000000000085 /* BiteKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000093 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B17E00000000000000000095 /* BiteKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -184,6 +300,7 @@
 				B17E00000000000000000005 /* Bite */,
 				B17E00000000000000000031 /* BiteMac */,
 				B17E00000000000000000051 /* BiteControls */,
+				B17E0000000000000000008E /* BiteShare */,
 				B17E00000000000000000040 /* SharedTests */,
 				B17E00000000000000000021 /* BiteTests */,
 				B17E00000000000000000003 /* Products */,
@@ -199,6 +316,8 @@
 				B17E00000000000000000045 /* BiteMacTests.xctest */,
 				B17E00000000000000000050 /* BiteControls.appex */,
 				B17E00000000000000000070 /* BiteMacWidgets.appex */,
+				B17E00000000000000000080 /* BiteShare.appex */,
+				B17E00000000000000000090 /* BiteMacShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -287,6 +406,7 @@
 			);
 			dependencies = (
 				B17E0000000000000000005A /* PBXTargetDependency */,
+				B17E0000000000000000008B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B17E00000000000000000005 /* Bite */,
@@ -313,6 +433,7 @@
 			);
 			dependencies = (
 				B17E0000000000000000007B /* PBXTargetDependency */,
+				B17E0000000000000000009B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B17E00000000000000000031 /* BiteMac */,
@@ -347,6 +468,52 @@
 			productReference = B17E00000000000000000045 /* BiteMacTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		B17E00000000000000000081 /* BiteShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B17E00000000000000000087 /* Build configuration list for PBXNativeTarget "BiteShare" */;
+			buildPhases = (
+				B17E00000000000000000082 /* Sources */,
+				B17E00000000000000000083 /* Frameworks */,
+				B17E00000000000000000084 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B17E0000000000000000008E /* BiteShare */,
+			);
+			name = BiteShare;
+			packageProductDependencies = (
+				B17E00000000000000000086 /* BiteKit */,
+			);
+			productName = BiteShare;
+			productReference = B17E00000000000000000080 /* BiteShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B17E00000000000000000091 /* BiteMacShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B17E00000000000000000097 /* Build configuration list for PBXNativeTarget "BiteMacShare" */;
+			buildPhases = (
+				B17E00000000000000000092 /* Sources */,
+				B17E00000000000000000093 /* Frameworks */,
+				B17E00000000000000000094 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B17E0000000000000000008E /* BiteShare */,
+			);
+			name = BiteMacShare;
+			packageProductDependencies = (
+				B17E00000000000000000096 /* BiteKit */,
+			);
+			productName = BiteMacShare;
+			productReference = B17E00000000000000000090 /* BiteMacShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -374,6 +541,12 @@
 					B17E00000000000000000052 = {
 						CreatedOnToolsVersion = 27.0;
 					};
+					B17E00000000000000000081 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					B17E00000000000000000091 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 				};
 			};
 			buildConfigurationList = B17E0000000000000000000A /* Build configuration list for PBXProject "Bite" */;
@@ -399,6 +572,8 @@
 				B17E00000000000000000041 /* BiteMacTests */,
 				B17E00000000000000000052 /* BiteControls */,
 				B17E00000000000000000071 /* BiteMacWidgets */,
+				B17E00000000000000000081 /* BiteShare */,
+				B17E00000000000000000091 /* BiteMacShare */,
 			);
 		};
 /* End PBXProject section */
@@ -440,6 +615,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B17E00000000000000000037 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000084 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000094 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -491,6 +680,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B17E00000000000000000082 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000092 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -513,6 +716,16 @@
 			isa = PBXTargetDependency;
 			target = B17E00000000000000000038 /* BiteMac */;
 			targetProxy = B17E0000000000000000004A /* PBXContainerItemProxy */;
+		};
+		B17E0000000000000000008B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B17E00000000000000000081 /* BiteShare */;
+			targetProxy = B17E0000000000000000008A /* PBXContainerItemProxy */;
+		};
+		B17E0000000000000000009B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B17E00000000000000000091 /* BiteMacShare */;
+			targetProxy = B17E0000000000000000009A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -990,6 +1203,134 @@
 			};
 			name = Release;
 		};
+		B17E00000000000000000088 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/BiteShare.entitlements;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				TARGETED_DEVICE_FAMILY = "1,2";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteShare-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SHARE_EXTENSION";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		B17E00000000000000000089 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/BiteShare.entitlements;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				TARGETED_DEVICE_FAMILY = "1,2";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteShare-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SHARE_EXTENSION";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		B17E00000000000000000098 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/BiteMacShare.entitlements;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteShare-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SHARE_EXTENSION";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		B17E00000000000000000099 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/BiteMacShare.entitlements;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteShare-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SHARE_EXTENSION";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1056,6 +1397,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		B17E00000000000000000087 /* Build configuration list for PBXNativeTarget "BiteShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B17E00000000000000000088 /* Debug */,
+				B17E00000000000000000089 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B17E00000000000000000097 /* Build configuration list for PBXNativeTarget "BiteMacShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B17E00000000000000000098 /* Debug */,
+				B17E00000000000000000099 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -1082,6 +1441,16 @@
 			productName = BiteKit;
 		};
 		B17E0000000000000000005E /* BiteKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
+			productName = BiteKit;
+		};
+		B17E00000000000000000086 /* BiteKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
+			productName = BiteKit;
+		};
+		B17E00000000000000000096 /* BiteKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
 			productName = BiteKit;

@@ -17,6 +17,8 @@
 		B17E0000000000000000008C /* BiteShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B17E00000000000000000080 /* BiteShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B17E00000000000000000095 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E00000000000000000096 /* BiteKit */; };
 		B17E0000000000000000009C /* BiteMacShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B17E00000000000000000090 /* BiteMacShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B17E000000000000000000B5 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E000000000000000000B6 /* BiteKit */; };
+		B17E000000000000000000BC /* BiteMessages.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B17E000000000000000000B0 /* BiteMessages.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +64,13 @@
 			remoteGlobalIDString = B17E00000000000000000091;
 			remoteInfo = BiteMacShare;
 		};
+		B17E000000000000000000BA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B17E00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B17E000000000000000000B1;
+			remoteInfo = BiteMessages;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -73,6 +82,7 @@
 			files = (
 				B17E0000000000000000005C /* BiteControls.appex in Embed Foundation Extensions */,
 				B17E0000000000000000008C /* BiteShare.appex in Embed Foundation Extensions */,
+				B17E000000000000000000BC /* BiteMessages.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -100,6 +110,7 @@
 		B17E00000000000000000070 /* BiteMacWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteMacWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B17E00000000000000000080 /* BiteShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B17E00000000000000000090 /* BiteMacShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteMacShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B17E000000000000000000B0 /* BiteMessages.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteMessages.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -174,6 +185,15 @@
 			);
 			target = B17E00000000000000000091 /* BiteMacShare */;
 		};
+		B17E000000000000000000C1 /* Exceptions for "BiteControls" folder in "BiteMessages" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				PageGlanceView.swift,
+				PageLook.swift,
+				Platform.swift,
+			);
+			target = B17E000000000000000000B1 /* BiteMessages */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -216,6 +236,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				B17E0000000000000000005D /* Exceptions for "BiteControls" folder in "Bite" target */,
+				B17E000000000000000000C1 /* Exceptions for "BiteControls" folder in "BiteMessages" target */,
 			);
 			path = BiteControls;
 			sourceTree = "<group>";
@@ -223,6 +244,11 @@
 		B17E0000000000000000008E /* BiteShare */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = BiteShare;
+			sourceTree = "<group>";
+		};
+		B17E000000000000000000BE /* BiteMessages */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BiteMessages;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -290,6 +316,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B17E000000000000000000B3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B17E000000000000000000B5 /* BiteKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -301,6 +335,7 @@
 				B17E00000000000000000031 /* BiteMac */,
 				B17E00000000000000000051 /* BiteControls */,
 				B17E0000000000000000008E /* BiteShare */,
+				B17E000000000000000000BE /* BiteMessages */,
 				B17E00000000000000000040 /* SharedTests */,
 				B17E00000000000000000021 /* BiteTests */,
 				B17E00000000000000000003 /* Products */,
@@ -318,6 +353,7 @@
 				B17E00000000000000000070 /* BiteMacWidgets.appex */,
 				B17E00000000000000000080 /* BiteShare.appex */,
 				B17E00000000000000000090 /* BiteMacShare.appex */,
+				B17E000000000000000000B0 /* BiteMessages.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -407,6 +443,7 @@
 			dependencies = (
 				B17E0000000000000000005A /* PBXTargetDependency */,
 				B17E0000000000000000008B /* PBXTargetDependency */,
+				B17E000000000000000000BB /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B17E00000000000000000005 /* Bite */,
@@ -514,6 +551,29 @@
 			productReference = B17E00000000000000000090 /* BiteMacShare.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		B17E000000000000000000B1 /* BiteMessages */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B17E000000000000000000B7 /* Build configuration list for PBXNativeTarget "BiteMessages" */;
+			buildPhases = (
+				B17E000000000000000000B2 /* Sources */,
+				B17E000000000000000000B3 /* Frameworks */,
+				B17E000000000000000000B4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B17E000000000000000000BE /* BiteMessages */,
+			);
+			name = BiteMessages;
+			packageProductDependencies = (
+				B17E000000000000000000B6 /* BiteKit */,
+			);
+			productName = BiteMessages;
+			productReference = B17E000000000000000000B0 /* BiteMessages.appex */;
+			productType = "com.apple.product-type.app-extension.messages";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -547,6 +607,9 @@
 					B17E00000000000000000091 = {
 						CreatedOnToolsVersion = 27.0;
 					};
+					B17E000000000000000000B1 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 				};
 			};
 			buildConfigurationList = B17E0000000000000000000A /* Build configuration list for PBXProject "Bite" */;
@@ -574,6 +637,7 @@
 				B17E00000000000000000071 /* BiteMacWidgets */,
 				B17E00000000000000000081 /* BiteShare */,
 				B17E00000000000000000091 /* BiteMacShare */,
+				B17E000000000000000000B1 /* BiteMessages */,
 			);
 		};
 /* End PBXProject section */
@@ -629,6 +693,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B17E00000000000000000094 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E000000000000000000B4 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -694,6 +765,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B17E000000000000000000B2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -726,6 +804,11 @@
 			isa = PBXTargetDependency;
 			target = B17E00000000000000000091 /* BiteMacShare */;
 			targetProxy = B17E0000000000000000009A /* PBXContainerItemProxy */;
+		};
+		B17E000000000000000000BB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B17E000000000000000000B1 /* BiteMessages */;
+			targetProxy = B17E000000000000000000BA /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1331,6 +1414,70 @@
 			};
 			name = Release;
 		};
+		B17E000000000000000000B8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
+				CODE_SIGN_ENTITLEMENTS = Config/BiteMessages.entitlements;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				TARGETED_DEVICE_FAMILY = "1,2";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteMessages-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.messages;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) MESSAGES_EXTENSION";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		B17E000000000000000000B9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
+				CODE_SIGN_ENTITLEMENTS = Config/BiteMessages.entitlements;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				TARGETED_DEVICE_FAMILY = "1,2";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteMessages-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.messages;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) MESSAGES_EXTENSION";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1415,6 +1562,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		B17E000000000000000000B7 /* Build configuration list for PBXNativeTarget "BiteMessages" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B17E000000000000000000B8 /* Debug */,
+				B17E000000000000000000B9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -1451,6 +1607,11 @@
 			productName = BiteKit;
 		};
 		B17E00000000000000000096 /* BiteKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
+			productName = BiteKit;
+		};
+		B17E000000000000000000B6 /* BiteKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
 			productName = BiteKit;

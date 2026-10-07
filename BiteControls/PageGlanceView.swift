@@ -36,7 +36,8 @@ nonisolated struct GlanceMetrics {
 
 /// A page's lines as the editor draws them: headings, lists with their bullets, numbers and
 /// checkboxes, quotes with their bar, code on its wash, dividers. As many as fit, whole: a line cut
-/// through by the bottom shows only if most of it fits, fading out as more to come.
+/// through by the bottom shows only if most of it fits, fading out as more to come. Or every one,
+/// to scroll through, as a page sent in Messages is read.
 struct PageGlanceView: View {
     let glance: PageGlance
     /// The page, counting from 0 along the dot bar, for its to-dos' ticks.
@@ -49,6 +50,10 @@ struct PageGlanceView: View {
     var firstPartTrailing: CGFloat = 0
     /// How far above the bottom a line has to end to show whole (see `PageColumn`).
     var safeBottom: CGFloat = 0
+    /// Whether every line shows, one under another, for a scroll view, rather than as many as fit.
+    var showsAll = false
+    /// Told where the lines that show end, as many as fit: for a card as tall as its lines.
+    var contentEnd: ContentEnd?
 
     /// A line on its own, or quote or code lines in a row, which share one bar or one wash.
     private enum Part {
@@ -98,7 +103,20 @@ struct PageGlanceView: View {
 
     var body: some View {
         let parts = parts
-        PageColumn(safeBottom: safeBottom) {
+        if showsAll {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(parts.indices, id: \.self) { index in
+                    view(for: parts[index])
+                        .padding(.top, index == 0 ? 0 : fit(of: parts[index], after: parts[index - 1]).gap)
+                }
+            }
+        } else {
+            column(parts)
+        }
+    }
+
+    private func column(_ parts: [Part]) -> some View {
+        PageColumn(safeBottom: safeBottom, contentEnd: contentEnd) {
             ForEach(parts.indices, id: \.self) { index in
                 view(for: parts[index])
                     .padding(.trailing, index == 0 ? firstPartTrailing : 0)
@@ -193,10 +211,13 @@ struct PageGlanceView: View {
     }
 
     /// Ticks its to-do off, or on again, where the widget can: the box changes at once, and the
-    /// page with it.
+    /// page with it. A page sent in Messages is someone's to read: its boxes show only.
     @ViewBuilder
     private func checkbox(for line: PageGlance.Line) -> some View {
         let size = 19 * metrics.scale
+        #if MESSAGES_EXTENSION
+        Checkbox(isChecked: line.isChecked, ink: ink, size: size, scale: metrics.scale)
+        #else
         if ticks {
             Toggle(isOn: line.isChecked,
                    intent: ToggleToDoIntent(PageTick(page: page, block: line.block, text: line.text, done: !line.isChecked))) {
@@ -206,6 +227,7 @@ struct PageGlanceView: View {
         } else {
             Checkbox(isChecked: line.isChecked, ink: ink, size: size, scale: metrics.scale)
         }
+        #endif
     }
 
     /// A filled dot at the top level, a ring one level in, a square the next, then round again.
@@ -334,6 +356,8 @@ nonisolated enum Eraser: LayoutValueKey {
 /// does going under the edge of a screen: cut off at the margin instead, it read as sliced through.
 nonisolated struct PageColumn: Layout {
     var safeBottom: CGFloat = 0
+    /// Told how far down from its top the parts that show end, whole.
+    var contentEnd: ContentEnd?
 
     /// The fade over the line going under the edge: smoothstep, nothing hidden at its top and all of
     /// it at the edge, where a straight ramp made a seam at either end.
@@ -371,7 +395,9 @@ nonisolated struct PageColumn: Layout {
             let end = whole > 0 ? top + whole * pitch - fit.spacing : y
             let next = whole > 0 ? end + fit.spacing : top
             erase = bounds.maxY - next >= 0.85 * fit.row ? (next, true) : (end, false)
+            y = end
         }
+        contentEnd?.height = y - bounds.minY
         for eraser in subviews {
             guard let kind = eraser[Eraser.self] else { continue }
             if let erase, (kind == .fade) == erase.fades {
@@ -382,6 +408,11 @@ nonisolated struct PageColumn: Layout {
             }
         }
     }
+}
+
+/// Where a page's lines end in a column, as it lays them out: as tall as they are, whole.
+nonisolated final class ContentEnd: @unchecked Sendable {
+    var height: CGFloat = 0
 }
 
 /// A checkbox that ticks its to-do in a widget.

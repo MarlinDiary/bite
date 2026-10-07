@@ -48,6 +48,14 @@ public struct PageGlance: Sendable, Hashable {
         lines.isEmpty
     }
 
+    /// The heading the page starts with, if it starts with one: its title, as `withoutTitle` takes
+    /// it off.
+    public var heading: String? {
+        guard let first = lines.first, first.kind.isHeading else { return nil }
+        let text = first.text.trimmingCharacters(in: .whitespaces)
+        return text.isEmpty ? nil : text
+    }
+
     /// The page without its title: its first line, when that's a heading, and the empty line
     /// after it. A page with nothing else on it keeps it, rather than showing as if empty.
     public func withoutTitle() -> PageGlance {

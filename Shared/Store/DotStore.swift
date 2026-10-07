@@ -50,6 +50,17 @@ final class DotStore {
         }
     }
     @ObservationIgnored private var waitingReveal: (dot: Int, line: Int?, query: String)?
+    /// Set by the editors: opens a line at the end of a page and gives it the keyboard (see
+    /// `startLine`). One asked for before the editors are there, as Bite launches from its icon's
+    /// menu, waits for them.
+    @ObservationIgnored var startLineInEditor: ((Int, Bool) -> Void)? {
+        didSet {
+            guard let startLineInEditor, let waiting = waitingLine else { return }
+            waitingLine = nil
+            startLineInEditor(waiting.dot, waiting.asToDo)
+        }
+    }
+    @ObservationIgnored private var waitingLine: (dot: Int, asToDo: Bool)?
     /// Set by the Mac's panel, which comes up on a page asked for from Siri or Shortcuts. The
     /// phone's comes up with Bite, which the system brings to the front.
     @ObservationIgnored var showInEditor: ((Int) -> Void)?
@@ -116,6 +127,18 @@ final class DotStore {
             revealInEditor(dot, line, query)
         } else {
             waitingReveal = (dot, line, query)
+        }
+    }
+
+    /// Opens a dot's page with a line at its end to type on, the keyboard up: plain text, or a
+    /// to-do, as picked from Bite's icon on the Home Screen (see `HomeScreenActions`).
+    func startLine(on dot: Int, asToDo: Bool) {
+        guard markdown.indices.contains(dot) else { return }
+        selection = dot
+        if let startLineInEditor {
+            startLineInEditor(dot, asToDo)
+        } else {
+            waitingLine = (dot, asToDo)
         }
     }
 

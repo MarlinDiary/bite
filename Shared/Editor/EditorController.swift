@@ -254,6 +254,42 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         #endif
     }
 
+    /// Opens a line at the end of the page to type on, and gives it the keyboard: plain text, or a
+    /// to-do, as picked from Bite's icon on the Home Screen. An empty last line is the one used,
+    /// made that kind if it isn't; after a line with something on it, a new one goes below, of
+    /// that kind whatever the line above is. Undo takes it back. Left empty, it stays, and is the
+    /// one used the next time.
+    func startLine(asToDo: Bool) {
+        finishComposing()
+        caretGoesToEnd = false
+        let line = BlockAttributes(kind: asToDo ? .todo : .paragraph)
+        let last = lineRange(at: storage.length)
+        let content = contentRange(of: last)
+        if storage.length == 0 {
+            replace(NSRange(location: 0, length: 0), with: NSAttributedString(string: "\n", attributes: lineBreakAttributes(for: line)),
+                    selection: NSRange(location: 0, length: 0))
+        } else if content.isEmpty {
+            let caret = NSRange(location: content.lowerBound, length: 0)
+            #if canImport(UIKit)
+            textView.selectedRange = caret
+            #else
+            textView.setSelectedRange(caret)
+            #endif
+            let current = block(of: last)
+            if current.kind != line.kind || current.isChecked {
+                setBlocks(of: [last]) { $0 = line }
+            }
+        } else {
+            // The line ends as it was, and its line break closes the new one.
+            let lineBreak = NSRange(location: content.upperBound, length: NSMaxRange(last) - content.upperBound)
+            let replacement = NSMutableAttributedString(string: "\n", attributes: lineBreakAttributes(for: block(of: last)))
+            replacement.append(NSAttributedString(string: "\n", attributes: lineBreakAttributes(for: line)))
+            replace(lineBreak, with: replacement, selection: NSRange(location: content.upperBound + 1, length: 0))
+        }
+        focus()
+        textView.requestCaretScroll()
+    }
+
     /// Shows where `query` is on `line`, for a page opened at a search result picked outside Bite:
     /// lit, with the caret before it, and scrolled into view a little below the top if it isn't in
     /// view. Not on the line, the line is lit; with no line, the first place on the page it is.

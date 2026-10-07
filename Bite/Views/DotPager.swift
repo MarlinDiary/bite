@@ -48,6 +48,9 @@ struct DotPager: UIViewRepresentable {
         store.revealInEditor = { [weak coordinator] dot, line, query in
             coordinator?.reveal(dot: dot, line: line, query: query)
         }
+        store.startLineInEditor = { [weak coordinator] dot, asToDo in
+            coordinator?.startLine(on: dot, asToDo: asToDo)
+        }
         coordinator.scrollView.currentPage = selection
         coordinator.letPageScrollToTop(selection)
         return coordinator.container
@@ -90,6 +93,8 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
     private var isWaitingToPassKeyboard = false
     /// A search result picked outside Bite, as Spotlight launched it, until the pager is laid out.
     private var waitingReveal: (dot: Int, line: Int?, query: String)?
+    /// A line to start, picked from Bite's icon as it launched Bite, until the pager is laid out.
+    private var waitingLine: (dot: Int, asToDo: Bool)?
 
     override init() {
         super.init()
@@ -97,9 +102,18 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         scrollView.scrollsToTop = false
         scrollView.pageViews = controllers.map(\.textView)
         scrollView.onLayout = { [weak self] in
-            guard let self, let waiting = self.waitingReveal else { return }
-            self.waitingReveal = nil
-            self.controllers[waiting.dot].reveal(waiting.query, line: waiting.line)
+            guard let self else { return }
+            if let waiting = self.waitingReveal {
+                self.waitingReveal = nil
+                self.controllers[waiting.dot].reveal(waiting.query, line: waiting.line)
+            }
+            if let waiting = self.waitingLine {
+                self.waitingLine = nil
+                // Once this layout is done: the keyboard coming up lays the page out again.
+                DispatchQueue.main.async { [weak self] in
+                    self?.startLine(on: waiting.dot, asToDo: waiting.asToDo)
+                }
+            }
         }
         container.onKeyboardOverlapChange = { [weak self] overlap in
             guard let self else { return }
@@ -178,6 +192,21 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
             return
         }
         controllers[dot].reveal(query, line: line)
+    }
+
+    /// Opens a line at the end of page `dot` and gives it the keyboard, as picked from Bite's icon
+    /// on the Home Screen. The pager goes to the page first, which then takes the keyboard where
+    /// it's shown. Launched from the icon, the pager isn't laid out yet, and it waits until it is.
+    func startLine(on dot: Int, asToDo: Bool) {
+        guard controllers.indices.contains(dot) else { return }
+        guard scrollView.bounds.width > 0, container.window != nil else {
+            waitingLine = (dot, asToDo)
+            scrollView.setNeedsLayout()
+            return
+        }
+        show(page: dot)
+        controllers[dot].startLine(asToDo: asToDo)
+        prepareNeighbors(of: dot)
     }
 
     /// Selection changed from SwiftUI (the dot bar).

@@ -54,6 +54,8 @@ struct BiteApp: App {
             if phase == .background {
                 sync.sendBeforeLeaving()
                 if PageSync.runsHere { BackgroundSync.schedule() }
+                // For the page Bite was left on.
+                HomeScreenActions.update(for: store)
             }
         }
     }
@@ -118,7 +120,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
 /// Opens Bite at a Spotlight result from its very first frame when Spotlight launches it. SwiftUI
 /// hands the result over only once Bite is on screen, and the page Bite was last on showed first,
-/// for a few frames. Brought back from the background, SwiftUI's own handover is in time.
+/// for a few frames. Brought back from the background, SwiftUI's own handover is in time. Takes
+/// what's picked from Bite's icon on the Home Screen too (see `HomeScreenActions`).
 final class SceneDelegate: NSObject, UIWindowSceneDelegate {
     /// The app's, which the result is opened in.
     static var store: DotStore?
@@ -136,5 +139,15 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
         for context in connectionOptions.urlContexts {
             if let page = PageTurns.page(openedBy: context.url) { store.open(dot: page) }
         }
+        if let item = connectionOptions.shortcutItem {
+            HomeScreenActions.perform(item, in: store)
+        }
+    }
+
+    /// Picked from Bite's icon with Bite in the background.
+    func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem,
+                     completionHandler: @escaping (Bool) -> Void) {
+        guard let store = Self.store else { return completionHandler(false) }
+        completionHandler(HomeScreenActions.perform(shortcutItem, in: store))
     }
 }

@@ -857,6 +857,17 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     func shareForSnapshot() {
         shareText()
     }
+
+    /// The page's text right-clicked where it's selected, or at the caret: the text's own menu.
+    func showTextMenuForSnapshot() {
+        let view = controllers[store.selection].textView
+        guard let window = view.window, let frame = view.anchorFrame(for: view.selectedRange()),
+              let event = NSEvent.mouseEvent(with: .rightMouseDown, location: view.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil),
+                                             modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
+              let menu = view.menu(for: event) else { return }
+        NSMenu.popUpContextMenu(menu, with: event, for: view)
+    }
     #endif
 
     /// The "…" button, in the top bar.

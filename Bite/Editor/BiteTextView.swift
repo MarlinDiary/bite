@@ -728,10 +728,37 @@ final class BiteTextView: UITextView {
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(toggleBoldface(_:)) || action == #selector(toggleItalics(_:)) {
             // From the keyboard, ⌘B and ⌘I also work at the caret, for what's typed next, as in
-            // Notion. The edit menu offers them only for a selection.
+            // Notion.
             return selectedRange.length > 0 || sender is UIKeyCommand
         }
         return super.canPerformAction(action, withSender: sender)
+    }
+
+    /// The menu over the caret or selected text, without what Bite has no use for. No Format menu:
+    /// the format bar has every style there is. The system's offered bold and italic under a symbol
+    /// with an underline, which Bite has none of, and writing direction and a panel of fonts and
+    /// colours, at the caret too. No AutoFill, of contacts and passwords and text scanned with the
+    /// camera. Nor changing between Simplified and Traditional Chinese, or a drawing, which a page
+    /// can't hold. Translate comes before Look Up, as the one more often wanted.
+    override func editMenu(for textRange: UITextRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
+        UIMenu(children: Self.trimmed(suggestedActions))
+    }
+
+    private static let unwantedMenus: Set<UIMenu.Identifier> = [.format, .textStyle, .autoFill]
+    private static let unwantedCommands: Set<Selector> = [Selector(("transliterateChinese:")), Selector(("_insertDrawing:"))]
+    private static let translate = Selector(("_translate:"))
+
+    private static func trimmed(_ elements: [UIMenuElement]) -> [UIMenuElement] {
+        elements.compactMap { element in
+            if let command = element as? UICommand, unwantedCommands.contains(command.action) { return nil }
+            guard let menu = element as? UIMenu else { return element }
+            guard !unwantedMenus.contains(menu.identifier) else { return nil }
+            var children = trimmed(menu.children)
+            if menu.identifier == .lookup, let index = children.firstIndex(where: { ($0 as? UICommand)?.action == translate }) {
+                children.insert(children.remove(at: index), at: 0)
+            }
+            return menu.replacingChildren(children)
+        }
     }
 
     override var keyCommands: [UIKeyCommand]? {

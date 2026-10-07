@@ -145,5 +145,94 @@ struct MacMenuTests {
         editor.textView.paste(nil)
         #expect(editor.markdown == "- one\n- two")
     }
+
+    /// Right-clicked text has Add Link… and Format on top of its own menu, without the system's
+    /// menus Bite has no use for: Layout Orientation, Spelling and Grammar, Substitutions,
+    /// Transformations and Speech.
+    @Test func rightClickedTextHasBitesMenu() throws {
+        let editor = EditorHarness("a word here")
+        editor.select(from: (0, 2), to: (0, 6))
+        let view = editor.textView
+        let click = try #require(NSEvent.mouseEvent(with: .rightMouseDown, location: view.convert(NSPoint(x: 20, y: 10), to: nil),
+                                                    modifierFlags: [], timestamp: 0, windowNumber: editor.window.windowNumber,
+                                                    context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        let menu = try #require(view.menu(for: click))
+        #expect(menu.items.prefix(3).map { $0.isSeparatorItem ? "-" : $0.title } == ["Add Link…", "Format", "-"])
+        #expect(menu.items.first?.keyEquivalent == "k")
+
+        let format = try #require(menu.items[1].submenu)
+        #expect(format.items.filter { !$0.isSeparatorItem }.map(\.title) == [
+            "Bold", "Italic", "Strikethrough", "Code",
+            "To-do", "Bulleted List", "Numbered List", "Heading", "Quote", "Code Block",
+            "Indent", "Outdent",
+        ])
+        #expect(format.items.first?.keyEquivalent == "b")
+        // The right-click put the caret where it was, as AppKit does off the selection.
+        editor.select(from: (0, 2), to: (0, 6))
+        let bold = try #require(format.items.first)
+        _ = try #require(bold.target as? NSObject).perform(try #require(bold.action), with: bold)
+        #expect(editor.markdown == "a **word** here", "\(editor.markdown)")
+        #expect(view.validateMenuItem(bold))
+        #expect(bold.state == .on)
+
+        expectNoSystemTools(in: menu)
+
+        // No line at either end, or two in a row.
+        let shown = menu.items.filter { !$0.isHidden }
+        #expect(shown.first?.isSeparatorItem == false && shown.last?.isSeparatorItem == false)
+        #expect(!zip(shown, shown.dropFirst()).contains { $0.isSeparatorItem && $1.isSeparatorItem })
+    }
+
+    /// The system's text tools Bite takes out of a right-click menu, by what their items do.
+    private func expectNoSystemTools(in menu: NSMenu, sourceLocation: SourceLocation = #_sourceLocation) {
+        func actions(_ menu: NSMenu) -> [String] {
+            menu.items.flatMap { item in
+                (item.action.map { [NSStringFromSelector($0)] } ?? []) + (item.submenu.map(actions) ?? [])
+            }
+        }
+        let offered = actions(menu)
+        for unwanted in ["changeLayoutOrientation:", "showGuessPanel:", "toggleContinuousSpellChecking:",
+                         "toggleAutomaticSpellingCorrection:", "orderFrontSubstitutionsPanel:", "toggleAutomaticQuoteSubstitution:",
+                         "toggleAutomaticLinkDetection:", "toggleAutomaticDataDetection:", "uppercaseWord:", "startSpeaking:",
+                         "orderFrontFontPanel:", "orderFrontColorPanel:"] {
+            #expect(!offered.contains(unwanted), "\(unwanted)", sourceLocation: sourceLocation)
+        }
+    }
+
+    /// The link card's fields, right-clicked, have none of the system's text tools either.
+    @Test func theLinkCardsFieldsHaveNoSystemTools() throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 240, height: 60), styleMask: [.titled], backing: .buffered, defer: false)
+        // As the card has it.
+        let field = LinkFieldEditor(frame: NSRect(x: 0, y: 0, width: 240, height: 60))
+        field.isFieldEditor = true
+        field.isRichText = false
+        window.contentView?.addSubview(field)
+        field.string = "the site"
+        field.setSelectedRange(NSRange(location: 0, length: 3))
+        let click = try #require(NSEvent.mouseEvent(with: .rightMouseDown, location: field.convert(NSPoint(x: 10, y: 10), to: nil),
+                                                    modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                                                    context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        let menu = try #require(field.menu(for: click))
+        #expect(menu.items.contains { $0.action == #selector(NSText.copy(_:)) })
+        expectNoSystemTools(in: menu)
+    }
+
+    /// A misspelt word right-clicked still has its corrections on top, with the spelling checked.
+    @Test func aMisspeltWordKeepsItsCorrections() throws {
+        EditorHarness.privatePreferences
+        Preferences.checksSpelling = true
+        defer { Preferences.checksSpelling = false }
+        let editor = EditorHarness("Bite has a mispeled word")
+        let view = editor.textView
+        view.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        let word = try #require(view.anchorFrame(for: NSRange(location: 11, length: 8)))
+        let click = try #require(NSEvent.mouseEvent(with: .rightMouseDown, location: view.convert(NSPoint(x: word.midX, y: word.midY), to: nil),
+                                                    modifierFlags: [], timestamp: 0, windowNumber: editor.window.windowNumber,
+                                                    context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        let menu = try #require(view.menu(for: click))
+        let offered = menu.items.compactMap { $0.action.map(NSStringFromSelector) }
+        #expect(offered.contains("_changeSpellingFromMenu:"), "\(offered)")
+        #expect(offered.contains("_learnSpellingFromMenu:"), "\(offered)")
+    }
 }
 #endif

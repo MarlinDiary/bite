@@ -693,19 +693,29 @@ final class BiteTextView: NSTextView {
     // MARK: Links
 
     /// Right-clicked on a link: what can be done with it, in place of the text's own menu. On
-    /// other text, the text's own menu, with Add Link… on top of it.
+    /// other text, the text's own menu as Bite has it (see `NSMenu.tidied`), with Add Link… and Format on
+    /// top of it: Bite shows no menu bar, and the styles were otherwise only to be had by their
+    /// shortcuts.
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         guard let editor, let location = linkLocation(at: point), let link = editor.link(at: location) else {
-            let menu = super.menu(for: event) ?? NSMenu()
-            let add = NSMenuItem(title: "Add Link…", action: #selector(addLink(_:)), keyEquivalent: "")
+            let menu = super.menu(for: event)?.tidied() ?? NSMenu()
+            let add = NSMenuItem(title: "Add Link…", action: #selector(addLink(_:)), keyEquivalent: "k")
             add.target = self
             menu.insertItem(.separator(), at: 0)
+            menu.insertItem(aimed(MainMenu.format(withLink: false)), at: 0)
             menu.insertItem(add, at: 0)
             return menu
         }
         contextLink = link
         return linkMenu(tint: NSColor(hex: DotPalette.colors[editor.dot].light))
+    }
+
+    /// `item` and those in its submenu made to act on this page, wherever the keys are.
+    private func aimed(_ item: NSMenuItem) -> NSMenuItem {
+        if let action = item.action, responds(to: action) { item.target = self }
+        item.submenu?.items.forEach { _ = aimed($0) }
+        return item
     }
 
     /// The link last right-clicked, which its menu's items act on.
@@ -1208,5 +1218,31 @@ final class BiteTextView: NSTextView {
                                                          roundBottom: block.roundBottom)
         }
         CATransaction.commit()
+    }
+}
+
+extension NSMenu {
+    /// A text's right-click menu without the system's menus of switches and tools Bite has no use
+    /// for: Font, of fonts and colours a page can't keep; Layout Orientation, which would stand the
+    /// page on its side; Spelling and Grammar, whose switch Settings has, though a misspelt word's
+    /// corrections stay on top; Substitutions, which offer what Bite keeps off; Transformations;
+    /// and Speech, which the system's Speak Selection does anywhere. Known by what their items do,
+    /// as their titles are in the system's language.
+    @discardableResult
+    func tidied() -> NSMenu {
+        let unwanted = [#selector(NSFontManager.orderFrontFontPanel(_:)), #selector(NSTextView.changeLayoutOrientation(_:)),
+                        #selector(NSTextView.toggleContinuousSpellChecking(_:)), #selector(NSTextView.orderFrontSubstitutionsPanel(_:)),
+                        #selector(NSTextView.uppercaseWord(_:)), #selector(NSTextView.startSpeaking(_:))]
+        for item in items where item.submenu?.items.contains(where: { $0.action.map(unwanted.contains) == true }) == true {
+            removeItem(item)
+        }
+        // No line at either end, or two in a row.
+        var lastWasLine = true
+        for item in items where !item.isHidden {
+            if item.isSeparatorItem, lastWasLine { removeItem(item) }
+            lastWasLine = item.isSeparatorItem
+        }
+        if let last = items.last(where: { !$0.isHidden }), last.isSeparatorItem { removeItem(last) }
+        return self
     }
 }

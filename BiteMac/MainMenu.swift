@@ -39,13 +39,28 @@ enum MainMenu {
                 item("Text Replacement", #selector(NSTextView.toggleAutomaticTextReplacement(_:))),
             ]),
         ]))
-        // Notion's shortcuts for styles the system has none for.
-        main.addItem(submenu("Format", [
+        main.addItem(format())
+        main.addItem(submenu("Dots", DotPalette.colors.indices.map { dot in
+            let dotItem = item(DotPalette.colors[dot].name, #selector(PanelController.selectDot(_:)), "\(dot + 1)")
+            dotItem.tag = dot
+            return dotItem
+        }))
+        main.addItem(submenu("Window", [
+            item("Close", #selector(NSWindow.performClose(_:)), "w"),
+        ]))
+        return main
+    }
+
+    /// Every style, with Notion's shortcuts for those the system has none for. Also in the text's
+    /// right-click menu, without Link, as Add Link… is above it there.
+    static func format(withLink: Bool = true) -> NSMenuItem {
+        let link = withLink ? [item("Link", #selector(BiteTextView.addLink(_:)), "k")] : []
+        return submenu("Format", [
             item("Bold", #selector(BiteTextView.toggleBold(_:)), "b"),
             item("Italic", #selector(BiteTextView.toggleItalic(_:)), "i"),
             item("Strikethrough", #selector(BiteTextView.toggleStrikethrough(_:)), "s", [.command, .shift]),
             item("Code", #selector(BiteTextView.toggleInlineCode(_:)), "e"),
-            item("Link", #selector(BiteTextView.addLink(_:)), "k"),
+        ] + link + [
             .separator(),
             item("To-do", #selector(BiteTextView.toggleTodoList(_:))),
             item("Bulleted List", #selector(BiteTextView.toggleBulletedList(_:))),
@@ -56,16 +71,7 @@ enum MainMenu {
             .separator(),
             item("Indent", #selector(BiteTextView.indentLines(_:)), "]"),
             item("Outdent", #selector(BiteTextView.outdentLines(_:)), "["),
-        ]))
-        main.addItem(submenu("Dots", DotPalette.colors.indices.map { dot in
-            let dotItem = item(DotPalette.colors[dot].name, #selector(PanelController.selectDot(_:)), "\(dot + 1)")
-            dotItem.tag = dot
-            return dotItem
-        }))
-        main.addItem(submenu("Window", [
-            item("Close", #selector(NSWindow.performClose(_:)), "w"),
-        ]))
-        return main
+        ])
     }
 
     private static func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {

@@ -500,9 +500,14 @@ private final class LinkField: NSTextField {
 }
 
 /// The link card's field editor, which keeps its selection in the page's colour: a row's cell sets
-/// the editor up as the keys come to it, and put the system's colour back each time.
+/// the editor up as the keys come to it, and put the system's colour back each time. Its
+/// right-click menu is a page's, without the system's tools (see `NSMenu.tidied`).
 @MainActor
 final class LinkFieldEditor: NSTextView {
+    override func menu(for event: NSEvent) -> NSMenu? {
+        super.menu(for: event)?.tidied()
+    }
+
     var selectionColor: NSColor? {
         didSet { selectedTextAttributes = super.selectedTextAttributes }
     }

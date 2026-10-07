@@ -26,7 +26,8 @@ enum DebugSnapshot {
     }
 
     /// Shows what the launch arguments ask for, then captures it: `-snapshotDot N` picks a dot,
-    /// `-snapshotMenu` opens the "…" menu, `-snapshotSettings` the Settings window.
+    /// `-snapshotMenu` opens the "…" menu, `-snapshotTextMenu` the text's right-click menu,
+    /// `-snapshotSettings` the Settings window.
     static func run(panel: PanelController, store: DotStore) {
         let arguments = CommandLine.arguments
         if let index = arguments.firstIndex(of: "-snapshotDot"), index + 1 < arguments.count, let dot = Int(arguments[index + 1]) {
@@ -137,46 +138,58 @@ enum DebugSnapshot {
         capture(after: .seconds(arguments.contains("-snapshotScroller") ? 1.1 : 2))
         if arguments.contains("-snapshotMenu") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                // `-snapshotMenuDown N` moves the menu's highlight down N items, as the arrow key
-                // does: the keys wait in the queue for the menu to take them.
-                if let index = arguments.firstIndex(of: "-snapshotMenuDown"), index + 1 < arguments.count,
-                   let count = Int(arguments[index + 1]) {
-                    let arrow = String(UnicodeScalar(UInt16(NSDownArrowFunctionKey))!)
-                    for _ in 0..<count {
-                        if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
-                                                        windowNumber: 0, context: nil, characters: arrow,
-                                                        charactersIgnoringModifiers: arrow, isARepeat: false, keyCode: 125) {
-                            NSApp.postEvent(event, atStart: false)
-                        }
-                    }
-                    // `-snapshotMenuRight` then opens the highlighted row's own menu.
-                    if arguments.contains("-snapshotMenuRight") {
-                        let right = String(UnicodeScalar(UInt16(NSRightArrowFunctionKey))!)
-                        if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
-                                                        windowNumber: 0, context: nil, characters: right,
-                                                        charactersIgnoringModifiers: right, isARepeat: false, keyCode: 124) {
-                            NSApp.postEvent(event, atStart: false)
-                        }
-                    }
-                    // `-snapshotMenuReturn` then chooses the highlighted item, and `-snapshotMenuEscape`
-                    // closes the menu, each with the key going down and back up.
-                    for (flag, key, code) in [("-snapshotMenuReturn", "\r", UInt16(36)), ("-snapshotMenuEscape", "\u{1b}", 53)]
-                    where arguments.contains(flag) {
-                        for type in [NSEvent.EventType.keyDown, .keyUp] {
-                            if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0,
-                                                            windowNumber: 0, context: nil, characters: key,
-                                                            charactersIgnoringModifiers: key, isARepeat: false, keyCode: code) {
-                                NSApp.postEvent(event, atStart: false)
-                            }
-                        }
-                    }
-                }
+                postMenuKeys(arguments)
                 panel.showMenuForSnapshot()
+            }
+        }
+        // `-snapshotTextMenu` right-clicks the page's text where it's selected (`-snapshotSelect`).
+        if arguments.contains("-snapshotTextMenu") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                postMenuKeys(arguments)
+                panel.showTextMenuForSnapshot()
             }
         }
         if arguments.contains("-snapshotShare") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 panel.shareForSnapshot()
+            }
+        }
+    }
+
+    /// Keys for the menu about to open, waiting in the queue for it to take them.
+    private static func postMenuKeys(_ arguments: [String]) {
+        // `-snapshotMenuDown N` moves the menu's highlight down N items, as the arrow key
+        // does: the keys wait in the queue for the menu to take them.
+        if let index = arguments.firstIndex(of: "-snapshotMenuDown"), index + 1 < arguments.count,
+           let count = Int(arguments[index + 1]) {
+            let arrow = String(UnicodeScalar(UInt16(NSDownArrowFunctionKey))!)
+            for _ in 0..<count {
+                if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                windowNumber: 0, context: nil, characters: arrow,
+                                                charactersIgnoringModifiers: arrow, isARepeat: false, keyCode: 125) {
+                    NSApp.postEvent(event, atStart: false)
+                }
+            }
+            // `-snapshotMenuRight` then opens the highlighted row's own menu.
+            if arguments.contains("-snapshotMenuRight") {
+                let right = String(UnicodeScalar(UInt16(NSRightArrowFunctionKey))!)
+                if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                windowNumber: 0, context: nil, characters: right,
+                                                charactersIgnoringModifiers: right, isARepeat: false, keyCode: 124) {
+                    NSApp.postEvent(event, atStart: false)
+                }
+            }
+            // `-snapshotMenuReturn` then chooses the highlighted item, and `-snapshotMenuEscape`
+            // closes the menu, each with the key going down and back up.
+            for (flag, key, code) in [("-snapshotMenuReturn", "\r", UInt16(36)), ("-snapshotMenuEscape", "\u{1b}", 53)]
+            where arguments.contains(flag) {
+                for type in [NSEvent.EventType.keyDown, .keyUp] {
+                    if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0,
+                                                    windowNumber: 0, context: nil, characters: key,
+                                                    charactersIgnoringModifiers: key, isARepeat: false, keyCode: code) {
+                        NSApp.postEvent(event, atStart: false)
+                    }
+                }
             }
         }
     }

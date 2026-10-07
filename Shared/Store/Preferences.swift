@@ -75,6 +75,14 @@ enum Preferences {
         set { set(newValue, forKey: dotGlowsKey) }
     }
 
+    /// Whether a web page linked from a page opens in Bite, in Safari's own view over the page,
+    /// Done coming back to it, rather than in the person's browser. On unless turned off. The
+    /// phone's: a Mac's opens it in the browser, as its other apps do.
+    static var opensLinksInBite: Bool {
+        get { defaults.object(forKey: opensLinksInBiteKey) as? Bool ?? true }
+        set { set(newValue, forKey: opensLinksInBiteKey) }
+    }
+
     private static let syncsWithICloudKey = "syncsWithICloud"
     private static let showsInSpotlightKey = "showsInSpotlight"
     private static let checksSpellingKey = "checksSpelling"
@@ -83,8 +91,9 @@ enum Preferences {
     private static let locksPortraitKey = "locksPortrait"
     private static let keepsScreenOnKey = "keepsScreenOn"
     private static let dotGlowsKey = "dotGlows"
+    private static let opensLinksInBiteKey = "opensLinksInBite"
     private static let keys = [syncsWithICloudKey, showsInSpotlightKey, checksSpellingKey, panelIsGlassKey, playsHapticsKey,
-                               locksPortraitKey, keepsScreenOnKey, dotGlowsKey]
+                               locksPortraitKey, keepsScreenOnKey, dotGlowsKey, opensLinksInBiteKey]
 
     private static func set(_ value: Bool, forKey key: String) {
         guard defaults.object(forKey: key) as? Bool != value else { return }

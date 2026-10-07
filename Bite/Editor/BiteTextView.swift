@@ -1,4 +1,5 @@
 import UIKit
+import SafariServices
 import BiteKit
 
 /// The UITextView behind each dot. It hands backspace, paste, copy and checkbox taps to its
@@ -1140,7 +1141,7 @@ final class BiteTextView: UITextView {
     /// opens the page's links from its actions.
     override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
         get {
-            let links = Self.opensLinks ? (editor?.links() ?? []).prefix(20) : []
+            let links = (editor?.links() ?? []).filter { editor?.canOpenLink(at: $0.range.location) == true }.prefix(20)
             let opens = links.map { link in
                 UIAccessibilityCustomAction(name: "Open \(link.text)") { [weak self] _ in
                     self?.editor?.openLink(at: link.range.location)
@@ -1154,21 +1155,45 @@ final class BiteTextView: UITextView {
 
     /// Whether a tap at `point` is a link's: it opens the link, or, while the page is being edited,
     /// changes it in the format bar on the keys. With no bar there, as with a hardware keyboard, a
-    /// link's text is text on a page being edited, and a tap puts the caret in it. In the share
-    /// extension, where nothing opens, it's text on a page not being edited too.
+    /// link's text is text on a page being edited, and a tap puts the caret in it. A link that can't
+    /// be opened from here, as only a web page's can from the share extension, is text on a page not
+    /// being edited too.
     private func tapsLink(at point: CGPoint) -> Bool {
         if isBeingEdited, editor?.canEditLinkInBar() != true { return false }
-        if !isBeingEdited, !Self.opensLinks { return false }
-        return linkLocation(at: point) != nil
+        guard let location = linkLocation(at: point) else { return false }
+        return isBeingEdited || editor?.canOpenLink(at: location) == true
     }
 
-    /// Whether a link opens where it goes: not from the share extension, which can't open anything.
-    private static var opensLinks: Bool {
-        #if SHARE_EXTENSION
-        false
-        #else
-        true
-        #endif
+    /// Shows a web page over Bite, in Safari's own view: a sheet up from the bottom, the page
+    /// behind it, closed or pulled down to come back to the page.
+    func showWebPage(_ url: URL) {
+        let responders = sequence(first: self as UIResponder, next: \.next)
+        guard var presenter = responders.first(where: { $0 is UIViewController }) as? UIViewController else { return }
+        // Over anything already shown over the page.
+        while let presented = presenter.presentedViewController { presenter = presented }
+        let safari = SFSafariViewController(url: url)
+        // Its own way in was across from the side, over the whole screen.
+        safari.modalPresentationStyle = .pageSheet
+        presenter.present(safari, animated: true)
+    }
+
+    /// The web pages the page links to, readied in Safari's own view while it's on screen.
+    private var prewarmed: [URL] = []
+    private var prewarming: SFSafariViewController.PrewarmingToken?
+
+    /// Readies Safari's own view for `pages`, as the page linking to them comes on screen: Safari's
+    /// service started and their sites connected to, so a link tapped comes up sooner. Safari's
+    /// view loads no page before it's shown. With none, what was readied is let go; and none of it
+    /// is kept while Bite is away.
+    func prewarm(_ pages: [URL]) {
+        guard pages != prewarmed else { return }
+        prewarmed = pages
+        startPrewarming()
+    }
+
+    private func startPrewarming() {
+        prewarming?.invalidate()
+        prewarming = prewarmed.isEmpty ? nil : SFSafariViewController.prewarmConnections(to: prewarmed)
     }
 
     /// The page has the keys, or they've moved over to one of its links in the format bar.
@@ -1311,10 +1336,13 @@ final class BiteTextView: UITextView {
 
     @objc private func didBecomeActive() {
         foundLight.countDown()
+        if prewarming == nil, !prewarmed.isEmpty { startPrewarming() }
     }
 
     @objc private func didEnterBackground() {
         hideFound(.atOnce)
+        prewarming?.invalidate()
+        prewarming = nil
     }
 
     let foundLight = FoundLight()

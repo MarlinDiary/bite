@@ -21,6 +21,22 @@ struct SettingsTests {
         #expect(!Preferences.checksSpelling)
     }
 
+    #if canImport(UIKit)
+    /// A web page opens in Bite, over the page, until Settings says the person's browser; mail,
+    /// and another app's links, always in the app for them.
+    @Test func webPagesOpenInBiteUntilTurnedOff() throws {
+        let page = try #require(URL(string: "https://example.com"))
+        let mail = try #require(URL(string: "mailto:sam@example.com"))
+        #expect(Preferences.opensLinksInBite)
+        #expect(EditorController.opensInBite(page))
+        #expect(!EditorController.opensInBite(mail))
+        Preferences.opensLinksInBite = false
+        #expect(!EditorController.opensInBite(page))
+        Preferences.opensLinksInBite = true
+        #expect(EditorController.opensInBite(page))
+    }
+    #endif
+
     @Test func hapticsAreOnUntilTurnedOff() {
         #expect(Preferences.playsHaptics)
         Preferences.playsHaptics = false

@@ -36,17 +36,8 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     /// A link to change in the format bar: the link button's, which may be a new one to make, or
     /// one tapped while the page is being edited.
     var onEditLink: ((PageLink) -> Void)?
-    /// Goes where a tapped link goes, out of the app. Tests catch it instead. The phone's share
-    /// extension can't open anything, so there nowhere.
-    var openURL: (URL) -> Void = { url in
-        #if canImport(UIKit) && SHARE_EXTENSION
-        return
-        #elseif canImport(UIKit)
-        UIApplication.shared.open(url)
-        #else
-        NSWorkspace.shared.open(url)
-        #endif
-    }
+    /// Goes where a tapped link goes (see `open`). Tests catch it instead.
+    lazy var openURL: (URL) -> Void = { [unowned self] url in self.open(url) }
     var loadedRevision = -1
 
     private let theme: EditorTheme
@@ -1203,6 +1194,63 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     func openLink(at location: Int) {
         guard let link = link(at: location), let url = PageLink.url(for: link.destination) else { return }
         openURL(url)
+    }
+
+    /// Whether the link at `location` can be opened from here: any in Bite. The phone's share
+    /// extension can open nothing outside it, only show a web page over it.
+    func canOpenLink(at location: Int) -> Bool {
+        guard let link = link(at: location) else { return false }
+        #if canImport(UIKit) && SHARE_EXTENSION
+        return PageLink.url(for: link.destination).map(Self.isWebPage) ?? false
+        #else
+        return true
+        #endif
+    }
+
+    /// Opens a link. On the phone a web page shows over the page, in Safari's own view, Done coming
+    /// back to it, unless Settings says the person's browser; anything else, mail or another app's,
+    /// goes to the app for it. The share extension, which can open nothing outside it, shows a web
+    /// page so too, and leaves anything else. A Mac opens every link in the app for it, a web page
+    /// in the browser.
+    private func open(_ url: URL) {
+        #if canImport(UIKit)
+        if Self.opensInBite(url) {
+            textView.showWebPage(url)
+        } else {
+            #if !SHARE_EXTENSION
+            UIApplication.shared.open(url)
+            #endif
+        }
+        #else
+        NSWorkspace.shared.open(url)
+        #endif
+    }
+
+    #if canImport(UIKit)
+    /// Whether `url` shows over the page, in Safari's own view, rather than in the app for it: a
+    /// web page, as Settings has it unless turned off, and always from the share extension.
+    static func opensInBite(_ url: URL) -> Bool {
+        #if SHARE_EXTENSION
+        isWebPage(url)
+        #else
+        isWebPage(url) && Preferences.opensLinksInBite
+        #endif
+    }
+
+    /// The web pages this page links to that show over it, each once, in the order they come, at
+    /// most `limit`: those readied as the page comes on screen (see `BiteTextView.prewarm`).
+    func linkedWebPages(limit: Int = 8) -> [URL] {
+        var pages: [URL] = []
+        for link in links() where pages.count < limit {
+            guard let url = PageLink.url(for: link.destination), Self.opensInBite(url), !pages.contains(url) else { continue }
+            pages.append(url)
+        }
+        return pages
+    }
+    #endif
+
+    private static func isWebPage(_ url: URL) -> Bool {
+        ["http", "https"].contains(url.scheme?.lowercased())
     }
 
     /// A tap on a link's text while the page is being edited: the link is changed in the format

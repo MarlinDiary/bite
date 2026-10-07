@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var syncsWithICloud = Preferences.syncsWithICloud
     @State private var showsInSpotlight = Preferences.showsInSpotlight
     @State private var checksSpelling = Preferences.checksSpelling
+    @State private var opensLinksInBite = Preferences.opensLinksInBite
     @State private var playsHaptics = Preferences.playsHaptics
     @State private var locksPortrait = Preferences.locksPortrait
     @State private var keepsScreenOn = Preferences.keepsScreenOn
@@ -26,6 +27,7 @@ struct SettingsView: View {
                 }
                 Section {
                     Toggle("Check Spelling", isOn: $checksSpelling)
+                    Toggle("Open Links in Bite", isOn: $opensLinksInBite)
                     Toggle("Haptics", isOn: $playsHaptics)
                     // An iPad's Bite is a window of any shape, which no way up suits better.
                     if UIDevice.current.userInterfaceIdiom == .phone {
@@ -63,6 +65,9 @@ struct SettingsView: View {
         }
         .onChange(of: checksSpelling) {
             Preferences.checksSpelling = checksSpelling
+        }
+        .onChange(of: opensLinksInBite) {
+            Preferences.opensLinksInBite = opensLinksInBite
         }
         .onChange(of: playsHaptics) {
             Preferences.playsHaptics = playsHaptics

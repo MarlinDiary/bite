@@ -1,5 +1,6 @@
 import Testing
 import UIKit
+import SafariServices
 import BiteKit
 @testable import Bite
 
@@ -28,6 +29,40 @@ struct LinkTapTests {
         opened = nil
         #expect(!editor.textView.tapLinkForTesting(at: try center(of: NSRange(location: 13, length: 3), in: editor)))
         #expect(opened == nil)
+    }
+
+    /// Opened as Settings has it unless turned off, a web page shows over the page, in Safari's own
+    /// view, from whatever is showing then.
+    @Test func aWebPageShowsOverThePage() throws {
+        EditorHarness.privatePreferences
+        let editor = EditorHarness("See [the site](https://example.com) now")
+        let root = UIViewController()
+        editor.window.rootViewController = root
+        root.view.addSubview(editor.textView)
+        defer { root.dismiss(animated: false) }
+        editor.controller.openLink(at: 5)
+        let shown = try #require(root.presentedViewController as? SFSafariViewController)
+        #expect(shown.isBeingPresented || shown.presentingViewController === root)
+        // Up from the bottom, as a sheet, rather than across from the side.
+        #expect(shown.modalPresentationStyle == .pageSheet)
+    }
+
+    /// The web pages a page links to that open over it are readied as it comes on screen: each
+    /// once, in order, and only so many; mail is the mail app's, and with Settings saying the
+    /// person's browser, none.
+    @Test func thePagesWebLinksAreTheOnesReadied() throws {
+        EditorHarness.privatePreferences
+        let editor = EditorHarness("""
+        [One](https://one.example) and [mail](mailto:sam@example.com)
+        www.two.example, [one again](https://one.example)
+        https://three.example
+        """)
+        let pages = ["https://one.example", "https://www.two.example", "https://three.example"].compactMap(URL.init(string:))
+        #expect(editor.controller.linkedWebPages() == pages)
+        #expect(editor.controller.linkedWebPages(limit: 2) == Array(pages.prefix(2)))
+        Preferences.opensLinksInBite = false
+        defer { Preferences.opensLinksInBite = true }
+        #expect(editor.controller.linkedWebPages().isEmpty)
     }
 
     /// Every one of the text's taps gives way on a link, UIKit's own tap counting and tap-then-drag

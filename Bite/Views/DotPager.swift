@@ -41,6 +41,7 @@ struct DotPager: UIViewRepresentable {
         }
         store.applyInEditor = { [weak coordinator] dot, markdown in
             coordinator?.controllers[dot].applyRemote(markdown: markdown)
+            coordinator?.prewarmLinks(on: dot, again: true)
         }
         store.clearInEditor = { [weak coordinator] dot in
             coordinator?.controllers[dot].clear()
@@ -78,6 +79,7 @@ struct DotPager: UIViewRepresentable {
         // Before the page: the finger that picked it may still be down.
         coordinator.isDotBarTouched = isDotBarTouched
         coordinator.show(page: selection)
+        coordinator.prewarmLinks(on: selection)
     }
 }
 
@@ -104,6 +106,7 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
 
     override init() {
         super.init()
+        NotificationCenter.default.addObserver(self, selector: #selector(preferencesDidChange), name: Preferences.didChange, object: nil)
         scrollView.delegate = self
         scrollView.scrollsToTop = false
         scrollView.pageViews = controllers.map(\.textView)
@@ -213,6 +216,30 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
         show(page: dot)
         controllers[dot].startLine(asToDo: asToDo)
         prepareNeighbors(of: dot)
+    }
+
+    /// The page whose linked web pages are readied in Safari's own view.
+    private var prewarmedPage: Int?
+
+    /// Readies Safari's own view for the web pages the page on screen links to, letting go of the
+    /// page's before (see `BiteTextView.prewarm`). `again` as the page changes by itself, as from
+    /// another device or as the share extension puts what's shared on it, and as Settings changes.
+    func prewarmLinks(on page: Int, again: Bool = false) {
+        guard controllers.indices.contains(page) else { return }
+        if again {
+            // Another page than the one on screen changing readies nothing.
+            guard page == prewarmedPage else { return }
+        } else {
+            guard page != prewarmedPage else { return }
+            if let old = prewarmedPage { controllers[old].textView.prewarm([]) }
+            prewarmedPage = page
+        }
+        controllers[page].textView.prewarm(controllers[page].linkedWebPages())
+    }
+
+    @objc private func preferencesDidChange() {
+        guard let page = prewarmedPage else { return }
+        prewarmLinks(on: page, again: true)
     }
 
     /// Selection changed from SwiftUI (the dot bar).

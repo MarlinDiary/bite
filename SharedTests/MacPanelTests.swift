@@ -1,5 +1,6 @@
 #if !canImport(UIKit)
 import AppKit
+import Security
 import Testing
 import BiteKit
 @testable import Bite
@@ -43,12 +44,12 @@ struct MacPanelTests {
         #expect(cancels == 2)
     }
 
-    @Test func theMenuIsLaidOutAsOnThePhone() {
+    @Test func theMenuIsLaidOutAsOnThePhone() throws {
         let store = store()
         let panel = panel(store)
         let menu = panel.makeMenu()
         let titles = menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
-        #expect(titles == ["Settings…", "Statistics", "-", "Copy Markdown", "Copy Plain Text", "Clear Text", "-", "Share Text",
+        #expect(titles == ["Settings…", "Statistics", "-", "Copy Markdown", "Copy Plain Text", "Clear Text", "-", "Share",
                            "-", "Quit Bite"])
         // Rows of Bite's own, with the phone's pictures and the page's colour for the highlight,
         // chosen from the keyboard too; and the keys Bite's menus give the same commands.
@@ -60,9 +61,20 @@ struct MacPanelTests {
         #expect(menu.items.first { $0.title == "Quit Bite" }?.keyEquivalent == "q")
         // Nothing in red, and nothing to copy, clear or share on an empty page.
         let hasText = !store.isEmpty[store.selection]
-        for title in ["Copy Markdown", "Copy Plain Text", "Clear Text", "Share Text"] {
+        for title in ["Copy Markdown", "Copy Plain Text", "Clear Text", "Share"] {
             #expect(menu.items.first { $0.title == title }?.isEnabled == hasText)
         }
+        // Shared as on the phone: as text, or as a file.
+        let share = try #require(menu.items.first { $0.title == "Share" }?.submenu)
+        #expect(share.items.map(\.title) == ["Text", "PDF", "Image", "Markdown"])
+    }
+
+    /// A file shared can be saved where the person picks: the sandbox lets the app write there. Without
+    /// that, the save panel never showed.
+    @Test func filesCanBeSavedWhereThePersonPicks() throws {
+        let task = try #require(SecTaskCreateFromSelf(nil))
+        let entitlement = SecTaskCopyValueForEntitlement(task, "com.apple.security.files.user-selected.read-write" as CFString, nil)
+        #expect(entitlement as? Bool == true)
     }
 
     /// Statistics opens a menu of its own with the page's words, characters and paragraphs, and

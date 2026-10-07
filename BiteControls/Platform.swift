@@ -1,4 +1,5 @@
 import SwiftUI
+import BiteKit
 #if canImport(UIKit)
 import UIKit
 
@@ -42,29 +43,17 @@ extension Color {
         self.init(nsColor: color)
         #endif
     }
+}
 
-    /// The system's colours for text, for quieter text, and for a rule between things.
-    static var systemLabel: Color {
-        #if canImport(UIKit)
-        Color(uiColor: .label)
-        #else
-        Color(nsColor: .labelColor)
-        #endif
+extension DotColor {
+    /// The colour, in light appearance or dark.
+    var color: Color {
+        Color(platform: .adaptive(light: light, dark: dark))
     }
 
-    static var systemSecondaryLabel: Color {
-        #if canImport(UIKit)
-        Color(uiColor: .secondaryLabel)
-        #else
-        Color(nsColor: .secondaryLabelColor)
-        #endif
-    }
-
-    static var systemSeparator: Color {
-        #if canImport(UIKit)
-        Color(uiColor: .separator)
-        #else
-        Color(nsColor: .separatorColor)
-        #endif
+    /// The colour made lighter or darker by `delta` in OKLab, in light appearance or dark.
+    func shade(_ delta: Double) -> Color {
+        Color(platform: .adaptive(light: ColorMath.adjustingLightness(light, by: delta),
+                                  dark: ColorMath.adjustingLightness(dark, by: delta)))
     }
 }

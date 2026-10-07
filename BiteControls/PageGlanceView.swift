@@ -30,7 +30,12 @@ nonisolated struct GlanceMetrics {
 
     /// The height of a row of text in a font of `size`.
     static func row(_ size: CGFloat, weight: PlatformFont.Weight = .regular) -> CGFloat {
-        PlatformFont.systemFont(ofSize: size, weight: weight).lineHeight
+        let font = PlatformFont.systemFont(ofSize: size, weight: weight)
+        #if canImport(UIKit)
+        return font.lineHeight
+        #else
+        return ceil(font.ascender - font.descender + font.leading)
+        #endif
     }
 }
 
@@ -211,11 +216,11 @@ struct PageGlanceView: View {
     }
 
     /// Ticks its to-do off, or on again, where the widget can: the box changes at once, and the
-    /// page with it. A page sent in Messages is someone's to read: its boxes show only.
+    /// page with it. Anywhere else, a page sent in Messages or exported, the boxes show only.
     @ViewBuilder
     private func checkbox(for line: PageGlance.Line) -> some View {
         let size = 19 * metrics.scale
-        #if MESSAGES_EXTENSION
+        #if !WIDGET_TICKS
         Checkbox(isChecked: line.isChecked, ink: ink, size: size, scale: metrics.scale)
         #else
         if ticks {
@@ -461,18 +466,5 @@ struct Checkbox: View {
                 path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.75, y: rect.minY + rect.height * 0.33))
             }
         }
-    }
-}
-
-extension DotColor {
-    /// The colour, in light appearance or dark.
-    var color: Color {
-        Color(platform: .adaptive(light: light, dark: dark))
-    }
-
-    /// The colour made lighter or darker by `delta` in OKLab, in light appearance or dark.
-    func shade(_ delta: Double) -> Color {
-        Color(platform: .adaptive(light: ColorMath.adjustingLightness(light, by: delta),
-                                  dark: ColorMath.adjustingLightness(dark, by: delta)))
     }
 }

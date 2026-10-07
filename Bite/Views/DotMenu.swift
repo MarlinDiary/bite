@@ -3,7 +3,7 @@ import UIKit
 import BiteKit
 
 /// The "…" button: settings, the page's statistics, copying it as Markdown or plain text, clearing
-/// it, and sharing it.
+/// it, and sharing it: as text, or as a PDF, a picture or its Markdown.
 struct DotMenu: View {
     let dot: Int
     @Environment(DotStore.self) private var store
@@ -43,10 +43,21 @@ struct DotMenu: View {
                 .disabled(isEmpty)
             }
             Section {
-                Button("Share Text", systemImage: "square.and.arrow.up") {
-                    ShareSheet.present(text: store.currentMarkdown(dot: dot))
+                // A menu in a menu still opens when off, on its items all off: an empty page's
+                // Share is a button, off as the others are.
+                if isEmpty {
+                    Button("Share", systemImage: "square.and.arrow.up") {}
+                        .disabled(true)
+                } else {
+                    Menu("Share", systemImage: "square.and.arrow.up") {
+                        Button("Text", systemImage: "text.alignleft") {
+                            ShareSheet.present(text: store.currentMarkdown(dot: dot))
+                        }
+                        Button("PDF", systemImage: "doc.richtext") { export(.pdf) }
+                        Button("Image", systemImage: "photo") { export(.image) }
+                        Button("Markdown", systemImage: "doc.text") { export(.markdown) }
+                    }
                 }
-                .disabled(isEmpty)
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -75,6 +86,12 @@ struct DotMenu: View {
         #endif
     }
 
+    /// The page as a file, to the share sheet: to Files, a printer, or another app.
+    private func export(_ format: PageExport.Format) {
+        guard let file = PageExport.file(format, page: dot, markdown: store.currentMarkdown(dot: dot), scale: 3) else { return }
+        ShareSheet.present(items: [file])
+    }
+
     /// Counted as it opens, with typing from a moment ago, which changed the page just now.
     private func showStatistics() {
         let markdown = store.currentMarkdown(dot: dot)
@@ -92,13 +109,17 @@ private struct ShownStatistics: Identifiable {
 
 enum ShareSheet {
     static func present(text: String) {
+        present(items: [text])
+    }
+
+    static func present(items: [Any]) {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }),
               var top = scene.keyWindow?.rootViewController else { return }
         while let presented = top.presentedViewController {
             top = presented
         }
-        let controller = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
         if let popover = controller.popoverPresentationController {
             popover.sourceView = top.view
             popover.sourceRect = CGRect(x: top.view.bounds.maxX - 40, y: top.view.safeAreaInsets.top + 22, width: 1, height: 1)

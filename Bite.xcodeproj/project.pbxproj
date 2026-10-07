@@ -118,6 +118,9 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				OpenBiteIntent.swift,
+				PageGlanceView.swift,
+				PageLook.swift,
+				SystemColors.swift,
 				ToDoTicks.swift,
 			);
 			target = B17E00000000000000000006 /* Bite */;
@@ -191,8 +194,18 @@
 				PageGlanceView.swift,
 				PageLook.swift,
 				Platform.swift,
+				SystemColors.swift,
 			);
 			target = B17E000000000000000000B1 /* BiteMessages */;
+		};
+		B17E000000000000000000C2 /* Exceptions for "BiteControls" folder in "BiteMac" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				PageGlanceView.swift,
+				PageLook.swift,
+				SystemColors.swift,
+			);
+			target = B17E00000000000000000038 /* BiteMac */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -237,6 +250,7 @@
 			exceptions = (
 				B17E0000000000000000005D /* Exceptions for "BiteControls" folder in "Bite" target */,
 				B17E000000000000000000C1 /* Exceptions for "BiteControls" folder in "BiteMessages" target */,
+				B17E000000000000000000C2 /* Exceptions for "BiteControls" folder in "BiteMac" target */,
 			);
 			path = BiteControls;
 			sourceTree = "<group>";
@@ -816,6 +830,7 @@
 		B17E00000000000000000078 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) WIDGET_TICKS";
 				CODE_SIGN_ENTITLEMENTS = Config/BiteMacWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;
@@ -848,6 +863,7 @@
 		B17E00000000000000000079 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) WIDGET_TICKS";
 				CODE_SIGN_ENTITLEMENTS = Config/BiteMacWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;
@@ -880,6 +896,7 @@
 		B17E00000000000000000057 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) WIDGET_TICKS";
 				CODE_SIGN_ENTITLEMENTS = Config/BiteControls.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;
@@ -910,6 +927,7 @@
 		B17E00000000000000000058 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) WIDGET_TICKS";
 				CODE_SIGN_ENTITLEMENTS = Config/BiteControls.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;

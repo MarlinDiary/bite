@@ -523,7 +523,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         // Neither red nor asked about: the page is cleared as an edit, which undo brings back.
         menu.addItem(item("Clear Text", symbol: "eraser", action: #selector(clearText), isEnabled: hasText))
         menu.addItem(.separator())
-        menu.addItem(item("Share Text", symbol: "square.and.arrow.up", action: #selector(shareText), isEnabled: hasText))
+        menu.addItem(shareItem(isEnabled: hasText))
         menu.addItem(.separator())
         menu.addItem(quitItem())
         return menu
@@ -556,6 +556,21 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
                             tint: NSColor(hex: DotPalette.colors[dot].light))
     }
 
+    /// The page shared as on the phone: as text, or as a file, a PDF, a picture or its Markdown.
+    private func shareItem(isEnabled: Bool) -> NSMenuItem {
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        submenu.delegate = MenuRow.keyboard
+        submenu.addItem(item("Text", symbol: "text.alignleft", action: #selector(shareText)))
+        submenu.addItem(item("PDF", symbol: "doc.richtext", action: #selector(sharePDF)))
+        submenu.addItem(item("Image", symbol: "photo", action: #selector(shareImage)))
+        submenu.addItem(item("Markdown", symbol: "doc.text", action: #selector(shareMarkdown)))
+        let item = MenuRow.item("Share", symbol: "square.and.arrow.up", submenu: submenu,
+                                tint: NSColor(hex: DotPalette.colors[store.selection].light))
+        item.isEnabled = isEnabled
+        return item
+    }
+
     private func settingsItem() -> NSMenuItem {
         item("Settings…", symbol: "gearshape", key: ",", action: #selector(AppDelegate.showSettings(_:)), target: NSApp.delegate)
     }
@@ -580,8 +595,18 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         showMenu(below: menuButtonFrame)
     }
 
+    /// `-snapshotShareFile` shares the page as a PDF, its picker offering to save it, and
+    /// `-snapshotSave` saves it straight away, the save panel showing.
     func shareForSnapshot() {
-        shareText()
+        let dot = store.selection
+        if CommandLine.arguments.contains("-snapshotSave"),
+           let file = PageExport.file(.pdf, page: dot, markdown: store.currentMarkdown(dot: dot), scale: 2) {
+            save(file)
+        } else if CommandLine.arguments.contains("-snapshotShareFile") {
+            sharePDF()
+        } else {
+            shareText()
+        }
     }
 
     /// The page's text right-clicked where it's selected, or at the caret: the text's own menu.
@@ -607,13 +632,58 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         makeMenu().popUp(positioning: nil, at: NSPoint(x: anchor.minX, y: anchor.maxY + 6), in: topBar)
     }
 
+    @objc private func shareText() {
+        share([store.currentMarkdown(dot: store.selection)])
+    }
+
+    @objc private func sharePDF() {
+        shareFile(.pdf)
+    }
+
+    @objc private func shareImage() {
+        shareFile(.image)
+    }
+
+    @objc private func shareMarkdown() {
+        shareFile(.markdown)
+    }
+
+    private func shareFile(_ format: PageExport.Format) {
+        let dot = store.selection
+        guard let file = PageExport.file(format, page: dot, markdown: store.currentMarkdown(dot: dot), scale: 2) else { return }
+        share([file])
+    }
+
     /// The system's share picker, below the "…" button. The share item AppKit makes for a menu did
     /// nothing from the panel's.
-    @objc private func shareText() {
+    private func share(_ items: [Any]) {
         guard let topBar else { return }
-        let picker = NSSharingServicePicker(items: [store.currentMarkdown(dot: store.selection)])
+        let picker = NSSharingServicePicker(items: items)
+        picker.delegate = self
         sharePicker = picker
         picker.show(relativeTo: menuButtonFrame, of: topBar, preferredEdge: .maxY)
+    }
+
+    /// Saved where the person picks, as a Mac app saves, the panel stepping aside for the save
+    /// panel as for Settings; then back to the app that was in use.
+    private func save(_ file: URL) {
+        hideForOtherWindow()
+        if NSApp.isHidden { NSApp.unhideWithoutActivation() }
+        NSApp.activate()
+        let save = NSSavePanel()
+        save.nameFieldStringValue = file.lastPathComponent
+        if let format = PageExport.Format.allCases.first(where: { $0.fileExtension == file.pathExtension }) {
+            save.allowedContentTypes = [format.contentType]
+        }
+        save.level = Self.levelAbove
+        save.begin { response in
+            if response == .OK, let url = save.url, let data = try? Data(contentsOf: file) {
+                try? data.write(to: url)
+            }
+            if !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeKey }) {
+                NSApp.hide(nil)
+            }
+        }
     }
 
     @objc private func copyMarkdown() {
@@ -726,5 +796,19 @@ final class ResizeCorner: NSView {
         }
         window.invalidateShadow()
         didResize()
+    }
+}
+
+extension PanelController: NSSharingServicePickerDelegate {
+    /// A file's picker also saves it, where the person picks, as the phone's share sheet saves to
+    /// Files.
+    func sharingServicePicker(_ sharingServicePicker: NSSharingServicePicker, sharingServicesForItems items: [Any],
+                              proposedSharingServices proposedServices: [NSSharingService]) -> [NSSharingService] {
+        guard let file = items.first as? URL else { return proposedServices }
+        let image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: nil) ?? NSImage()
+        let save = NSSharingService(title: "Save…", image: image, alternateImage: nil) { [weak self] in
+            self?.save(file)
+        }
+        return proposedServices + [save]
     }
 }

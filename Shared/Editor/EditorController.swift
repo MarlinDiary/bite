@@ -1010,6 +1010,29 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         }
     }
 
+    /// What the heading menu ticks: the heading level, or plain text, of the first line the caret or
+    /// selection is on. Levels 4 to 6 look like 3, and go with it. Nil for a line of another kind,
+    /// a list's or a quote's.
+    var lineStyle: BlockKind? {
+        guard let first = selectedLines().first(where: { block(of: $0).kind != .divider }) else { return nil }
+        return switch block(of: first).kind {
+        case .heading1: .heading1
+        case .heading2: .heading2
+        case .heading3, .heading4, .heading5, .heading6: .heading3
+        case .paragraph: .paragraph
+        default: nil
+        }
+    }
+
+    /// Makes the lines the caret or selection is on a heading of `kind`'s level, or plain text,
+    /// from the heading menu, whatever they were.
+    func setLineStyle(_ kind: BlockKind) {
+        finishComposing()
+        let lines = selectedLines().filter { block(of: $0).kind != .divider }
+        guard !lines.isEmpty else { return }
+        setBlocks(of: lines) { $0 = BlockAttributes(kind: kind) }
+    }
+
     /// The styles the format bar shows as on: those that typing at the caret gets, or that all the
     /// selected text has. Tapping the button of one that's on undoes it.
     var activeStyles: InlineStyle {

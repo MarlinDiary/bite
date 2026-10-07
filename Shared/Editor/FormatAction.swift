@@ -1,15 +1,16 @@
 import BiteKit
 
-/// What the format bar's buttons, and on a Mac the Format menu, do to the page.
+/// What the format bar's buttons, and on a Mac the Format menu, do to the page. In the order the
+/// bar has them: the first six across it as it comes up, the rest a scroll away.
 enum FormatAction: CaseIterable {
-    case todo, bullet, ordered, heading, quote, code, bold, italic, strikethrough, link, outdent, indent, dismiss
+    case heading, todo, bold, italic, strikethrough, link, quote, code, outdent, indent, ordered, bullet, dismiss
 
     var symbol: String {
         switch self {
         case .todo: "checklist"
         case .bullet: "list.bullet"
         case .ordered: "list.number"
-        case .heading: "textformat.size"
+        case .heading: "textformat"
         case .quote: "text.quote"
         case .code: "chevron.left.forwardslash.chevron.right"
         case .bold: "bold"

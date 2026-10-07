@@ -21,11 +21,15 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     /// How tall the bar stands now: taller while a link is being changed in it, the link's rows
     /// in the capsule's place and its buttons above them.
     var height: CGFloat { showsLink ? Self.height - Self.rowHeight + Self.buttonRowHeight + rowsHeight : Self.height }
+    /// The glass, which the heading button's menu comes out of, as a toolbar turns into its menus.
+    private weak var glassView: UIVisualEffectView?
     /// Called as the bar grows for a link, or goes back down, so the pager moves it and makes room
     /// for it on the page.
     var onHeightChange: (() -> Void)?
     weak var editor: EditorController?
     private var buttons: [FormatAction: BarButton] = [:]
+    /// The buttons' row, which scrolls past the first six.
+    private var buttonScroll: UIScrollView?
     /// The formatting buttons and the one putting the keys away, which a link's rows take the
     /// place of.
     private var formatViews: [UIView] = []
@@ -90,6 +94,7 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         let effect = UIGlassEffect(style: .regular)
         effect.isInteractive = true
         let glass = UIVisualEffectView(effect: effect)
+        glassView = glass
         glass.translatesAutoresizingMaskIntoConstraints = false
         // A capsule, and with a link's rows a card, its corners the capsule's ends.
         glass.cornerConfiguration = .capsule(maximumRadius: Self.rowHeight / 2)
@@ -100,15 +105,28 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         let scroll = FadingScrollView()
         scroll.showsHorizontalScrollIndicator = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        let buttons = FormatAction.allCases.filter { $0 != .dismiss }.map { makeButton(for: $0) }
+        // Two pages of six, a swipe turning from one to the other, rather than a row slid along.
+        scroll.isPagingEnabled = true
+        buttonScroll = scroll
+        let buttons = FormatAction.allCases.filter { $0 != .dismiss }.map { makeButton(for: $0, fixedWidth: false) }
         let stack = UIStackView(arrangedSubviews: buttons)
         stack.axis = .horizontal
+        stack.distribution = .fillEqually
         stack.spacing = 0
         stack.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(stack)
 
-        let dismiss = makeButton(for: .dismiss)
+        let dismiss = makeButton(for: .dismiss, fixedWidth: false)
         dismiss.translatesAutoresizingMaskIntoConstraints = false
+        // Seven across the bar, evenly: the first six buttons and the one putting the keys away,
+        // the rest of the buttons a scroll away. No wider than 60 points, so a wider bar, an
+        // iPad's, shows more, and no narrower than a button on its own.
+        let sevenAcross = dismiss.widthAnchor.constraint(equalTo: glass.contentView.widthAnchor, multiplier: 1.0 / 7,
+                                                         constant: -2 * Self.edgeInset / 7)
+        sevenAcross.priority = .defaultHigh
+        // Where the first button is, for what stands in its place while a link is changed.
+        let firstSlot = UILayoutGuide()
+        glass.contentView.addLayoutGuide(firstSlot)
         glass.contentView.addSubview(scroll)
         glass.contentView.addSubview(dismiss)
         formatViews = [scroll, dismiss]
@@ -136,6 +154,7 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         }
         glass.contentView.addSubview(buttonRow)
 
+
         // The row on the keys: the buttons, or a link's address. The glass grows up from it.
         let bottomRow = UILayoutGuide()
         glass.contentView.addLayoutGuide(bottomRow)
@@ -159,19 +178,25 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
             bottomRow.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor),
             bottomRow.heightAnchor.constraint(equalToConstant: Self.rowHeight),
 
-            scroll.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 10),
+            scroll.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: Self.edgeInset),
             scroll.topAnchor.constraint(equalTo: bottomRow.topAnchor),
             scroll.bottomAnchor.constraint(equalTo: bottomRow.bottomAnchor),
             scroll.trailingAnchor.constraint(equalTo: dismiss.leadingAnchor),
 
-            dismiss.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -6),
+            dismiss.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -Self.edgeInset),
             dismiss.centerYAnchor.constraint(equalTo: bottomRow.centerYAnchor),
+            sevenAcross,
+            dismiss.widthAnchor.constraint(lessThanOrEqualToConstant: 60),
+            dismiss.widthAnchor.constraint(greaterThanOrEqualToConstant: BarButton.width),
+            firstSlot.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
+            firstSlot.widthAnchor.constraint(equalTo: dismiss.widthAnchor),
 
             stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
             stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
             stack.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+            stack.widthAnchor.constraint(equalTo: dismiss.widthAnchor, multiplier: CGFloat(buttons.count)),
 
             // The rows where the buttons were and above, across the glass, growing up from the
             // keys as the address wraps.
@@ -179,6 +204,9 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
             linkRows.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
             linkRows.bottomAnchor.constraint(equalTo: bottomRow.bottomAnchor),
             rowsHeightConstraint,
+            nameIcon.centerXAnchor.constraint(equalTo: firstSlot.centerXAnchor),
+            addressIcon.centerXAnchor.constraint(equalTo: firstSlot.centerXAnchor),
+            linkText.leadingAnchor.constraint(equalTo: firstSlot.centerXAnchor, constant: 21),
 
             // Cancel over the rows' symbols, Done where the button putting the keys away is, and
             // what's being done between them.
@@ -186,9 +214,9 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
             buttonRow.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
             buttonRow.bottomAnchor.constraint(equalTo: linkRows.topAnchor),
             buttonRow.heightAnchor.constraint(equalToConstant: Self.buttonRowHeight),
-            cancel.leadingAnchor.constraint(equalTo: buttonRow.leadingAnchor, constant: 10),
+            cancel.centerXAnchor.constraint(equalTo: firstSlot.centerXAnchor),
             cancel.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
-            done.trailingAnchor.constraint(equalTo: buttonRow.trailingAnchor, constant: -6),
+            done.centerXAnchor.constraint(equalTo: dismiss.centerXAnchor),
             done.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
             linkTitle.centerXAnchor.constraint(equalTo: buttonRow.centerXAnchor),
             linkTitle.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
@@ -243,15 +271,109 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     func isEnabled(_ action: FormatAction) -> Bool {
         buttons[action]?.isEnabled ?? false
     }
+
+    /// What the heading button's menu offers, as it would open now, top to bottom, and which it
+    /// has ticked, its groups' items one after another. For tests.
+    var headingMenuForTesting: [(title: String, isTicked: Bool)] {
+        func items(_ menu: UIMenu) -> [UIAction] {
+            menu.children.flatMap { ($0 as? UIMenu).map(items) ?? [$0 as? UIAction].compactMap { $0 } }
+        }
+        return items(headingMenu()).map { ($0.title, $0.state == .on) }
+    }
+
+    /// How many groups the heading button's menu has, a line between each. For tests.
+    var headingMenuGroupsForTesting: Int {
+        headingMenu().children.count
+    }
+
+    /// As choosing `title` in the heading button's menu does. For tests.
+    func chooseHeadingForTesting(_ title: String) {
+        let kind = title == Self.plainText ? .paragraph : Self.headingLevels.first { $0.title == title }?.kind
+        if let kind { editor?.setLineStyle(kind) }
+    }
+
+    /// Whether the heading button opens its menu out of the bar's glass. For tests.
+    var headingMenuComesOutOfTheGlassForTesting: Bool {
+        guard let button = buttons[.heading], let glassView else { return false }
+        return button.showsMenuAsPrimaryAction && button.menuSource === glassView
+    }
+
+    /// The buttons along the bar, in order, and whether each shows whole. For tests.
+    var buttonsAlongTheBar: [(action: FormatAction, isWhole: Bool)] {
+        layoutIfNeeded()
+        let shown = buttonScroll.map { CGRect(origin: $0.contentOffset, size: $0.bounds.size) } ?? .zero
+        return buttons.filter { $0.key != .dismiss }
+            .sorted { $0.value.frame.minX < $1.value.frame.minX }
+            .map { ($0.key, shown.insetBy(dx: -0.5, dy: -0.5).contains($0.value.frame)) }
+    }
+
+    /// The distances between the middles of the buttons that show whole and the one putting the
+    /// keys away, along the bar. For tests.
+    var buttonGapsForTesting: [CGFloat] {
+        layoutIfNeeded()
+        guard let scroll = buttonScroll, let dismiss = buttons[.dismiss] else { return [] }
+        let shown = CGRect(origin: scroll.contentOffset, size: scroll.bounds.size).insetBy(dx: -0.5, dy: -0.5)
+        let middles = buttons.filter { $0.key != .dismiss && shown.contains($0.value.frame) }
+            .map { $0.value.convert(CGPoint(x: $0.value.bounds.midX, y: 0), to: self).x }
+            .sorted() + [dismiss.convert(CGPoint(x: dismiss.bounds.midX, y: 0), to: self).x]
+        return zip(middles.dropFirst(), middles).map { $0 - $1 }
+    }
+
+    /// Scrolls the buttons to their end, as a finger would. For tests.
+    func scrollButtonsToEnd() {
+        guard let scroll = buttonScroll else { return }
+        layoutIfNeeded()
+        scroll.contentOffset.x = max(0, scroll.contentSize.width - scroll.bounds.width)
+    }
     #endif
 
-    private func makeButton(for action: FormatAction) -> BarButton {
-        let button = BarButton(image: Self.symbol(action.symbol), title: action.title, handler: UIAction { [weak self] _ in
+    /// The first six buttons, as the bar comes up with the keys (see `DotPager`): scrolled along
+    /// before, it came back up showing where it was left.
+    func showFirstButtons() {
+        buttonScroll?.setContentOffset(.zero, animated: false)
+    }
+
+    private func makeButton(for action: FormatAction, fixedWidth: Bool = true) -> BarButton {
+        let button = BarButton(image: Self.symbol(action.symbol), title: action.title, fixedWidth: fixedWidth, handler: UIAction { [weak self] _ in
             self?.editor?.perform(action)
         })
+        // The heading button opens a menu of the heading levels instead, made as it opens, the
+        // line's ticked. It comes out of the whole glass: the bar turns into the menu and back, as
+        // Notes' keyboard toolbar does into its list styles.
+        if action == .heading {
+            button.makeMenu = { [weak self] in self?.headingMenu() ?? UIMenu() }
+            button.menuSource = glassView
+        }
         buttons[action] = button
         return button
     }
+
+    /// The heading levels the heading button offers, one for each level the page shows, the line's
+    /// ticked. Largest first.
+    static let headingLevels: [(title: String, kind: BlockKind)] = [
+        ("Heading 1", .heading1), ("Heading 2", .heading2), ("Heading 3", .heading3),
+    ]
+    /// What takes a line's heading off, offered only on a heading.
+    static let plainText = "Text"
+
+    /// The heading levels, and on a heading, above them with a line between, plain text: as Notes'
+    /// list styles menu has None only on a list.
+    private func headingMenu() -> UIMenu {
+        let current = editor?.lineStyle
+        let levels = UIMenu(options: .displayInline, children: Self.headingLevels.map { title, kind in
+            UIAction(title: title, state: current == kind ? .on : .off) { [weak self] _ in
+                self?.editor?.setLineStyle(kind)
+            }
+        })
+        guard let current, current != .paragraph else { return UIMenu(children: [levels]) }
+        let text = UIMenu(options: .displayInline, children: [
+            UIAction(title: Self.plainText) { [weak self] _ in self?.editor?.setLineStyle(.paragraph) },
+        ])
+        return UIMenu(children: [text, levels])
+    }
+
+    /// From the glass's ends to the first button and the last.
+    private static let edgeInset: CGFloat = 10
 
     private static let symbolConfiguration = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium, scale: .large)
 
@@ -305,15 +427,12 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         addressIconY = addressIcon.centerYAnchor.constraint(equalTo: linkText.topAnchor, constant: Self.rowHeight * 1.5)
         dividerY = divider.centerYAnchor.constraint(equalTo: linkText.topAnchor, constant: Self.rowHeight)
         NSLayoutConstraint.activate([
-            linkText.leadingAnchor.constraint(equalTo: linkRows.leadingAnchor, constant: 52),
             linkText.trailingAnchor.constraint(equalTo: linkRows.trailingAnchor, constant: -18),
             linkText.topAnchor.constraint(equalTo: linkRows.topAnchor),
             linkText.bottomAnchor.constraint(equalTo: linkRows.bottomAnchor),
-            nameIcon.leadingAnchor.constraint(equalTo: linkRows.leadingAnchor, constant: 10),
             nameIcon.widthAnchor.constraint(equalToConstant: 42),
             nameIcon.heightAnchor.constraint(equalToConstant: 44),
             nameIconY,
-            addressIcon.leadingAnchor.constraint(equalTo: linkRows.leadingAnchor, constant: 10),
             addressIcon.widthAnchor.constraint(equalToConstant: 42),
             addressIcon.heightAnchor.constraint(equalToConstant: 44),
             addressIconY,
@@ -744,10 +863,19 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         moveKeys(to: .name)
     }
 
-    /// As a tap at `point` on the rows does, in the rows' coordinates, the text view's leading
-    /// edge 52 in from theirs. Says whether the rows took it, rather than the text.
+    /// Where the rows' text starts, in their coordinates: 21 past the middle of their symbols.
+    var linkTextLeadingForTesting: CGFloat {
+        layoutIfNeeded()
+        return linkText.frame.minX
+    }
+
+    /// As a tap at `point` on the rows does, in the rows' coordinates. Says whether the rows took
+    /// it, rather than the text. Laid out first, as the bar is on screen before a finger can reach
+    /// it: where the rows' lines are is measured as it lays out.
     @discardableResult
     func tapRowsForTesting(at point: CGPoint) -> Bool {
+        setNeedsLayout()
+        layoutIfNeeded()
         guard linkRows.hitTest(point, with: nil) === linkRows else { return false }
         tapRows(at: point)
         return true
@@ -880,9 +1008,26 @@ private final class FadingScrollView: UIScrollView {
 }
 
 /// A bar button: just its symbol, which takes the page's colour, the bar's tint, while it's on,
-/// and dims while pressed. Both change on the spot. A system button put a platter behind the
-/// symbol when pressed and faded it out after, so a style's colour seemed to lag behind the tap.
-private final class BarButton: UIControl {
+/// and dims while pressed. Both change on the spot. A system button's configuration put a platter
+/// behind the symbol when pressed and faded it out after, so a style's colour seemed to lag behind
+/// the tap: it has none, and draws its symbol itself. A button still, not a plain control: only a
+/// button's menu comes out of its glass, the bar turning into the menu (see `menuSource`); a
+/// control's opened over the bar, the bar left as it was.
+private final class BarButton: UIButton {
+    /// The width of a button on its own; along the bar they share its width, six across.
+    static let width: CGFloat = 42
+
+    /// A menu a tap opens in place of the button's action, made as it opens.
+    var makeMenu: (() -> UIMenu)? {
+        didSet {
+            isContextMenuInteractionEnabled = makeMenu != nil
+            showsMenuAsPrimaryAction = makeMenu != nil
+        }
+    }
+
+    /// What the menu comes out of and goes back into: the system turns this view into the menu.
+    weak var menuSource: UIView?
+
     private let symbol = UIImageView()
 
     var isOn = false {
@@ -893,7 +1038,7 @@ private final class BarButton: UIControl {
         }
     }
 
-    init(image: UIImage?, title: String, handler: UIAction) {
+    init(image: UIImage?, title: String, fixedWidth: Bool = true, handler: UIAction) {
         super.init(frame: .zero)
         symbol.image = image
         symbol.translatesAutoresizingMaskIntoConstraints = false
@@ -901,9 +1046,11 @@ private final class BarButton: UIControl {
         NSLayoutConstraint.activate([
             symbol.centerXAnchor.constraint(equalTo: centerXAnchor),
             symbol.centerYAnchor.constraint(equalTo: centerYAnchor),
-            widthAnchor.constraint(equalToConstant: 42),
             heightAnchor.constraint(equalToConstant: 44),
         ])
+        if fixedWidth {
+            widthAnchor.constraint(equalToConstant: Self.width).isActive = true
+        }
         addAction(handler, for: .touchUpInside)
         isAccessibilityElement = true
         accessibilityTraits = .button
@@ -933,8 +1080,31 @@ private final class BarButton: UIControl {
     }
 
     override func accessibilityActivate() -> Bool {
+        // With a menu, the system opens it.
+        if makeMenu != nil { return false }
         sendActions(for: .touchUpInside)
         return true
+    }
+
+    override func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                                         configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
+        guard let makeMenu else { return nil }
+        let configuration = UIContextMenuConfiguration(actionProvider: { _ in makeMenu() })
+        configuration.preferredMenuElementOrder = .fixed
+        return configuration
+    }
+
+    override func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                                         previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
+        guard let source = menuSource, source.window != nil else { return nil }
+        let parameters = UIPreviewParameters()
+        parameters.visiblePath = UIBezierPath(roundedRect: source.bounds, cornerRadius: min(source.bounds.height, source.bounds.width) / 2)
+        return UITargetedPreview(view: source, parameters: parameters)
+    }
+
+    override func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                                         previewForDismissingMenuWithConfiguration configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
+        contextMenuInteraction(interaction, previewForHighlightingMenuWithConfiguration: configuration)
     }
 
     private func updateLook() {

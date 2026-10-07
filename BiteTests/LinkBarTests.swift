@@ -604,14 +604,15 @@ struct LinkBarTests {
         // The rows meet halfway between their lines: a tap in the gap under the text row's text
         // is the text row's, on the row's line where it's tapped, and one over the address's is
         // the address's, with the text itself taking taps on it.
-        #expect(bar.tapRowsForTesting(at: CGPoint(x: 100, y: 42)))
+        let text = bar.linkTextLeadingForTesting
+        #expect(bar.tapRowsForTesting(at: CGPoint(x: text + 48, y: 42)))
         #expect(bar.rowWithKeysForTesting == .name)
         #expect(bar.caretForTesting == 5)
-        #expect(bar.tapRowsForTesting(at: CGPoint(x: 60, y: 42)))
+        #expect(bar.tapRowsForTesting(at: CGPoint(x: text + 8, y: 42)))
         #expect(bar.caretForTesting < 5)
-        #expect(bar.tapRowsForTesting(at: CGPoint(x: 100, y: 54)))
+        #expect(bar.tapRowsForTesting(at: CGPoint(x: text + 48, y: 54)))
         #expect(bar.rowWithKeysForTesting == .address)
-        #expect(!bar.tapRowsForTesting(at: CGPoint(x: 60, y: 24)))
+        #expect(!bar.tapRowsForTesting(at: CGPoint(x: text + 8, y: 24)))
         bar.tapNameForTesting()
         #expect(bar.caretForTesting == bar.separatorForTesting)
         #expect(bar.rowWithKeysForTesting == .name)

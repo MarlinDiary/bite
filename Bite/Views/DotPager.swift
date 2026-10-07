@@ -540,8 +540,8 @@ final class PagerContainerView: UIView {
         let barKeys = isWritingToolsAtWork || keysWhenWritingToolsEnded != nil ? 0 : keys
         // On-screen keys stand well over 120 points. A hardware keyboard leaves no keys, or only a
         // short strip, and the bar stays away. Keys dragged partway down still carry it.
-        #if DEBUG
         let wasRiding = barRidesOnKeys
+        #if DEBUG
         defer { if wasRiding, !barRidesOnKeys { timesBarLeftKeysForTesting += 1 } }
         #endif
         if editor == nil || barKeys == 0 {
@@ -551,6 +551,8 @@ final class PagerContainerView: UIView {
         } else if editor?.isTracking != true {
             barRidesOnKeys = false
         }
+        // Coming up with the keys, the bar shows its first six buttons, wherever it was left.
+        if barRidesOnKeys, !wasRiding { formatBar.showFirstButtons() }
 
         // The track moves exactly like the keys: inside the keyboard's animation it gets the same
         // one. The bar stays on top of the keys all the way down; only once they're nearly gone

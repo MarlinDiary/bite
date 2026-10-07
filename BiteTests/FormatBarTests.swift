@@ -3,6 +3,141 @@ import UIKit
 import BiteKit
 @testable import Bite
 
+/// The format bar's buttons: in the order asked for, the first six across it as it comes up, and
+/// the button putting the keys away a seventh, the bar's width shared evenly between them.
+@MainActor
+struct FormatBarButtonsTests {
+    private static let order: [FormatAction] = [.heading, .todo, .bold, .italic, .strikethrough, .link,
+                                                .quote, .code, .outdent, .indent, .ordered, .bullet]
+
+    /// The bar on the keys of a pager in an upright window `width` wide, as on a phone that wide:
+    /// one bar serves every pager, and one turned on its side before had it half as wide.
+    private func pager(width: CGFloat) -> (pager: DotPagerCoordinator, window: UIWindow) {
+        let pager = DotPagerCoordinator()
+        let frame = CGRect(x: 0, y: 0, width: width, height: 874)
+        let window: UIWindow
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+            window = UIWindow(windowScene: scene)
+        } else {
+            window = UIWindow(frame: frame)
+        }
+        window.frame = frame
+        pager.container.frame = window.bounds
+        window.addSubview(pager.container)
+        EditorHarness.show(window)
+        pager.container.layoutIfNeeded()
+        FormatBar.shared.layoutIfNeeded()
+        return (pager, window)
+    }
+
+    @Test func theFirstSixShowAsTheBarComesUp() {
+        for width in [375.0, 402, 420, 440] {
+            let (pager, window) = pager(width: width)
+            let bar = FormatBar.shared
+            bar.showFirstButtons()
+            let along = bar.buttonsAlongTheBar
+            #expect(along.map(\.action) == Self.order)
+            #expect(along.filter(\.isWhole).map(\.action) == Array(Self.order.prefix(6)), "\(width)")
+            #expect(bar.buttonGapsForTesting.allSatisfy { abs($0 - bar.buttonGapsForTesting[0]) < 0.5 }, "\(width)")
+            window.isHidden = true
+            withExtendedLifetime(pager) {}
+        }
+    }
+
+    /// Paged along, the bar shows the other six, and comes up again with the first.
+    @Test func theOtherSixAreAPageAway() {
+        let (pager, window) = pager(width: 402)
+        defer {
+            FormatBar.shared.showFirstButtons()
+            window.isHidden = true
+            withExtendedLifetime(pager) {}
+        }
+        let bar = FormatBar.shared
+        bar.scrollButtonsToEnd()
+        #expect(bar.buttonsAlongTheBar.filter(\.isWhole).map(\.action) == Array(Self.order.suffix(6)))
+        bar.showFirstButtons()
+        #expect(bar.buttonsAlongTheBar.filter(\.isWhole).map(\.action) == Array(Self.order.prefix(6)))
+    }
+}
+
+/// The heading button opens a menu of the heading levels, made as it opens, the line's ticked. It
+/// comes out of the bar's whole glass, which the system turns into the menu and back, as Notes'
+/// keyboard toolbar does. A level chosen goes onto every line the caret or selection is on.
+@MainActor
+struct HeadingMenuTests {
+    private var bar: FormatBar { FormatBar.shared }
+
+    /// The pages in a window, the first being edited with `markdown` on it, over keys 336 tall.
+    private func editingPager(_ markdown: String) -> (pager: DotPagerCoordinator, page: EditorController, window: UIWindow) {
+        let pager = DotPagerCoordinator()
+        let frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        let window: UIWindow
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+            window = UIWindow(windowScene: scene)
+        } else {
+            window = UIWindow(frame: frame)
+        }
+        window.frame = frame
+        pager.container.frame = window.bounds
+        window.addSubview(pager.container)
+        EditorHarness.show(window)
+        let page = pager.controllers[0]
+        page.load(markdown: markdown)
+        page.focus()
+        pager.container.keysForTesting = 336
+        pager.container.setNeedsLayout()
+        pager.container.layoutIfNeeded()
+        return (pager, page, window)
+    }
+
+    private func finish(_ pager: DotPagerCoordinator, _ window: UIWindow) {
+        window.isHidden = true
+        withExtendedLifetime(pager) {}
+    }
+
+    /// On a heading, the menu offers plain text too, above the levels with a line between, as
+    /// Notes' list styles offer None only on a list; on any other line, the levels alone.
+    @Test func itOffersTheLevelsWithTheLinesTicked() {
+        let (pager, page, window) = editingPager("# Title\nWords")
+        defer { finish(pager, window) }
+        #expect(bar.headingMenuComesOutOfTheGlassForTesting)
+        page.textView.selectedRange = NSRange(location: 2, length: 0)
+        #expect(bar.headingMenuForTesting.map(\.title) == ["Text", "Heading 1", "Heading 2", "Heading 3"])
+        #expect(bar.headingMenuForTesting.filter(\.isTicked).map(\.title) == ["Heading 1"])
+        #expect(bar.headingMenuGroupsForTesting == 2)
+        page.textView.selectedRange = NSRange(location: 9, length: 0)
+        #expect(bar.headingMenuForTesting.map(\.title) == ["Heading 1", "Heading 2", "Heading 3"])
+        #expect(bar.headingMenuForTesting.allSatisfy { !$0.isTicked })
+        #expect(bar.headingMenuGroupsForTesting == 1)
+    }
+
+    @Test func aLevelChosenGoesOntoTheLine() {
+        let (pager, page, window) = editingPager("# Title\nWords")
+        defer { finish(pager, window) }
+        page.textView.selectedRange = NSRange(location: 2, length: 0)
+        bar.chooseHeadingForTesting("Heading 2")
+        #expect(page.markdownForTesting == "## Title\nWords")
+        #expect(bar.headingMenuForTesting.filter(\.isTicked).map(\.title) == ["Heading 2"])
+        bar.chooseHeadingForTesting("Text")
+        #expect(page.markdownForTesting == "Title\nWords")
+        // Every line the selection is on.
+        page.textView.selectedRange = NSRange(location: 0, length: 9)
+        bar.chooseHeadingForTesting("Heading 3")
+        #expect(page.markdownForTesting == "### Title\n### Words")
+    }
+
+    /// A list's line is none of the levels: none is ticked, and one chosen makes it a heading.
+    @Test func aListsLineBecomesAHeading() {
+        let (pager, page, window) = editingPager("- [ ] Milk")
+        defer { finish(pager, window) }
+        page.textView.selectedRange = NSRange(location: 2, length: 0)
+        #expect(bar.headingMenuForTesting.map(\.title) == ["Heading 1", "Heading 2", "Heading 3"])
+        #expect(bar.headingMenuForTesting.allSatisfy { !$0.isTicked })
+        bar.chooseHeadingForTesting("Heading 1")
+        #expect(page.markdownForTesting == "# Milk")
+    }
+}
+
 /// Which styles the format bar shows as on: they tell what typing will do, and tapping one
 /// that's on undoes it.
 struct FormatBarStateTests {

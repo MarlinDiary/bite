@@ -4,7 +4,6 @@ public enum ColorMath {
     /// Moves a colour's OKLab lightness by `delta` (roughly -1...1) and keeps its hue and
     /// chroma, so darker shades stay saturated instead of turning muddy like a mix with black.
     public static func adjustingLightness(_ hex: UInt32, by delta: Double) -> UInt32 {
-        func toLinear(_ c: Double) -> Double { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
         func toGamma(_ c: Double) -> Double { c <= 0.0031308 ? 12.92 * c : 1.055 * pow(c, 1 / 2.4) - 0.055 }
 
         let r = toLinear(Double((hex >> 16) & 0xFF) / 255)
@@ -27,5 +26,14 @@ public enum ColorMath {
             -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3,
         ].map { UInt32((min(max(toGamma($0), 0), 1) * 255).rounded()) }
         return channels[0] << 16 | channels[1] << 8 | channels[2]
+    }
+
+    /// How bright a colour's brightest channel is, in linear light, where white's are 1.
+    public static func brightestChannel(of hex: UInt32) -> Double {
+        [hex >> 16, hex >> 8, hex].map { toLinear(Double($0 & 0xFF) / 255) }.max() ?? 0
+    }
+
+    private static func toLinear(_ c: Double) -> Double {
+        c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
     }
 }

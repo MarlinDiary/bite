@@ -56,6 +56,13 @@ enum Preferences {
         set { set(newValue, forKey: keepsScreenOnKey) }
     }
 
+    /// Whether the dot of the page on screen glows in the dot bar: on a screen that can, HDR, it's
+    /// lit past white (see `DotIndicator`). Off unless turned on.
+    static var dotGlows: Bool {
+        get { defaults.bool(forKey: dotGlowsKey) }
+        set { set(newValue, forKey: dotGlowsKey) }
+    }
+
     private static let syncsWithICloudKey = "syncsWithICloud"
     private static let showsInSpotlightKey = "showsInSpotlight"
     private static let checksSpellingKey = "checksSpelling"
@@ -63,6 +70,7 @@ enum Preferences {
     private static let playsHapticsKey = "playsHaptics"
     private static let locksPortraitKey = "locksPortrait"
     private static let keepsScreenOnKey = "keepsScreenOn"
+    private static let dotGlowsKey = "dotGlows"
 
     private static func set(_ value: Bool, forKey key: String) {
         guard defaults.object(forKey: key) as? Bool != value else { return }

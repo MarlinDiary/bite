@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var playsHaptics = Preferences.playsHaptics
     @State private var locksPortrait = Preferences.locksPortrait
     @State private var keepsScreenOn = Preferences.keepsScreenOn
+    @State private var dotGlows = Preferences.dotGlows
     @State private var isConfirmingReset = false
 
     var body: some View {
@@ -32,7 +33,10 @@ struct SettingsView: View {
                     }
                     Toggle("Keep Screen On", isOn: $keepsScreenOn)
                 }
-                AppIconPicker()
+                Section {
+                    AppIconPicker()
+                    Toggle("Glowing Dot", isOn: $dotGlows)
+                }
                 Section {
                     Button("Reset All Pages", role: .destructive) {
                         isConfirmingReset = true
@@ -69,6 +73,9 @@ struct SettingsView: View {
         .onChange(of: keepsScreenOn) {
             Preferences.keepsScreenOn = keepsScreenOn
         }
+        .onChange(of: dotGlows) {
+            Preferences.dotGlows = dotGlows
+        }
     }
 }
 
@@ -81,24 +88,22 @@ private struct AppIconPicker: View {
     @State private var choice = Self.currentChoice
 
     var body: some View {
-        Section {
-            LabeledContent("App Icon") {
-                HStack(spacing: 0) {
-                    ForEach(DotPalette.colors.indices, id: \.self) { index in
-                        Button {
-                            choice = index
-                        } label: {
-                            // A dot's size and spacing in the dot bar, and as tall to press, though
-                            // the row stands only as tall as a switch's.
-                            DotIndicator(ink: DotPalette.colors[index], isSelected: choice == index)
-                                .frame(width: 30, height: 44)
-                                .contentShape(.rect)
-                                .padding(.vertical, -11)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(DotPalette.colors[index].name)
-                        .accessibilityAddTraits(choice == index ? .isSelected : [])
+        LabeledContent("App Icon") {
+            HStack(spacing: 0) {
+                ForEach(DotPalette.colors.indices, id: \.self) { index in
+                    Button {
+                        choice = index
+                    } label: {
+                        // A dot's size and spacing in the dot bar, and as tall to press, though the
+                        // row stands only as tall as a switch's.
+                        DotIndicator(ink: DotPalette.colors[index], isSelected: choice == index)
+                            .frame(width: 30, height: 44)
+                            .contentShape(.rect)
+                            .padding(.vertical, -11)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(DotPalette.colors[index].name)
+                    .accessibilityAddTraits(choice == index ? .isSelected : [])
                 }
             }
         }

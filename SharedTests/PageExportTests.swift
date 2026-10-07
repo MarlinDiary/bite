@@ -57,6 +57,8 @@ struct PageExportTests {
         let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
         let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
         #expect(properties[kCGImagePropertyPixelWidth] as? Int == Int(PageExport.imageWidth * 3))
+        // As tall as the page and its margins: its heading and its line, at least.
+        #expect((properties[kCGImagePropertyPixelHeight] as? Int ?? 0) > 3 * 100)
     }
 
     @Test func markdownIsThePageAsItIs() throws {

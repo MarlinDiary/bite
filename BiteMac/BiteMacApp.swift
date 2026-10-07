@@ -53,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panel = panel
         self.statusItem = statusItem
         // The pages for the widgets on the desktop, and the to-dos ticked there while Bite was out.
-        widgets = WidgetShelf(store: store)
+        widgets = WidgetShelf(store: store, folder: Self.shelfFolder)
         NSApp.mainMenu = MainMenu.make()
         if PageSync.runsHere {
             sync.start()
@@ -90,6 +90,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         return DotStore.defaultFolder
+    }
+
+    /// The folder Bite shares with its extensions and its command line tool. A snapshot's pages
+    /// aren't the person's, so it keeps its own: `-snapshotShelf NAME` names one in the shared
+    /// folder, for the command line tool to be tried on.
+    private static var shelfFolder: URL? {
+        let shared = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: PageShelf.appGroup)
+        #if DEBUG
+        if DebugSnapshot.isRequested {
+            let arguments = CommandLine.arguments
+            if let index = arguments.firstIndex(of: "-snapshotShelf"), index + 1 < arguments.count {
+                return shared?.appending(path: arguments[index + 1], directoryHint: .isDirectory)
+            }
+            return FileManager.default.temporaryDirectory.appending(path: "BiteSnapshotShelf-\(UUID().uuidString)", directoryHint: .isDirectory)
+        }
+        #endif
+        return shared
     }
 
     /// A widget clicked on the desktop: the panel comes up on the page it shows.

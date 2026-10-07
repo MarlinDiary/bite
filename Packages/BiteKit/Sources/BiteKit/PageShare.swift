@@ -34,11 +34,15 @@ extension PageShelf {
     }
 
     /// Leaves a page for Bite, which takes it in as it next runs (see `takeShares`): each in a file
-    /// of its own, so one left as Bite takes the others is neither lost nor taken twice.
-    public func leave(_ share: PageShare, at date: Date = .now) throws {
+    /// of its own, so one left as Bite takes the others is neither lost nor taken twice. The file,
+    /// gone once Bite has taken it.
+    @discardableResult
+    public func leave(_ share: PageShare, at date: Date = .now) throws -> URL {
         try FileManager.default.createDirectory(at: sharesFolder, withIntermediateDirectories: true)
         let name = String(format: "%017.6f", date.timeIntervalSince1970) + "-" + UUID().uuidString + ".json"
-        try JSONEncoder().encode(share).write(to: sharesFolder.appending(path: name), options: .atomic)
+        let file = sharesFolder.appending(path: name)
+        try JSONEncoder().encode(share).write(to: file, options: .atomic)
+        return file
     }
 
     /// The pages left since Bite last took them, oldest first, which are then gone from the shelf.

@@ -69,6 +69,8 @@ struct SettingsView: View {
     @State private var panelIsGlass = Preferences.panelIsGlass
     @State private var dotGlows = Preferences.dotGlows
     @State private var isConfirmingReset = false
+    /// Whether the command for the `bite` tool was copied, which its button says.
+    @State private var copiedCommand = false
 
     /// The switches are in the colour of the page on screen, as the rest of Bite is. The buttons
     /// stay as the Mac's are.
@@ -98,6 +100,20 @@ struct SettingsView: View {
                     .tint(pageColour)
                 Toggle("Show in Spotlight", isOn: $showsInSpotlight)
                     .tint(pageColour)
+            }
+            Section {
+                LabeledContent("Command Line Tool") {
+                    Button(copiedCommand ? "Copied" : "Copy Command") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(CommandLineTool.installCommand(), forType: .string)
+                        copiedCommand = true
+                    }
+                }
+            } footer: {
+                Text("Paste it into Terminal. You, or an AI such as Claude Code, can then read and change your pages with bite.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Section {
                 LabeledContent("Reset All Pages") {

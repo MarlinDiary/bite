@@ -50,7 +50,8 @@ final class WidgetShelf {
     func update() {
         takeTicks()
         takeShares()
-        guard let shelf, shelf.read() != store.markdown, (try? shelf.write(store.markdown)) != nil else { return }
+        guard let shelf, shelf.read() != store.markdown || shelf.readModified() != store.modified,
+              (try? shelf.write(store.markdown, modified: store.modified)) != nil else { return }
         Self.log.info("Wrote the pages for the widgets")
         WidgetCenter.shared.reloadAllTimelines()
     }

@@ -153,7 +153,7 @@ final class ShareModel {
             for page in found.indices {
                 let after = page == onScreen ? store.markdown[page] : own[page]
                 guard after != found[page] else { continue }
-                try? shelf.leave(PageShare(page: page, before: found[page], after: after))
+                _ = try? shelf.leave(PageShare(page: page, before: found[page], after: after))
                 if copy.indices.contains(page) { copy[page] = after }
             }
             try? shelf.write(copy)

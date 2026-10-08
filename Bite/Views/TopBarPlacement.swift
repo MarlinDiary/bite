@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 
 /// Where the dot bar and the "…" button sit: where the system puts a navigation bar's buttons,
@@ -34,6 +35,68 @@ struct TopBarPlacement: Equatable {
             // A phone with square corners, on its side: not measured.
             top = 8
             side = margin
+        }
+    }
+}
+
+extension TopBarPlacement {
+    /// Whether the button at the bar's start clears the dots in the middle, by a little, where it
+    /// stands: in from the side, or past the system's window controls on an iPad's window that
+    /// isn't full screen. A window made narrow pressed Aa up against the dots, and it goes then
+    /// (user, 2026-10-09). Past the controls, the toolbar Aa is in puts it 4 points further in
+    /// than they reach, 66 points on a 13-inch iPad: it shows from 470 points wide.
+    static func startButtonFits(width: CGFloat, side: CGFloat, windowControls: CGFloat) -> Bool {
+        // Only the controls push it in. Without them the bar was made to hold it, as on a phone
+        // and in the share extension.
+        guard windowControls > side else { return true }
+        let dots = (width - DotSwitcher.width) / 2
+        return windowControls + DotSwitcher.height + 12 <= dots
+    }
+}
+
+/// Reads how far in from a window's start the system's window controls reach, at its top: on an
+/// iPad's window that isn't full screen. None full screen, or on a phone.
+struct WindowControlsReader: UIViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    func makeUIView(context: Context) -> ReaderView {
+        ReaderView()
+    }
+
+    func updateUIView(_ view: ReaderView, context: Context) {
+        view.onChange = onChange
+        view.report()
+    }
+
+    final class ReaderView: UIView {
+        var onChange: ((CGFloat) -> Void)?
+        private var reported: CGFloat?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) is not supported")
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()
+        }
+
+        override func safeAreaInsetsDidChange() {
+            super.safeAreaInsetsDidChange()
+            report()
+        }
+
+        func report() {
+            let controls = directionalEdgeInsets(for: .safeArea(cornerAdaptation: .horizontal)).leading
+            guard controls != reported else { return }
+            reported = controls
+            // Out of this layout pass, which SwiftUI's own is part of.
+            DispatchQueue.main.async { [weak self] in self?.onChange?(controls) }
         }
     }
 }

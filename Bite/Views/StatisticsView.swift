@@ -21,7 +21,7 @@ struct StatisticsView: View {
                     }
                 }
             }
-            .fittedDrawer()
+            .fittedSheet()
             .navigationTitle("Statistics")
             .navigationBarTitleDisplayMode(.inline)
         }

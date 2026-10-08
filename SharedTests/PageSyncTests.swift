@@ -21,6 +21,18 @@ struct PageSyncTests {
         #expect(PageSync.reconcile(local: mine, remote: SampleContent.markdown(for: 1), agreed: nil, dot: 1) == mine)
     }
 
+    /// A new device's first-launch page, untouched, never fills a page left empty everywhere else:
+    /// an iPad joining did, with its samples, on every device.
+    @Test func theFirstTimeAnUntouchedSampleLeavesAnEmptyPageEmpty() {
+        for dot in 1..<4 {
+            #expect(PageSync.reconcile(local: SampleContent.markdown(for: dot), remote: "", agreed: nil, dot: dot) == "")
+            #expect(PageSync.reconcile(local: SampleContent.markdown(for: dot), remote: "\n", agreed: nil, dot: dot) == "\n")
+        }
+        // First-launch pages on both, this device's stays, in its own words.
+        let sample = SampleContent.markdown(for: 0)
+        #expect(PageSync.reconcile(local: sample, remote: sample, agreed: nil, dot: 0) == sample)
+    }
+
     /// Two different pages, the first time, are both kept whole, this device's first.
     @Test func theFirstTimeTwoDifferentPagesAreBothKept() {
         #expect(PageSync.reconcile(local: "mine\n", remote: "theirs\n", agreed: nil, dot: 5) == "mine\ntheirs\n")

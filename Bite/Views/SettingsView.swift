@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import BiteKit
 
-/// Settings, from the "…" menu: a drawer from the bottom (see `fittedDrawer`).
+/// Settings, from the "…" menu: a drawer from the bottom, or a card on an iPad (see `fittedSheet`).
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(DotStore.self) private var store
@@ -28,9 +28,10 @@ struct SettingsView: View {
                 Section {
                     Toggle("Check Spelling", isOn: $checksSpelling)
                     Toggle("Open Links in Bite", isOn: $opensLinksInBite)
-                    Toggle("Haptics", isOn: $playsHaptics)
-                    // An iPad's Bite is a window of any shape, which no way up suits better.
+                    // An iPad plays no haptics, and its Bite is a window of any shape, which no way
+                    // up suits better.
                     if UIDevice.current.userInterfaceIdiom == .phone {
+                        Toggle("Haptics", isOn: $playsHaptics)
                         Toggle("Lock to Portrait", isOn: $locksPortrait)
                     }
                     Toggle("Keep Screen On", isOn: $keepsScreenOn)
@@ -53,7 +54,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .fittedDrawer()
+            .fittedSheet()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
         }

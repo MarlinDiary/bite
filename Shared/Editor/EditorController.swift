@@ -29,8 +29,9 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     var onWritingToolsChange: ((_ isAtWork: Bool) -> Void)?
     /// The page has just taken the keyboard.
     var onBeginEditing: (() -> Void)?
-    /// Whether a link can be changed in the format bar now (`onEditLink`): not with no keys on
-    /// screen, as with a hardware keyboard, where the bar doesn't show.
+    /// Whether a link can be changed now (`onEditLink`): on a phone in the format bar, not with no
+    /// keys on screen, as with a hardware keyboard, where the bar doesn't show; on an iPad in its
+    /// card, whenever the page is being typed in.
     var canEditLinkInBar: () -> Bool = { false }
     #endif
     /// A link to change in the format bar: the link button's, which may be a new one to make, or
@@ -1065,6 +1066,14 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         }
     }
 
+    /// Whether every line the caret or selection is on, dividers aside, is of `kind`: a to-do, a
+    /// list's, a quote's or code. An iPad's format panel shows its button as on, and pressing it
+    /// then makes them plain text again.
+    func linesAre(_ kind: BlockKind) -> Bool {
+        let lines = selectedLines().filter { block(of: $0).kind != .divider }
+        return !lines.isEmpty && lines.allSatisfy { block(of: $0).kind == kind }
+    }
+
     /// Makes the lines the caret or selection is on a heading of `kind`'s level, or plain text,
     /// from the heading menu, whatever they were.
     func setLineStyle(_ kind: BlockKind) {
@@ -1188,6 +1197,12 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     var isLinkSelected: Bool {
         let selection = clamp(textView.selectedRange)
         return selection.length > 0 && linkAround(selection) != nil
+    }
+
+    /// The link the caret is inside, or the selection is within, for an iPad's menu over the
+    /// text to open, change, copy or take off.
+    var selectedLink: PageLink? {
+        linkAround(clamp(textView.selectedRange))
     }
 
     /// A tap on a link's text, while the page isn't being edited: goes where the link goes.
@@ -1803,10 +1818,17 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         // dragged to where the caret was.
         textView.selectedRange = stepOverDivider(clamp(selection))
         #if canImport(UIKit)
+        if !scrollsToCaret { textView.leavePageWhereItIs() }
         textView.inputDelegate?.textDidChange(textView)
         #endif
         contentDidChange(in: replacedRange, scrollsToCaret: scrollsToCaret)
         tellKeyboardOnceItsDone()
+        #if canImport(UIKit)
+        // The lines' marks, a to-do's box among them, are drawn in layers of their own as the page
+        // is laid out. A trackpad's click on a box lays nothing out, as a finger's tap does: the
+        // box was ticked but still drawn empty (user, 2026-10-08).
+        textView.setNeedsLayout()
+        #endif
     }
 
     /// Whether `range` still holds `text`, as it did right after the edit an undo step takes

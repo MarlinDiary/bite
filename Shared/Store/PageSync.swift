@@ -494,13 +494,18 @@ final class PageSync: CKSyncEngineDelegate {
     }
 
     /// The page to keep, given this device's and iCloud's, and what they last agreed it said.
-    /// The first time, with nothing agreed, an empty page, or the first-launch one untouched, takes
-    /// the other side's; two different pages are both kept whole, unless iCloud's is to be taken.
+    /// The first time, with nothing agreed, this device's first-launch page, untouched, gives way to
+    /// iCloud's, whatever it is, an empty page too: a new device's samples are its own, not the
+    /// person's, and an iPad joining once filled pages left empty everywhere else with them. Else
+    /// an empty page, or iCloud's untouched one, takes the other side's, and two different pages are
+    /// both kept whole, unless iCloud's is to be taken.
     static func reconcile(local: String, remote: String, agreed: String?, dot: Int, takingRemote: Bool = false) -> String {
         guard let agreed else {
             if takingRemote { return remote }
-            if DotStore.isBlank(remote) || SampleContent.isUntouched(remote, dot: dot) { return local }
-            if DotStore.isBlank(local) || SampleContent.isUntouched(local, dot: dot) { return remote }
+            let remoteIsSample = SampleContent.isUntouched(remote, dot: dot)
+            if SampleContent.isUntouched(local, dot: dot), !remoteIsSample { return remote }
+            if DotStore.isBlank(remote) || remoteIsSample { return local }
+            if DotStore.isBlank(local) { return remote }
             return TextMerge.merge(base: "", local: local, remote: remote)
         }
         return TextMerge.merge(base: agreed, local: local, remote: remote)

@@ -259,6 +259,10 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
             button.isOn = action == .link ? isLinkSelected : action.style.map(active.contains) ?? false
         }
         buttons[.link]?.isEnabled = editor?.canEditLink ?? false
+        #if !SHARE_EXTENSION
+        // An iPad's format panel, while it's out, which shows the same.
+        FormatPanel.shared.refresh()
+        #endif
     }
 
     #if DEBUG
@@ -344,6 +348,7 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
             button.makeMenu = { [weak self] in self?.headingMenu() ?? UIMenu() }
             button.menuSource = glassView
         }
+        button.isLayered = action.hasOwnSymbol
         buttons[action] = button
         return button
     }
@@ -379,6 +384,7 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
 
     private static func symbol(_ name: String) -> UIImage? {
         UIImage(systemName: name, withConfiguration: symbolConfiguration)
+            ?? UIImage(named: name, in: nil, with: symbolConfiguration)
     }
 
     // MARK: Links
@@ -1030,6 +1036,12 @@ private final class BarButton: UIButton {
 
     private let symbol = UIImageView()
 
+    /// Drawn in layers, as Bite's own quote symbol is: the block a lighter shade of the bar's
+    /// colour, as Notes draws its own.
+    var isLayered = false {
+        didSet { updateLook() }
+    }
+
     var isOn = false {
         didSet {
             guard isOn != oldValue else { return }
@@ -1052,6 +1064,8 @@ private final class BarButton: UIButton {
             widthAnchor.constraint(equalToConstant: Self.width).isActive = true
         }
         addAction(handler, for: .touchUpInside)
+        // A pointer, as an iPad's trackpad's, lights the button it's over, taking its shape.
+        isPointerInteractionEnabled = true
         isAccessibilityElement = true
         accessibilityTraits = .button
         accessibilityLabel = title
@@ -1109,6 +1123,7 @@ private final class BarButton: UIButton {
 
     private func updateLook() {
         symbol.tintColor = isOn ? tintColor : .label
+        symbol.preferredSymbolConfiguration = isLayered ? UIImage.SymbolConfiguration(hierarchicalColor: isOn ? tintColor : .label) : nil
         symbol.alpha = !isEnabled ? 0.25 : isHighlighted ? 0.35 : 1
     }
 }

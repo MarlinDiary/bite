@@ -33,6 +33,24 @@ struct OnScreenLineTests {
         #expect(block.contains(CGPoint(x: line.midX + textView.textContainerInset.left, y: line.midY + textView.textContainerInset.top)))
     }
 
+    /// A code block's background keeps to its lines as the page is made narrower or wider, as an
+    /// iPad's window is: the lines were laid out again only after the backgrounds were drawn, and
+    /// the block's ran on down the page meanwhile, as if it went on past the screen (2026-10-09).
+    @Test func aCodeBlockKeepsToItsLinesAsThePageNarrows() throws {
+        let editor = EditorHarness("Handy commands\n```\nxcodebuild -scheme Bite build\nswift test\n```\nThe old build script isn't needed anymore.")
+        let textView = editor.textView
+        textView.resignFirstResponder()
+        editor.window.traitOverrides.userInterfaceIdiom = .pad
+        for width in [1032.0, 757, 402, 912] {
+            editor.window.frame.size.width = width
+            textView.frame = editor.window.bounds
+            textView.layoutIfNeeded()
+            let block = try #require(textView.codeBackgroundsForTesting.first)
+            #expect(block.height < 120, "\(width) points wide: \(block)")
+        }
+        editor.window.isHidden = true
+    }
+
     @Test func aTapOnTheCheckboxFindsItsLine() throws {
         let editor = EditorHarness("text\n- [ ] task")
         editor.textView.layoutIfNeeded()

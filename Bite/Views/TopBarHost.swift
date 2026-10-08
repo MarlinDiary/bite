@@ -79,10 +79,22 @@ final class TopBarController<Content: View>: UIViewController {
 }
 
 /// Takes touches only on the bar's own controls, the dots' capsule in the middle and the "…"
-/// button at the end, and in the share extension its buttons at either end. Elsewhere along it
-/// they go to the page behind, as they did with the bar in SwiftUI.
+/// button at the end, on an iPad the Aa button at the start too, and in the share extension its
+/// buttons at either end. Elsewhere along it they go to the page behind, as they did with the bar
+/// in SwiftUI.
 private final class TopBarView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        #if !SHARE_EXTENSION
+        // An iPad's Aa and "…", where their toolbars have them. Left out, Aa took no touches:
+        // they went to the page under it (user, 2026-10-08). In a window that isn't full screen,
+        // Aa stands well along from its own place, past the window's controls, and it took none
+        // there (2026-10-09).
+        for button in barButtons(in: self) {
+            if let round = button.buttonFrame(in: self), round.contains(point) {
+                return button.buttonView(at: convert(point, to: button), with: event)
+            }
+        }
+        #endif
         let height = DotSwitcher.height
         let capsule = CGRect(x: bounds.midX - DotSwitcher.width / 2, y: 0, width: DotSwitcher.width, height: height)
         let menu = CGRect(x: bounds.maxX - height, y: 0, width: height, height: height)
@@ -95,4 +107,12 @@ private final class TopBarView: UIView {
         let view = super.hitTest(point, with: event)
         return view === self ? nil : view
     }
+
+    #if !SHARE_EXTENSION
+    private func barButtons(in view: UIView) -> [SystemBarButtonView] {
+        view.subviews.flatMap { subview in
+            (subview as? SystemBarButtonView).map { [$0] } ?? barButtons(in: subview)
+        }
+    }
+    #endif
 }

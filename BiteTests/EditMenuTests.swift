@@ -49,7 +49,8 @@ struct EditMenuTests {
         #expect(replace.children.map(\.title) == ["Replace…"])
     }
 
-    /// Translate comes before Look Up, as the one more often wanted.
+    /// Translate comes before Look Up, as the one more often wanted. Find, which finding on an
+    /// iPad's page shows there, goes.
     @Test func translateComesBeforeLookUp() throws {
         let editor = EditorHarness("Some text")
         let view = editor.textView
@@ -63,6 +64,6 @@ struct EditMenuTests {
         ]
         let menu = try #require(view.editMenu(for: range, suggestedActions: suggested))
         let lookup = try #require(menu.children.first as? UIMenu)
-        #expect(lookup.children.map(\.title) == ["Translate", "Look Up", "Find"])
+        #expect(lookup.children.map(\.title) == ["Translate", "Look Up"])
     }
 }

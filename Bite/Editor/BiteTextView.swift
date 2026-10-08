@@ -113,7 +113,8 @@ final class BiteTextView: UITextView {
     /// stays where it was scrolled to: taking the keyboard scrolled it back to the caret.
     private var wasScrolledSinceReady = false
     /// The selection as that page took the keyboard. UIKit scrolls to it then, and again once the
-    /// keyboard says it's up; neither happens until the selection changes.
+    /// keyboard says it's up; neither happens until the selection changes. Or the selection as an
+    /// edit that leaves the page where it is left it (see `leavePageWhereItIs`).
     private var selectionNotToScrollTo: NSRange?
 
     /// UIKit starts the keyboard's exit animation inside `resignFirstResponder`, while this view
@@ -342,9 +343,17 @@ final class BiteTextView: UITextView {
         // was gone and typing went into the line below.
         smartInsertDeleteType = .no
         allowsEditingTextAttributes = false
+        #if !SHARE_EXTENSION
+        updateFinding()
+        registerForTraitChanges([UITraitUserInterfaceIdiom.self]) { (view: BiteTextView, _) in
+            view.updateFinding()
+        }
+        #endif
         textContainer.lineFragmentPadding = 0
         addGestureRecognizer(checkboxTap)
+        linkTap.delegate = touchKinds
         addGestureRecognizer(linkTap)
+        addInteraction(UIPointerInteraction(delegate: self))
         touchDown.onTouchDown = { [weak self] in
             self?.hideFound()
             self?.keepsEnd = false
@@ -356,10 +365,28 @@ final class BiteTextView: UITextView {
         updateInsets()
     }
 
+    #if !SHARE_EXTENSION
+    /// Finding on the page, on an iPad, in the system's find bar, as in Notes: ⌘F, ⌘G and ⇧⌘G, the
+    /// menu bar's Edit ▸ Find, and the bar's own replace. Not on a phone, which wasn't asked for it,
+    /// nor in the menu over selected text (user, 2026-10-09).
+    private func updateFinding() {
+        let finds = traitCollection.userInterfaceIdiom == .pad
+        if isFindInteractionEnabled != finds { isFindInteractionEnabled = finds }
+    }
+    #endif
+
     override func layoutSubviews() {
         super.layoutSubviews()
         // SwiftUI hosts this view edge to edge, so its own safe area is zero; the window's isn't.
+        let width = textContainer.size.width
         updateInsets()
+        // New insets, as an iPad's window is made narrower or wider, leave the lines to be laid
+        // out again, by UIKit later in the frame: laid out now, for the code blocks and the lines'
+        // marks below to follow them. Drawn first, a code block's background ran on down the page,
+        // as if the block went on past the screen, until the page was next laid out (2026-10-09).
+        if textContainer.size.width != width {
+            textLayoutManager?.textViewportLayoutController.layoutViewport()
+        }
         keepEndInView()
         // Text layout has just run here too, so the code blocks and the lines' marks can follow it
         // in the same frame.
@@ -383,6 +410,13 @@ final class BiteTextView: UITextView {
         updateInsets()
     }
 
+    /// The margin each side of the text, at least.
+    static let sideMargin: CGFloat = 22
+    /// The text's widest, on an iPad: Notion's page measure, 44 of its body's ems, as on a Mac,
+    /// whose 660 points are 44 of its 15-point ems. Lines run across an iPad's whole width were
+    /// too long to read.
+    static let widestText: CGFloat = 44 * 17
+
     private var safeTop: CGFloat {
         max(safeAreaInsets.top, window?.safeAreaInsets.top ?? 0)
     }
@@ -399,9 +433,13 @@ final class BiteTextView: UITextView {
 
     /// How far above the bottom a phone's rounded corner begins to curve inward, measured on the
     /// iPhone Air and 17 Pro screens (62-point continuous corners). Screens with a home button
-    /// have square corners.
+    /// have square corners. An iPad's corners are far less round: the 13-inch iPad Pro's curves in
+    /// only 2 points at 20 above the bottom, the home indicator's room, which the indicator runs
+    /// down to, in a window of its own too. The phone's clearance left a gap under it (user,
+    /// 2026-10-08).
     private var cornerClearance: CGFloat {
-        safeBottom > 0 ? 70 : 4
+        if traitCollection.userInterfaceIdiom == .pad { return max(safeBottom, 20) }
+        return safeBottom > 0 ? 70 : 4
     }
 
     /// The status bar and the dot bar, and at the bottom the keyboard or the home indicator, are
@@ -410,7 +448,18 @@ final class BiteTextView: UITextView {
     /// running on under it. The air around the text is the text container's inset.
     private func updateInsets() {
         let sides = safeSides
-        let textInsets = UIEdgeInsets(top: airOverText, left: 22 + sides.left, bottom: bottomTextInset, right: 22 + sides.right)
+        var left = Self.sideMargin + sides.left
+        var right = Self.sideMargin + sides.right
+        // On an iPad, lines stop at a readable length, as they do on a Mac: a wider window only
+        // widens the margins, the text staying in the middle.
+        if traitCollection.userInterfaceIdiom == .pad {
+            let room = (bounds.width - left - right - Self.widestText) / 2
+            if room > 0 {
+                left += room
+                right += room
+            }
+        }
+        let textInsets = UIEdgeInsets(top: airOverText, left: left, bottom: bottomTextInset, right: right)
         if textContainerInset != textInsets {
             // Set before, the room beside the Dynamic Island changes as the phone turns.
             if textContainerInset.left > 0 { beginTurn() }
@@ -560,6 +609,14 @@ final class BiteTextView: UITextView {
     func requestCaretScroll() {
         needsCaretScroll = true
         setNeedsLayout()
+    }
+
+    /// For an edit that leaves the caret where it was, as a box ticked: the page stays where it
+    /// is. UIKit scrolls to the selection as the page is next laid out after an edit, the same
+    /// selection as before or not, and that took the page off the box just ticked, to the caret
+    /// further down (2026-10-09).
+    func leavePageWhereItIs() {
+        selectionNotToScrollTo = selectedRange
     }
 
     /// Keeps the caret below the dot bar and, near the bottom, a comfortable couple of lines
@@ -760,6 +817,8 @@ final class BiteTextView: UITextView {
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        // Its ⌘E is Code's, as on a Mac, where Bite's Find menu leaves it out too.
+        if action == #selector(useSelectionForFind(_:)) { return false }
         if action == #selector(toggleBoldface(_:)) || action == #selector(toggleItalics(_:)) {
             // From the keyboard, ⌘B and ⌘I also work at the caret, for what's typed next, as in
             // Notion.
@@ -773,13 +832,57 @@ final class BiteTextView: UITextView {
     /// with an underline, which Bite has none of, and writing direction and a panel of fonts and
     /// colours, at the caret too. No AutoFill, of contacts and passwords and text scanned with the
     /// camera. Nor changing between Simplified and Traditional Chinese, or a drawing, which a page
-    /// can't hold. Translate comes before Look Up, as the one more often wanted.
+    /// can't hold. Nor Find, which finding on an iPad's page brought, nor Open in New Window, which
+    /// Bite's windows did: the menu stays as it was (user, 2026-10-09). Translate comes before
+    /// Look Up, as the one more often wanted.
+    ///
+    /// An iPad has no format bar on its keys, nor its link button: links are added here, after
+    /// Cut, Copy and Paste, as Notes has them, and changed in a card in the middle of the screen
+    /// (see `LinkSheet`). On a link, what a Mac's right-click has for one.
     override func editMenu(for textRange: UITextRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
-        UIMenu(children: Self.trimmed(suggestedActions))
+        var children = Self.trimmed(suggestedActions)
+        #if !SHARE_EXTENSION
+        if traitCollection.userInterfaceIdiom == .pad, let links = linkMenu() {
+            let edit = children.firstIndex { ($0 as? UIMenu)?.identifier == .standardEdit }
+            children.insert(links, at: edit.map { $0 + 1 } ?? 0)
+        }
+        #endif
+        return UIMenu(children: children)
     }
 
+    #if !SHARE_EXTENSION
+    /// Add Link…, where a link can go; or for the link the caret or selection is in, Open Link,
+    /// Edit Link…, Copy Link and Remove Link.
+    private func linkMenu() -> UIMenu? {
+        guard let editor else { return nil }
+        guard let link = editor.selectedLink else {
+            guard editor.canEditLink else { return nil }
+            return UIMenu(options: .displayInline, children: [
+                UIAction(title: "Add Link…", image: UIImage(systemName: "link")) { _ in editor.perform(.link) },
+            ])
+        }
+        let location = link.range.location
+        var items: [UIMenuElement] = []
+        if editor.canOpenLink(at: location) {
+            items.append(UIAction(title: "Open Link", image: UIImage(systemName: "arrow.up.right.square")) { _ in
+                editor.openLink(at: location)
+            })
+        }
+        items += [
+            UIAction(title: "Edit Link…", image: UIImage(systemName: "pencil")) { _ in editor.editLink(at: location) },
+            UIAction(title: "Copy Link", image: UIImage(systemName: "doc.on.doc")) { _ in
+                Clipboard.string = EditorController.PageLink.url(for: link.destination)?.absoluteString ?? link.destination
+            },
+            UIAction(title: "Remove Link", image: UIImage(systemName: "link.badge.minus")) { _ in editor.removeLink(link) },
+        ]
+        return UIMenu(options: .displayInline, children: items)
+    }
+    #endif
+
     private static let unwantedMenus: Set<UIMenu.Identifier> = [.format, .textStyle, .autoFill]
-    private static let unwantedCommands: Set<Selector> = [Selector(("transliterateChinese:")), Selector(("_insertDrawing:"))]
+    private static let unwantedCommands: Set<Selector> = [
+        Selector(("transliterateChinese:")), Selector(("_insertDrawing:")), Selector(("findSelected:")), Selector(("_openInNewCanvas:")),
+    ]
     private static let translate = Selector(("_translate:"))
 
     private static func trimmed(_ elements: [UIMenuElement]) -> [UIMenuElement] {
@@ -1074,7 +1177,10 @@ final class BiteTextView: UITextView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard let view = super.hitTest(point, with: event) else { return nil }
         guard view.isDescendant(of: self) else { return view }
-        if event?.type == .touches { touchGoesDown(at: point) }
+        if event?.type == .touches {
+            isPointerClick = event?.allTouches?.contains { $0.type == .indirectPointer } ?? false
+            touchGoesDown(at: point)
+        }
         return self
     }
 
@@ -1098,6 +1204,12 @@ final class BiteTextView: UITextView {
     /// The start of the to-do line whose checkbox is under `point`, if any. A touch is always on
     /// screen, so the line is looked for among those (see `forEachLineOnScreen`).
     func todoLocation(at point: CGPoint) -> Int? {
+        guard let line = todoLine(at: point) else { return nil }
+        return contentStorage.offset(from: contentStorage.documentRange.location, to: line.rangeInElement.location)
+    }
+
+    /// The to-do line whose checkbox is under `point`, if any.
+    private func todoLine(at point: CGPoint) -> BlockLayoutFragment? {
         let containerPoint = CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top)
         var line: BlockLayoutFragment?
         forEachLineOnScreen { fragment in
@@ -1110,7 +1222,7 @@ final class BiteTextView: UITextView {
         }
         guard let line, line.block.kind == .todo,
               line.checkboxFrame.insetBy(dx: -12, dy: -9).contains(containerPoint) else { return nil }
-        return contentStorage.offset(from: contentStorage.documentRange.location, to: line.rangeInElement.location)
+        return line
     }
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -1158,22 +1270,59 @@ final class BiteTextView: UITextView {
     /// link's text is text on a page being edited, and a tap puts the caret in it. A link that can't
     /// be opened from here, as only a web page's can from the share extension, is text on a page not
     /// being edited too.
+    ///
+    /// On an iPad a finger's tap on a link while the page is being edited brings up its card, Edit
+    /// Link, as the phone's bar does (user, 2026-10-08), and a pointer's click, as a Magic
+    /// Keyboard's trackpad's, opens it, as a click does on a Mac.
     private func tapsLink(at point: CGPoint) -> Bool {
-        if isBeingEdited, editor?.canEditLinkInBar() != true { return false }
+        if isBeingEdited, !clickOpensLinks, editor?.canEditLinkInBar() != true { return false }
         guard let location = linkLocation(at: point) else { return false }
-        return isBeingEdited || editor?.canOpenLink(at: location) == true
+        return isBeingEdited && !clickOpensLinks || editor?.canOpenLink(at: location) == true
     }
 
-    /// Shows a web page over Bite, in Safari's own view: a sheet up from the bottom, the page
-    /// behind it, closed or pulled down to come back to the page.
+    /// Whether the touch going down now is a pointer's click, a trackpad's or a mouse's, rather
+    /// than a finger's. Noted as it's hit-tested, and again as the link tap receives it, before it
+    /// asks to begin.
+    private var isPointerClick = false
+
+    /// Tells the link tap's touches apart, a pointer's from a finger's (see `isPointerClick`).
+    private lazy var touchKinds = TouchKinds { [weak self] touch in
+        self?.isPointerClick = touch.type == .indirectPointer
+    }
+
+    /// Whether this touch, a click on an iPad, opens a link even while the page is being edited.
+    private var clickOpensLinks: Bool {
+        isPointerClick && traitCollection.userInterfaceIdiom == .pad
+    }
+
+    /// Shows a web page over Bite, in Safari's own view: on a phone a sheet up from the bottom, the
+    /// page behind it, closed or pulled down to come back to the page. On an iPad a card in the
+    /// middle of the window, as Bite's other cards are, not over all of it: the phone's sheet was
+    /// nearly as big as the screen there, with the page as a dimmed card behind it, which the user
+    /// found odd (2026-10-08). In a window as narrow as a phone, the phone's sheet, as Bite's
+    /// other sheets are there (2026-10-09, see `fittedSheet`).
     func showWebPage(_ url: URL) {
         let responders = sequence(first: self as UIResponder, next: \.next)
         guard var presenter = responders.first(where: { $0 is UIViewController }) as? UIViewController else { return }
         // Over anything already shown over the page.
         while let presented = presenter.presentedViewController { presenter = presented }
         let safari = SFSafariViewController(url: url)
-        // Its own way in was across from the side, over the whole screen.
-        safari.modalPresentationStyle = .pageSheet
+        // Its own way in was across from the side, over the whole screen. Safari's view keeps the
+        // card's own size, as a form's: a detent made it shorter, at the window's foot.
+        if traitCollection.userInterfaceIdiom == .pad, traitCollection.horizontalSizeClass != .compact {
+            safari.modalPresentationStyle = .formSheet
+            // How the card comes in is Safari's own: on an iPad its view takes the whole window
+            // and Safari draws the card in it, fading in where it ends up or coming partway up
+            // and jumping the rest. Nothing asked of it changes that, the cover-vertical
+            // transition or the system's own among them, and the user let it be (2026-10-09).
+            // Safari's own view blurs all behind it; the page is only dimmed, as behind Bite's
+            // other cards.
+            if #available(iOS 26.1, *) {
+                safari.presentationController?.backgroundEffect = UIColorEffect(color: UIColor.black.withAlphaComponent(0.2))
+            }
+        } else {
+            safari.modalPresentationStyle = .pageSheet
+        }
         presenter.present(safari, animated: true)
     }
 
@@ -1237,7 +1386,7 @@ final class BiteTextView: UITextView {
 
     private func tapLink(at point: CGPoint) {
         guard let location = linkLocation(at: point) else { return }
-        if isBeingEdited {
+        if isBeingEdited, !clickOpensLinks {
             editor?.editLink(at: location)
         } else {
             editor?.openLink(at: location)
@@ -1517,3 +1666,38 @@ private nonisolated final class LineMarkLayer: CALayer {
         }
     }
 }
+
+// MARK: Pointer
+
+extension BiteTextView: UIPointerInteractionDelegate {
+    /// Over a link that opens from here, the pointer is the system's own arrow, as over a button:
+    /// the text's is a text cursor, which said the link was only text to type in (user,
+    /// 2026-10-08). Only the arrow: no effect of Bite's own under it.
+    func pointerInteraction(_ interaction: UIPointerInteraction, regionFor request: UIPointerRegionRequest,
+                            defaultRegion: UIPointerRegion) -> UIPointerRegion? {
+        guard let location = linkLocation(at: request.location), let link = editor?.link(at: location),
+              editor?.canOpenLink(at: location) == true,
+              let line = textFrames(of: link.range).first(where: { $0.insetBy(dx: -2, dy: -3).contains(request.location) })
+        else { return nil }
+        return UIPointerRegion(rect: line, identifier: "link \(link.range.location) \(line.minY)")
+    }
+
+    func pointerInteraction(_ interaction: UIPointerInteraction, styleFor region: UIPointerRegion) -> UIPointerStyle? {
+        .system()
+    }
+}
+
+/// Reports every touch a gesture recognizer receives, as it receives it.
+private final class TouchKinds: NSObject, UIGestureRecognizerDelegate {
+    private let received: (UITouch) -> Void
+
+    init(_ received: @escaping (UITouch) -> Void) {
+        self.received = received
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        received(touch)
+        return true
+    }
+}
+

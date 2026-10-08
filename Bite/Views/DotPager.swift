@@ -17,6 +17,10 @@ struct DotPager: UIViewRepresentable {
     /// Moves the dot bar up out of the way of the keys on a phone on its side.
     let topBarMover: TopBarMover
     @Environment(DotStore.self) private var store
+    #if !SHARE_EXTENSION
+    /// Bite's window this pager is in, one of several on an iPad.
+    @Environment(PageWindow.self) private var pageWindow
+    #endif
 
     func makeCoordinator() -> DotPagerCoordinator {
         DotPagerCoordinator()
@@ -24,6 +28,7 @@ struct DotPager: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PagerContainerView {
         let coordinator = context.coordinator
+        #if SHARE_EXTENSION
         let store = store
         for controller in coordinator.controllers {
             let dot = controller.dot
@@ -49,6 +54,9 @@ struct DotPager: UIViewRepresentable {
         store.revealInEditor = { [weak coordinator] dot, line, query in
             coordinator?.reveal(dot: dot, line: line, query: query)
         }
+        store.focusInEditor = { [weak coordinator] dot in
+            coordinator?.controllers[dot].focus()
+        }
         store.startLineInEditor = { [weak coordinator] dot, asToDo in
             coordinator?.startLine(on: dot, asToDo: asToDo)
         }
@@ -58,6 +66,9 @@ struct DotPager: UIViewRepresentable {
         store.pageIsAtEnd = { [weak coordinator] dot in
             coordinator?.controllers[dot].isAtEnd ?? true
         }
+        #else
+        coordinator.connect(to: store, in: pageWindow)
+        #endif
         coordinator.scrollView.currentPage = selection
         coordinator.letPageScrollToTop(selection)
         return coordinator.container
@@ -107,6 +118,18 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
     override init() {
         super.init()
         NotificationCenter.default.addObserver(self, selector: #selector(preferencesDidChange), name: Preferences.didChange, object: nil)
+        #if !SHARE_EXTENSION
+        // A touch on the pages, a finger's or a click's, says this is the window in use, of
+        // Bite's several on an iPad (see `PageWindows`); so does the window opening in front.
+        container.addGestureRecognizer(UseRecognizer { [weak self] in
+            guard let self else { return }
+            PageWindows.shared.pagerWasUsed(self)
+        })
+        container.onWindowChange = { [weak self] in
+            guard let self, self.container.window != nil else { return }
+            PageWindows.shared.pagerAppeared(self)
+        }
+        #endif
         scrollView.delegate = self
         scrollView.scrollsToTop = false
         scrollView.pageViews = controllers.map(\.textView)
@@ -152,14 +175,31 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
                 self?.container.isWritingToolsAtWork = isAtWork
             }
             controller.onBeginEditing = { [weak self] in
-                self?.container.pageTookKeys()
+                guard let self else { return }
+                #if !SHARE_EXTENSION
+                PageWindows.shared.pagerWasUsed(self)
+                #endif
+                self.container.pageTookKeys()
             }
             controller.onEditLink = { [weak self, weak controller] link in
                 guard let self, let controller else { return }
+                #if !SHARE_EXTENSION
+                // An iPad has no bar on its keys: the link is changed in a card in the middle of
+                // the screen, as Notes has it.
+                if self.container.traitCollection.userInterfaceIdiom == .pad {
+                    LinkSheet.shared.edit(link, on: controller)
+                    return
+                }
+                #endif
                 self.container.editLinkOnKeys(link, of: controller)
             }
             controller.canEditLinkInBar = { [weak self, weak controller] in
                 guard let self, let controller else { return false }
+                #if !SHARE_EXTENSION
+                // An iPad's card comes up whenever the page is being typed in, keys on screen or
+                // not.
+                if self.container.traitCollection.userInterfaceIdiom == .pad { return true }
+                #endif
                 return self.container.canEditLinks(on: controller)
             }
         }
@@ -434,6 +474,8 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
 /// accessory the moment the finger lifts, while the keys are still sliding away.
 final class PagerContainerView: UIView {
     let scrollView = PagerScrollView()
+    /// Told as this view goes into a window, or out of one.
+    var onWindowChange: (() -> Void)?
     /// Reports how much of this view the keyboard and the format bar cover.
     var onKeyboardOverlapChange: ((CGFloat) -> Void)?
     /// Reports the dot bar going up out of the way of the keys, or coming back, from inside the
@@ -537,6 +579,11 @@ final class PagerContainerView: UIView {
 
     /// Runs on every step of a keyboard drag, and inside the keyboard's own animation when it
     /// comes or goes.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        onWindowChange?()
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         if bounds.size != laidOutSize {
@@ -606,7 +653,7 @@ final class PagerContainerView: UIView {
         #if DEBUG
         defer { if wasRiding, !barRidesOnKeys { timesBarLeftKeysForTesting += 1 } }
         #endif
-        if editor == nil || barKeys == 0 {
+        if editor == nil || barKeys == 0 || !showsBar {
             barRidesOnKeys = false
         } else if barKeys > 120 {
             barRidesOnKeys = true
@@ -679,8 +726,20 @@ final class PagerContainerView: UIView {
     /// up, with no animation to carry the bar up with them. It slides up out of them on its own.
     /// Keys coming up with the page carry it as ever.
     func pageTookKeys() {
-        guard keys > 120, !barRidesOnKeys, editingTextView() != nil, !isWritingToolsAtWork else { return }
+        guard keys > 120, showsBar, !barRidesOnKeys, editingTextView() != nil, !isWritingToolsAtWork else { return }
         UIView.animate(withDuration: 0.25) { self.placeBar() }
+    }
+
+    /// Whether the bar comes up on the keys. Not in Bite on an iPad, as Notes has none there: its
+    /// styles are in the Aa panel at the top (see `FormatPanel`), and links are added and changed
+    /// from the menu over the text, in a card in the middle of the screen (see `LinkSheet`). The
+    /// share extension has neither, and keeps its bar.
+    private var showsBar: Bool {
+        #if SHARE_EXTENSION
+        true
+        #else
+        traitCollection.userInterfaceIdiom != .pad
+        #endif
     }
 
     /// On a phone on its side the system takes the keys away at once, though it says they slide
@@ -927,3 +986,48 @@ final class PagerScrollView: UIScrollView {
         super.setContentOffset(offset, animated: animated)
     }
 }
+
+#if !SHARE_EXTENSION
+extension DotPagerCoordinator {
+    /// Puts the pages on the store's Markdown and has them report their own, in Bite's window
+    /// `window`: what's typed on a page goes to the other windows showing it too, and the store's
+    /// hooks into the pages go to every window or the one in front (see `PageWindows`).
+    func connect(to store: DotStore, in window: PageWindow) {
+        for controller in controllers {
+            let dot = controller.dot
+            controller.onChange = { [weak self] markdown in
+                let changed = store.markdown[dot] != markdown
+                store.update(dot: dot, markdown: markdown)
+                if changed, let self { PageWindows.shared.pageChanged(dot, markdown: markdown, in: self) }
+            }
+            controller.onEmptyChange = { isEmpty in
+                store.update(dot: dot, isEmpty: isEmpty)
+            }
+            controller.load(markdown: store.markdown[dot])
+            controller.loadedRevision = store.revisions[dot]
+        }
+        PageWindows.shared.attach(self, to: window, store: store)
+    }
+}
+
+/// Notes a touch going down on the pages, a finger's or a click's, and lets it be.
+private final class UseRecognizer: UIGestureRecognizer {
+    private let onTouch: () -> Void
+
+    init(onTouch: @escaping () -> Void) {
+        self.onTouch = onTouch
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        onTouch()
+        state = .failed
+    }
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+}
+#endif

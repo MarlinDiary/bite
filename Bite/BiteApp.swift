@@ -46,6 +46,9 @@ struct BiteApp: App {
             root
             #endif
         }
+        .commands {
+            MenuBarCommands(store: store)
+        }
         .onChange(of: scenePhase, initial: true) { _, phase in
             sync.isOnScreen = phase == .active
             if phase == .active {
@@ -65,17 +68,8 @@ struct BiteApp: App {
     private var root: some View {
         RootView()
             .environment(store)
-            .onContinueUserActivity(CSSearchableItemActionType) { activity in
-                // Bite launched by it opened it already, before its first frame.
-                guard activity !== SceneDelegate.launchActivity else { return }
-                SpotlightIndex.open(activity, in: store)
-            }
             .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
                 ScreenChoices.apply()
-            }
-            // A widget, tapped, opens the page it shows.
-            .onOpenURL { link in
-                if let page = PageTurns.page(openedBy: link) { store.open(dot: page) }
             }
     }
 }
@@ -150,6 +144,8 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
     func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem,
                      completionHandler: @escaping (Bool) -> Void) {
         guard let store = Self.store else { return completionHandler(false) }
+        // In the window it's picked for, of Bite's several on an iPad.
+        if let window = PageWindows.shared.window(in: windowScene) { PageWindows.shared.makeCurrent(window) }
         completionHandler(HomeScreenActions.perform(shortcutItem, in: store))
     }
 }

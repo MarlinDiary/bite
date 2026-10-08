@@ -66,6 +66,9 @@ final class DotStore {
         }
     }
     @ObservationIgnored private var waitingLine: (dot: Int, asToDo: Bool)?
+    /// Set by the editors: gives page `dot` the keys, the caret where it was, as an iPad's Aa
+    /// button does with no page being typed in.
+    @ObservationIgnored var focusInEditor: ((Int) -> Void)?
     /// Set by the editors: brings a page's end into view (see `showEnd`). Those asked for before the
     /// editors are there wait for them.
     @ObservationIgnored var showEndInEditor: ((Int) -> Void)? {

@@ -11,7 +11,9 @@ enum FormatAction: CaseIterable {
         case .bullet: "list.bullet"
         case .ordered: "list.number"
         case .heading: "textformat"
-        case .quote: "text.quote"
+        // Bite's own (Shared/Symbols.xcassets): a bar beside a block, as Notes draws its block
+        // quote, with a symbol of the system's private to it (user, 2026-10-08).
+        case .quote: "bite.quote"
         case .code: "chevron.left.forwardslash.chevron.right"
         case .bold: "bold"
         case .italic: "italic"
@@ -39,6 +41,12 @@ enum FormatAction: CaseIterable {
         case .indent: "Indent"
         case .dismiss: "Hide Keyboard"
         }
+    }
+
+    /// Whether `symbol` is Bite's own, in its asset catalog, rather than one of the system's. It's
+    /// drawn in layers, the block lighter than the bar.
+    var hasOwnSymbol: Bool {
+        self == .quote
     }
 
     /// The inline style the button sets. It shows as on while typing gets that style, or while

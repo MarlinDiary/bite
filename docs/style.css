@@ -1,0 +1,124 @@
+:root {
+  color-scheme: light dark;
+  --background: #F7F6F4;
+  --text: #1F1E1C;
+  --secondary: #6E6A64;
+  --rule: #E3E0DB;
+  --link-line: #DD7B2C;
+  --yellow: #D9A21B;
+  --orange: #DD7B2C;
+  --red: #D4523F;
+  --purple: #8C5BB6;
+  --blue: #4A6FC4;
+  --teal: #2E8F8C;
+  --green: #5E9E4A;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #100F0E;
+    --text: #ECEAE6;
+    --secondary: #9C978F;
+    --rule: #2A2826;
+    --link-line: #F29A4E;
+    --yellow: #F0C041;
+    --orange: #F29A4E;
+    --red: #EE735F;
+    --purple: #B083DB;
+    --blue: #7394E6;
+    --teal: #4FB5B1;
+    --green: #7FBF69;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Hiragino Sans", sans-serif;
+}
+
+main {
+  max-width: 38rem;
+  margin: 0 auto;
+  padding: 56px 16px 72px;
+}
+
+.dots {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+}
+
+.dots li {
+  width: 10px;
+  height: 10px;
+  margin: 0;
+  border-radius: 50%;
+}
+
+.dots li:nth-child(1) { background: var(--yellow); }
+.dots li:nth-child(2) { background: var(--orange); }
+.dots li:nth-child(3) { background: var(--red); }
+.dots li:nth-child(4) { background: var(--purple); }
+.dots li:nth-child(5) { background: var(--blue); }
+.dots li:nth-child(6) { background: var(--teal); }
+.dots li:nth-child(7) { background: var(--green); }
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 34px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  margin: 40px 0 8px;
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.lead {
+  margin: 0 0 32px;
+  color: var(--secondary);
+  font-size: 19px;
+}
+
+p, ul { margin: 0 0 14px; }
+
+ul { padding-left: 1.2em; }
+
+li + li { margin-top: 6px; }
+
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--link-line);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+code {
+  font: 15px ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+nav {
+  margin-top: 56px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+  color: var(--secondary);
+  font-size: 15px;
+}
+
+nav a + a { margin-left: 18px; }
+
+.date {
+  color: var(--secondary);
+  font-size: 15px;
+}

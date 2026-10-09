@@ -21,5 +21,12 @@ enum WatchLook {
 
     /// What an empty page says, as its widget does.
     static let emptyLine = "Nothing here yet"
+    /// What it says while a new watch waits for iCloud: it may not be empty there.
+    static let waitingLine = "Coming from iCloud…"
+
+    /// The line under an empty page's name.
+    static func emptyLine(waitingForICloud: Bool) -> String {
+        waitingForICloud ? waitingLine : emptyLine
+    }
     static let emptySizes: (title: CGFloat, line: CGFloat) = (24, 15)
 }

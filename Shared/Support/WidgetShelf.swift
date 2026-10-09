@@ -54,6 +54,12 @@ final class WidgetShelf {
               (try? shelf.write(store.markdown, modified: store.modified)) != nil else { return }
         Self.log.info("Wrote the pages for the widgets")
         WidgetCenter.shared.reloadAllTimelines()
+        #if os(watchOS)
+        // And the Smart Stack asked again which to show first: a page changed lately (see
+        // `PageRelevance`).
+        WidgetCenter.shared.invalidateRelevance(ofKind: WidgetKind.page)
+        WidgetCenter.shared.invalidateRelevance(ofKind: WidgetKind.toDos)
+        #endif
     }
 
     private var isTakingTicks = false

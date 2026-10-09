@@ -1,4 +1,5 @@
 import AppIntents
+import RelevanceKit
 import SwiftUI
 import WidgetKit
 import BiteKit
@@ -9,7 +10,7 @@ import BiteKit
 /// it opens Bite on the page.
 struct WatchPageWidget: Widget {
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: "com.chenyeni.bite.singlepage", intent: WatchPageConfiguration.self,
+        AppIntentConfiguration(kind: WidgetKind.page, intent: WatchPageConfiguration.self,
                                provider: WatchPageProvider()) { entry in
             WatchPageView(entry: entry)
         }
@@ -55,7 +56,17 @@ nonisolated struct WatchPageProvider: AppIntentTimelineProvider {
     /// One entry, as the page is now. Bite has the widgets read again whenever it writes the
     /// pages, so nothing needs reading on a timer.
     func timeline(for configuration: WatchPageConfiguration, in context: Context) async -> Timeline<WatchPageEntry> {
-        Timeline(entries: [entry(page: configuration.page.dot, pages: SamplePages.orShelf())], policy: .never)
+        await WatchRelevance.updateIntents()
+        return Timeline(entries: [entry(page: configuration.page.dot, pages: SamplePages.orShelf())], policy: .never)
+    }
+
+    /// A page that changed lately comes first in the Smart Stack (see `WatchRelevance`).
+    func relevance() async -> WidgetRelevance<WatchPageConfiguration> {
+        await WatchRelevance.updateIntents()
+        return WidgetRelevance(WatchRelevance.recentPages().map { recent in
+            WidgetRelevanceAttribute(configuration: WatchPageConfiguration(page: recent.page),
+                                     context: .date(interval: recent.interval, kind: .default))
+        })
     }
 
     /// A watch face offers a widget's settings as choices to pick from: a page each.
@@ -97,7 +108,7 @@ struct WatchPageView: View {
             .accessibilityElement()
             .accessibilityLabel("\(ink.name) page")
         case .accessoryCorner:
-            WatchRing(ink: ink, share: 0.8)
+            WatchRing(ink: ink, share: 0.95)
                 .widgetLabel(entry.glance.title ?? ink.name)
         default:
             if entry.glance.isEmpty {

@@ -7,6 +7,9 @@ import BiteKit
 final class DotStore {
     /// Latest Markdown for each dot. Not observed, because editors write it on every keystroke.
     @ObservationIgnored private(set) var markdown: [String]
+    /// Set by iCloud sync while a device that has never heard from iCloud waits for its first
+    /// word, as a new watch does: an empty page then may not be empty there.
+    var isWaitingForICloud = false
     private(set) var isEmpty: [Bool]
     /// Bumped when a dot changes outside its editor, which makes that editor reload.
     private(set) var revisions: [Int]

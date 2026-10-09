@@ -1,3 +1,4 @@
+import CloudKit
 import Foundation
 import Testing
 import BiteKit
@@ -31,6 +32,24 @@ struct PageSyncTests {
         // First-launch pages on both, this device's stays, in its own words.
         let sample = SampleContent.markdown(for: 0)
         #expect(PageSync.reconcile(local: sample, remote: sample, agreed: nil, dot: 0) == sample)
+    }
+
+    /// A new device's empty pages don't go up: they'd only cross iCloud's on their way down. Its
+    /// first-launch pages do, and an emptied page that iCloud has with something on it.
+    @Test func aNewDevicesEmptyPagesDontGoUp() {
+        let local = ["", "\n", SampleContent.markdown(for: 2), "", "mine\n", "theirs\n"]
+        let agreed: [String?] = [nil, nil, nil, "gone\n", "mine\n", "old\n"]
+        #expect(PageSync.unsent(local: local, agreed: agreed) == [2, 3, 5])
+    }
+
+    /// Signed out of iCloud, or iCloud not allowed, a new watch stops waiting for its pages; a
+    /// network that's down only holds them up.
+    @Test func someFailuresMeanNothingsComing() {
+        #expect(PageSync.waitsInVain(.notAuthenticated))
+        #expect(PageSync.waitsInVain(.permissionFailure))
+        #expect(!PageSync.waitsInVain(.networkUnavailable))
+        #expect(!PageSync.waitsInVain(.requestRateLimited))
+        #expect(!PageSync.waitsInVain(.serviceUnavailable))
     }
 
     /// Two different pages, the first time, are both kept whole, this device's first.

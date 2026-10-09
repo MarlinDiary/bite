@@ -1,3 +1,4 @@
+import RelevanceKit
 import SwiftUI
 import WidgetKit
 import BiteKit
@@ -7,7 +8,7 @@ import BiteKit
 /// edge. With none left, it says so. Tapped, it opens Bite on the first one's page.
 struct WatchToDosWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "com.chenyeni.bite.todos", provider: WatchToDosProvider()) { entry in
+        StaticConfiguration(kind: WidgetKind.toDos, provider: WatchToDosProvider()) { entry in
             WatchToDosView(entry: entry)
         }
         .configurationDisplayName("To-Dos")
@@ -55,6 +56,13 @@ nonisolated struct WatchToDosProvider: TimelineProvider {
         completion(Timeline(entries: [now] + later, policy: .atEnd))
     }
 
+    /// The to-dos come first in the Smart Stack after a page with to-dos left changed (see
+    /// `WatchRelevance`).
+    func relevance() async -> WidgetRelevance<Void> {
+        guard let interval = WatchRelevance.toDosInterval() else { return WidgetRelevance([]) }
+        return WidgetRelevance([WidgetRelevanceAttribute(context: .date(interval: interval, kind: .default))])
+    }
+
     private func entry(at date: Date, pages: [String]) -> WatchToDosEntry {
         let toDos = pages.enumerated().flatMap { page, markdown in
             PageGlance(markdown: markdown).lines
@@ -85,7 +93,7 @@ struct WatchToDosView: View {
                 ToDoCount(count: count)
             }
         case .accessoryCorner:
-            ToDoCount(count: count, share: 0.8)
+            ToDoCount(count: count, share: 0.95)
                 .widgetLabel(entry.toDos.first?.text ?? "All done")
         case .accessoryInline:
             Label {
@@ -117,7 +125,7 @@ struct WatchToDosView: View {
 /// How many to-dos there are, in Bite's ring, in its icon's orange; a tick when there are none.
 private struct ToDoCount: View {
     let count: Int
-    var share: CGFloat = 0.64
+    var share: CGFloat = 0.84
 
     var body: some View {
         WatchRing(ink: DotPalette.colors[1], share: share) { diameter in

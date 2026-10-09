@@ -128,6 +128,14 @@ final class PageSync: CKSyncEngineDelegate {
         store.onLocalChange = { [weak self] dot in self?.pageChanged(dot) }
         store.onSelectionChange = { [weak self] in self?.someoneIsHere() }
         Self.log.info("Started, \(self.saved.pages.compactMap { $0 }.count) pages agreed with iCloud")
+        // Never heard from iCloud, as on a new device: until it's heard, an empty page may only be
+        // one iCloud hasn't sent yet.
+        let isAfresh = saved.pages.allSatisfy { $0 == nil }
+        store.isWaitingForICloud = isAfresh
+        if isAfresh {
+            startedAfresh = .now
+            Self.note("Started afresh")
+        }
         if takesICloudPages {
             Task.detached { try? await engine.fetchChanges() }
         } else {
@@ -147,15 +155,27 @@ final class PageSync: CKSyncEngineDelegate {
         checkToken = nil
         store.onLocalChange = nil
         store.onSelectionChange = nil
+        store.isWaitingForICloud = false
+        startedAfresh = nil
         engine = nil
         Self.log.info("Stopped")
         save()
     }
 
-    /// Pages changed since they last went up, or that never have, go up now.
+    /// Pages changed since they last went up, or that never have, go up now: but not an empty one
+    /// never agreed with iCloud, as a new device's pages start, which would only cross iCloud's own
+    /// on their way down, and hold them up.
     private func sendUnsentPages() {
-        let unsent = (0..<DotPalette.count).filter { saved.pages[$0]?.text != store.markdown[$0] }
+        let unsent = Self.unsent(local: store.markdown, agreed: saved.pages.map { $0?.text })
         engine?.state.add(pendingRecordZoneChanges: unsent.map { .saveRecord(recordID(for: $0)) })
+    }
+
+    /// The pages `sendUnsentPages` sends, given this device's pages and what iCloud last agreed.
+    static func unsent(local: [String], agreed: [String?]) -> [Int] {
+        local.indices.filter { dot in
+            guard agreed.indices.contains(dot), let agreed = agreed[dot] else { return !DotStore.isBlank(local[dot]) }
+            return agreed != local[dot]
+        }
     }
 
     /// A push from iCloud, as another device changed a page: brought down at once. Says whether a
@@ -243,10 +263,19 @@ final class PageSync: CKSyncEngineDelegate {
             failed = true
             if error.code == .changeTokenExpired { checkToken = nil }
             if let seconds = error.retryAfterSeconds { checksPausedUntil = .now + .seconds(seconds) }
+            noteFailure("CKError \(error.code.rawValue), \(error.localizedDescription)"
+                        + (error.retryAfterSeconds.map { ", again after \($0) s" } ?? ""))
+            // Not signed in, or iCloud not allowed: nothing's coming, and the pages are as they are.
+            if Self.waitsInVain(error.code), store.isWaitingForICloud { store.isWaitingForICloud = false }
         } catch {
             failed = true
+            noteFailure(error.localizedDescription)
         }
         if tookAny { save() }
+        if !failed {
+            lastFailure = nil
+            heardFromICloud("First check")
+        }
         lastCheckBroughtChanges = tookNew
         // Not signed in, offline, or with no pages up yet, it asks again no sooner than when quiet.
         let wait = Self.waitBeforeNextCheck(onScreen: isOnScreen, tookNew: tookNew, failed: failed,
@@ -396,6 +425,52 @@ final class PageSync: CKSyncEngineDelegate {
     }
     #endif
 
+    // MARK: Notes
+
+    /// When a device that had never heard from iCloud started, until it first does.
+    private var startedAfresh: ContinuousClock.Instant?
+    private var notedFirstPage = false
+    /// The last failure noted, not noted again until a check gets through.
+    private var lastFailure: String?
+
+    /// A few words on how syncing went, newest last, kept on the device: how long a device that
+    /// started afresh took to hear from iCloud, and why checks failed. A watch's logs can't be read
+    /// off it, these can.
+    static let notesKey = "syncNotes"
+
+    private static func note(_ text: String) {
+        log.info("\(text, privacy: .public)")
+        let entries = (UserDefaults.standard.stringArray(forKey: notesKey) ?? []) + ["\(Date.now.ISO8601Format()) \(text)"]
+        UserDefaults.standard.set(Array(entries.suffix(30)), forKey: notesKey)
+    }
+
+    /// Failures that last until the person does something: signing in to iCloud, or letting Bite
+    /// use it, rather than until the network or iCloud comes back.
+    static func waitsInVain(_ code: CKError.Code) -> Bool {
+        [.notAuthenticated, .permissionFailure, .badContainer, .missingEntitlement, .managedAccountRestricted,
+         .incompatibleVersion].contains(code)
+    }
+
+    private func noteFailure(_ failure: String) {
+        guard failure != lastFailure else { return }
+        lastFailure = failure
+        Self.note("Check failed: \(failure)")
+    }
+
+    /// iCloud answered: the empty pages are now known to be empty, if they are.
+    private func heardFromICloud(_ how: String) {
+        // Not set again after each check: the pages would be drawn again every second.
+        if store.isWaitingForICloud { store.isWaitingForICloud = false }
+        guard let since = startedAfresh else { return }
+        startedAfresh = nil
+        Self.note("\(how) done, \(Self.seconds(since: since)) after starting afresh")
+    }
+
+    private static func seconds(since instant: ContinuousClock.Instant) -> String {
+        let elapsed = (ContinuousClock.now - instant).components
+        return String(format: "%.1f s", Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
+    }
+
     private func sendNow() async {
         guard let engine else { return }
         guard callsFromTheEngine == 0, !isSending else {
@@ -435,6 +510,7 @@ final class PageSync: CKSyncEngineDelegate {
                 startOver(engine: syncEngine)
             }
         case .didFetchChanges:
+            heardFromICloud("The engine's first fetch")
             if takesICloudPages {
                 takesICloudPages = false
                 sendUnsentPages()
@@ -539,6 +615,10 @@ final class PageSync: CKSyncEngineDelegate {
             engine.state.add(pendingRecordZoneChanges: [.saveRecord(record.recordID)])
             scheduleSend()
         }
+        if let since = startedAfresh, !notedFirstPage {
+            notedFirstPage = true
+            Self.note("First page from iCloud, \(Self.seconds(since: since)) after starting")
+        }
         return true
     }
 
@@ -592,6 +672,7 @@ final class PageSync: CKSyncEngineDelegate {
             startOver(engine: engine)
         case .signOut:
             saved.pages = Array(repeating: nil, count: DotPalette.count)
+            store.isWaitingForICloud = false
         @unknown default:
             break
         }

@@ -29,7 +29,7 @@ final class WidgetShelf {
             self?.update()
             PageIntents.sendIfOffScreen()
         }
-        #else
+        #elseif os(macOS)
         // One ticked in a widget on the desktop, which ticks it in its own process and says so:
         // onto the page at once, Bite being in the menu bar.
         ticksLeft = DistributedNotificationCenter.default().addObserver(forName: PageShelf.ticksLeft, object: nil, queue: .main) { [weak self] _ in

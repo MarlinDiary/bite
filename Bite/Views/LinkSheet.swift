@@ -99,7 +99,7 @@ final class LinkSheet: NSObject, UIAdaptivePresentationControllerDelegate {
             cardBackground = card.view.backgroundColor
         }
         card.view.backgroundColor = narrow ? .clear : cardBackground
-        let change = {
+        let change = { [weak card] in
             sheet.detents = narrow ? [.custom(identifier: Self.fitted) { [weak card] _ in
                 // Its form's height is said as it's laid out, just after the card's up.
                 let height = card?.preferredContentSize.height ?? 0

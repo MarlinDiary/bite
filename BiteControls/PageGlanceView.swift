@@ -59,6 +59,9 @@ struct PageGlanceView: View {
     var showsAll = false
     /// Told where the lines that show end, as many as fit: for a card as tall as its lines.
     var contentEnd: ContentEnd?
+    /// Ticks a to-do off, or on again, where the page is Bite's own rather than a widget's, as on
+    /// the watch: at a tap anywhere on its line, the box alone being small for a finger there.
+    var onTick: ((PageTick) -> Void)?
 
     /// A line on its own, or quote or code lines in a row, which share one bar or one wash.
     private enum Part {
@@ -180,6 +183,27 @@ struct PageGlanceView: View {
                 .fill(Color.systemSeparator)
                 .frame(height: 1)
                 .opacity(kind == .divider ? 1 : 0)
+        }
+        .modifier(TickOnTap(tick: part.listLine.flatMap { line in
+            line.kind == .todo ? PageTick(page: page, block: line.block, text: line.text, done: !line.isChecked) : nil
+        }, onTick: onTick))
+    }
+
+    /// A to-do's line that ticks it at a tap, when there's somewhere to tick it.
+    private struct TickOnTap: ViewModifier {
+        let tick: PageTick?
+        let onTick: ((PageTick) -> Void)?
+
+        @ViewBuilder
+        func body(content: Content) -> some View {
+            if let tick, let onTick {
+                content
+                    .contentShape(.rect)
+                    .onTapGesture { onTick(tick) }
+                    .accessibilityAddTraits(.isButton)
+            } else {
+                content
+            }
         }
     }
 

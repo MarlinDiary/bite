@@ -25,9 +25,11 @@ nonisolated extension PlatformColor {
                   blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 
-    /// `light` in light appearance and `dark` in dark, as the widget is shown.
+    /// `light` in light appearance and `dark` in dark, as the widget is shown. A watch is always dark.
     static func adaptive(light: UInt32, dark: UInt32) -> PlatformColor {
-        #if canImport(UIKit)
+        #if os(watchOS)
+        UIColor(hex: dark)
+        #elseif canImport(UIKit)
         UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) }
         #else
         NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(hex: dark) : NSColor(hex: light) }

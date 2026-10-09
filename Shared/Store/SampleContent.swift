@@ -5,6 +5,10 @@ enum SampleContent {
     static func markdown(for dot: Int) -> String {
         #if os(macOS)
         markdown(for: dot, onMac: true)
+        #elseif os(watchOS)
+        // The watch's pages come from iCloud, the person's own, a moment after it first opens: its
+        // own samples would only show until then, telling of dots up top and swipes it hasn't got.
+        ""
         #else
         markdown(for: dot, onMac: false)
         #endif

@@ -2,7 +2,7 @@ import CloudKit
 import Foundation
 import OSLog
 import BiteKit
-#if canImport(UIKit)
+#if os(iOS)
 import UIKit
 #endif
 
@@ -280,7 +280,7 @@ final class PageSync: CKSyncEngineDelegate {
         }
     }
 
-    #if canImport(UIKit)
+    #if os(iOS)
     private var leavingTask = UIBackgroundTaskIdentifier.invalid
 
     /// Bite is leaving the screen on the phone, which stops it soon after: what's still to go up
@@ -295,7 +295,7 @@ final class PageSync: CKSyncEngineDelegate {
             MainActor.assumeIsolated { self?.endLeavingTask() }
         }
         Task.detached { [weak self] in
-            await self?.sendUntilDone()
+            await self?.sendUntilDone(within: Self.backgroundSendTime)
             await self?.endLeavingTask()
         }
     }
@@ -305,7 +305,45 @@ final class PageSync: CKSyncEngineDelegate {
         UIApplication.shared.endBackgroundTask(leavingTask)
         leavingTask = .invalid
     }
+    #elseif os(watchOS)
+    private var leavingSend: Task<Void, Never>?
 
+    /// Bite is leaving the screen on the watch, as the wrist goes down, and the system stops it
+    /// soon after: what's still to go up goes now, with a few seconds asked of the system to
+    /// finish sending it. A to-do ticked or a line added just before, it otherwise waited until
+    /// Bite was opened again.
+    func sendBeforeLeaving() {
+        guard let engine else { return }
+        store.reportPendingEdits()
+        guard isSending || !engine.state.pendingRecordZoneChanges.isEmpty, leavingSend == nil else { return }
+        Self.log.info("Sending before Bite leaves the screen")
+        let send = Task.detached { [weak self] in
+            guard let self else { return }
+            await sendUntilDone(within: Self.backgroundSendTime)
+        }
+        leavingSend = send
+        ProcessInfo.processInfo.performExpiringActivity(withReason: "Send pages") { expired in
+            guard !expired else {
+                send.cancel()
+                return
+            }
+            // The time asked for lasts until this returns: until the pages are up, or the system
+            // calls again, out of time.
+            let sent = DispatchSemaphore(value: 0)
+            Task.detached {
+                await send.value
+                sent.signal()
+            }
+            sent.wait()
+        }
+        Task { [weak self] in
+            await send.value
+            self?.leavingSend = nil
+        }
+    }
+    #endif
+
+    #if canImport(UIKit)
     /// The system lets Bite run for a moment while it's off screen: for a push from iCloud, or a
     /// background refresh Bite asked for (see `BackgroundSync`). Other devices' changes come down
     /// and are written to disk at once, as Bite is stopped again right after, and whatever's still
@@ -317,14 +355,22 @@ final class PageSync: CKSyncEngineDelegate {
         await checkNow()
         let broughtChanges = lastCheckBroughtChanges
         sendUnsentPages()
-        await sendUntilDone()
+        await sendUntilDone(within: Self.backgroundSendTime)
         store.saveNow()
         Self.noteBackgroundSync(reason, broughtChanges: broughtChanges)
         return broughtChanges
     }
 
+    /// How long sending may go on while Bite is off screen: the phone gives Bite about half a
+    /// minute; the watch, a few seconds.
+    #if os(watchOS)
+    nonisolated static let backgroundSendTime: Duration = .seconds(10)
+    #else
+    nonisolated static let backgroundSendTime: Duration = .seconds(25)
+    #endif
+
     /// The last few times Bite synced in the background, and why, newest last: whether the system
-    /// lets it, which can't be seen otherwise, can be read off the phone.
+    /// lets it, which can't be seen otherwise, can be read off the phone or the watch.
     static let backgroundSyncsKey = "backgroundSyncs"
 
     private static func noteBackgroundSync(_ reason: String, broughtChanges: Bool) {
@@ -334,14 +380,17 @@ final class PageSync: CKSyncEngineDelegate {
     }
 
     /// Sends what's waiting to go up, after any send under way, and again for what changed
-    /// meanwhile: a few tries at most, within the time the system gives.
-    private func sendUntilDone() async {
-        let deadline = ContinuousClock.now + .seconds(25)
+    /// meanwhile: a few tries at most, within the time the system gives, and none once it says
+    /// the time is up.
+    private func sendUntilDone(within time: Duration) async {
+        let deadline = ContinuousClock.now + time
         for _ in 0..<3 {
-            while isSending || callsFromTheEngine > 0, ContinuousClock.now < deadline {
+            // Cancelled, the sleep would return at once, and the wait spin until the deadline.
+            while isSending || callsFromTheEngine > 0, ContinuousClock.now < deadline, !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
             }
-            guard let engine, ContinuousClock.now < deadline, !engine.state.pendingRecordZoneChanges.isEmpty else { return }
+            guard let engine, ContinuousClock.now < deadline, !Task.isCancelled,
+                  !engine.state.pendingRecordZoneChanges.isEmpty else { return }
             await sendNow()
         }
     }

@@ -28,18 +28,12 @@ struct DotStatement: View {
     let title: String
     let ink: DotColor
     let line: String
+    /// Its sizes, where they aren't a widget's: on the watch, in its app.
+    var sizes: (title: CGFloat, line: CGFloat)?
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        let (titleSize, lineSize): (CGFloat, CGFloat) = switch family {
-        #if os(iOS)
-        case .accessoryRectangular: (20, 13)
-        #endif
-        case .systemSmall: (30, 13)
-        case .systemMedium: (34, 15)
-        case .systemLarge: (40, 17)
-        default: (44, 17)
-        }
+        let (titleSize, lineSize): (CGFloat, CGFloat) = sizes ?? familySizes
         VStack(spacing: titleSize * 0.1) {
             HStack(alignment: .firstTextBaseline, spacing: titleSize * 0.04) {
                 Text(title)
@@ -58,6 +52,22 @@ struct DotStatement: View {
         .minimumScaleFactor(0.8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
+    }
+
+    private var familySizes: (CGFloat, CGFloat) {
+        switch family {
+        #if os(iOS) || os(watchOS)
+        case .accessoryRectangular: (20, 13)
+        #endif
+        #if os(watchOS)
+        default: (24, 15)
+        #else
+        case .systemSmall: (30, 13)
+        case .systemMedium: (34, 15)
+        case .systemLarge: (40, 17)
+        default: (44, 17)
+        #endif
+        }
     }
 }
 

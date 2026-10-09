@@ -22,6 +22,10 @@
 		B17E000000000000000000D5 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E000000000000000000D6 /* BiteKit */; };
 		B17E000000000000000000D7 /* BiteCommands in Frameworks */ = {isa = PBXBuildFile; productRef = B17E000000000000000000D8 /* BiteCommands */; };
 		B17E000000000000000000E0 /* bite in Embed Command Line Tool */ = {isa = PBXBuildFile; fileRef = B17E000000000000000000D0 /* bite */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		B17E000000000000000000F5 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E000000000000000000F6 /* BiteKit */; };
+		B17E00000000000000000105 /* BiteKit in Frameworks */ = {isa = PBXBuildFile; productRef = B17E00000000000000000106 /* BiteKit */; };
+		B17E0000000000000000010C /* BiteWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B17E00000000000000000100 /* BiteWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B17E00000000000000000121 /* BiteWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B17E000000000000000000F0 /* BiteWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +85,27 @@
 			remoteGlobalIDString = B17E000000000000000000D1;
 			remoteInfo = BiteCLI;
 		};
+		B17E0000000000000000010E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B17E00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B17E00000000000000000101;
+			remoteInfo = BiteWatchWidgets;
+		};
+		B17E00000000000000000119 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B17E00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B17E000000000000000000F1;
+			remoteInfo = BiteWatch;
+		};
+		B17E00000000000000000123 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B17E00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B17E000000000000000000F1;
+			remoteInfo = BiteWatch;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -120,6 +145,28 @@
 			name = "Embed Command Line Tool";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B17E0000000000000000010D /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B17E0000000000000000010C /* BiteWatchWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000122 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				B17E00000000000000000121 /* BiteWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -133,6 +180,9 @@
 		B17E00000000000000000090 /* BiteMacShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteMacShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B17E000000000000000000B0 /* BiteMessages.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteMessages.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B17E000000000000000000D0 /* bite */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = bite; sourceTree = BUILT_PRODUCTS_DIR; };
+		B17E000000000000000000F0 /* BiteWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BiteWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B17E00000000000000000100 /* BiteWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BiteWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B17E00000000000000000110 /* BiteWatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BiteWatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -247,6 +297,52 @@
 			);
 			target = B17E000000000000000000D1 /* BiteCLI */;
 		};
+		B17E000000000000000000FB /* Exceptions for "Shared" folder in "BiteWatch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Store/DotStore.swift",
+				"Store/PageSync.swift",
+				"Store/Preferences.swift",
+				"Store/SampleContent.swift",
+				"Support/WidgetShelf.swift",
+			);
+			target = B17E000000000000000000F1 /* BiteWatch */;
+		};
+		B17E000000000000000000FC /* Exceptions for "BiteControls" folder in "BiteWatch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				PageGlanceView.swift,
+				PageLook.swift,
+				Platform.swift,
+				SystemColors.swift,
+			);
+			target = B17E000000000000000000F1 /* BiteWatch */;
+		};
+		B17E000000000000000000FD /* Exceptions for "Bite" folder in "BiteWatch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AppIcons/AppIcon.icon,
+			);
+			target = B17E000000000000000000F1 /* BiteWatch */;
+		};
+		B17E0000000000000000010B /* Exceptions for "BiteControls" folder in "BiteWatchWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				PageGlanceView.swift,
+				PageLook.swift,
+				Platform.swift,
+				SystemColors.swift,
+				WidgetPages.swift,
+			);
+			target = B17E00000000000000000101 /* BiteWatchWidgets */;
+		};
+		B17E00000000000000000120 /* Exceptions for "BiteWatch" folder in "BiteWatchWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				WatchLook.swift,
+			);
+			target = B17E00000000000000000101 /* BiteWatchWidgets */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -254,6 +350,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				B17E000000000000000000A0 /* Exceptions for "Bite" folder in "BiteShare" target */,
+				B17E000000000000000000FD /* Exceptions for "Bite" folder in "BiteWatch" target */,
 			);
 			path = Bite;
 			sourceTree = "<group>";
@@ -269,6 +366,7 @@
 				B17E0000000000000000008F /* Exceptions for "Shared" folder in "BiteShare" target */,
 				B17E0000000000000000009F /* Exceptions for "Shared" folder in "BiteMacShare" target */,
 				B17E000000000000000000E1 /* Exceptions for "Shared" folder in "BiteCLI" target */,
+				B17E000000000000000000FB /* Exceptions for "Shared" folder in "BiteWatch" target */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -293,6 +391,8 @@
 				B17E000000000000000000C1 /* Exceptions for "BiteControls" folder in "BiteMessages" target */,
 				B17E000000000000000000C2 /* Exceptions for "BiteControls" folder in "BiteMac" target */,
 				B17E000000000000000000E2 /* Exceptions for "BiteControls" folder in "BiteCLI" target */,
+				B17E000000000000000000FC /* Exceptions for "BiteControls" folder in "BiteWatch" target */,
+				B17E0000000000000000010B /* Exceptions for "BiteControls" folder in "BiteWatchWidgets" target */,
 			);
 			path = BiteControls;
 			sourceTree = "<group>";
@@ -310,6 +410,24 @@
 		B17E000000000000000000DC /* BiteCLI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = BiteCLI;
+			sourceTree = "<group>";
+		};
+		B17E000000000000000000FA /* BiteWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B17E00000000000000000120 /* Exceptions for "BiteWatch" folder in "BiteWatchWidgets" target */,
+			);
+			path = BiteWatch;
+			sourceTree = "<group>";
+		};
+		B17E0000000000000000010A /* BiteWatchWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BiteWatchWidgets;
+			sourceTree = "<group>";
+		};
+		B17E00000000000000000118 /* BiteWatchTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BiteWatchTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -394,6 +512,29 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B17E000000000000000000F3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B17E000000000000000000F5 /* BiteKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000103 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B17E00000000000000000105 /* BiteKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000113 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -407,6 +548,9 @@
 				B17E0000000000000000008E /* BiteShare */,
 				B17E000000000000000000BE /* BiteMessages */,
 				B17E000000000000000000DC /* BiteCLI */,
+				B17E000000000000000000FA /* BiteWatch */,
+				B17E0000000000000000010A /* BiteWatchWidgets */,
+				B17E00000000000000000118 /* BiteWatchTests */,
 				B17E00000000000000000040 /* SharedTests */,
 				B17E00000000000000000021 /* BiteTests */,
 				B17E00000000000000000003 /* Products */,
@@ -426,6 +570,9 @@
 				B17E00000000000000000090 /* BiteMacShare.appex */,
 				B17E000000000000000000B0 /* BiteMessages.appex */,
 				B17E000000000000000000D0 /* bite */,
+				B17E000000000000000000F0 /* BiteWatch.app */,
+				B17E00000000000000000100 /* BiteWatchWidgets.appex */,
+				B17E00000000000000000110 /* BiteWatchTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -509,6 +656,7 @@
 				B17E00000000000000000008 /* Frameworks */,
 				B17E00000000000000000009 /* Resources */,
 				B17E0000000000000000005B /* Embed Foundation Extensions */,
+				B17E00000000000000000122 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
@@ -516,6 +664,7 @@
 				B17E0000000000000000005A /* PBXTargetDependency */,
 				B17E0000000000000000008B /* PBXTargetDependency */,
 				B17E000000000000000000BB /* PBXTargetDependency */,
+				B17E00000000000000000124 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B17E00000000000000000005 /* Bite */,
@@ -671,6 +820,75 @@
 			productReference = B17E000000000000000000D0 /* bite */;
 			productType = "com.apple.product-type.tool";
 		};
+		B17E000000000000000000F1 /* BiteWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B17E000000000000000000F7 /* Build configuration list for PBXNativeTarget "BiteWatch" */;
+			buildPhases = (
+				B17E000000000000000000F2 /* Sources */,
+				B17E000000000000000000F3 /* Frameworks */,
+				B17E000000000000000000F4 /* Resources */,
+				B17E0000000000000000010D /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B17E0000000000000000010F /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B17E000000000000000000FA /* BiteWatch */,
+			);
+			name = BiteWatch;
+			packageProductDependencies = (
+				B17E000000000000000000F6 /* BiteKit */,
+			);
+			productName = BiteWatch;
+			productReference = B17E000000000000000000F0 /* BiteWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B17E00000000000000000101 /* BiteWatchWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B17E00000000000000000107 /* Build configuration list for PBXNativeTarget "BiteWatchWidgets" */;
+			buildPhases = (
+				B17E00000000000000000102 /* Sources */,
+				B17E00000000000000000103 /* Frameworks */,
+				B17E00000000000000000104 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B17E0000000000000000010A /* BiteWatchWidgets */,
+			);
+			name = BiteWatchWidgets;
+			packageProductDependencies = (
+				B17E00000000000000000106 /* BiteKit */,
+			);
+			productName = BiteWatchWidgets;
+			productReference = B17E00000000000000000100 /* BiteWatchWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B17E00000000000000000111 /* BiteWatchTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B17E00000000000000000115 /* Build configuration list for PBXNativeTarget "BiteWatchTests" */;
+			buildPhases = (
+				B17E00000000000000000112 /* Sources */,
+				B17E00000000000000000113 /* Frameworks */,
+				B17E00000000000000000114 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B17E0000000000000000011A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B17E00000000000000000118 /* BiteWatchTests */,
+			);
+			name = BiteWatchTests;
+			productName = BiteWatchTests;
+			productReference = B17E00000000000000000110 /* BiteWatchTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -710,6 +928,16 @@
 					B17E000000000000000000D1 = {
 						CreatedOnToolsVersion = 27.0;
 					};
+					B17E000000000000000000F1 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					B17E00000000000000000101 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					B17E00000000000000000111 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = B17E000000000000000000F1;
+					};
 				};
 			};
 			buildConfigurationList = B17E0000000000000000000A /* Build configuration list for PBXProject "Bite" */;
@@ -739,6 +967,9 @@
 				B17E00000000000000000091 /* BiteMacShare */,
 				B17E000000000000000000B1 /* BiteMessages */,
 				B17E000000000000000000D1 /* BiteCLI */,
+				B17E000000000000000000F1 /* BiteWatch */,
+				B17E00000000000000000101 /* BiteWatchWidgets */,
+				B17E00000000000000000111 /* BiteWatchTests */,
 			);
 		};
 /* End PBXProject section */
@@ -801,6 +1032,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B17E000000000000000000B4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E000000000000000000F4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000104 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000114 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -880,6 +1132,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B17E000000000000000000F2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000102 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B17E00000000000000000112 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -922,6 +1195,21 @@
 			isa = PBXTargetDependency;
 			target = B17E000000000000000000D1 /* BiteCLI */;
 			targetProxy = B17E000000000000000000DD /* PBXContainerItemProxy */;
+		};
+		B17E0000000000000000010F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B17E00000000000000000101 /* BiteWatchWidgets */;
+			targetProxy = B17E0000000000000000010E /* PBXContainerItemProxy */;
+		};
+		B17E0000000000000000011A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B17E000000000000000000F1 /* BiteWatch */;
+			targetProxy = B17E00000000000000000119 /* PBXContainerItemProxy */;
+		};
+		B17E00000000000000000124 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B17E000000000000000000F1 /* BiteWatch */;
+			targetProxy = B17E00000000000000000123 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1102,7 +1390,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -1165,7 +1452,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -1641,6 +1927,184 @@
 			};
 			name = Release;
 		};
+		B17E000000000000000000F8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/BiteWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteWatch-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.chenyeni.bite;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		B17E000000000000000000F9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/BiteWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteWatch-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.chenyeni.bite;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		B17E00000000000000000108 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/BiteWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteControls-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.watchkitapp.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		B17E00000000000000000109 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/BiteWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/BiteControls-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Bite;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.watchkitapp.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		B17E00000000000000000116 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.watchkitapp.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BiteWatch.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BiteWatch";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		B17E00000000000000000117 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = 33G9D6C5H4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chenyeni.bite.watchkitapp.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BiteWatch.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BiteWatch";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1743,6 +2207,33 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		B17E000000000000000000F7 /* Build configuration list for PBXNativeTarget "BiteWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B17E000000000000000000F8 /* Debug */,
+				B17E000000000000000000F9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B17E00000000000000000107 /* Build configuration list for PBXNativeTarget "BiteWatchWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B17E00000000000000000108 /* Debug */,
+				B17E00000000000000000109 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B17E00000000000000000115 /* Build configuration list for PBXNativeTarget "BiteWatchTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B17E00000000000000000116 /* Debug */,
+				B17E00000000000000000117 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -1797,6 +2288,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
 			productName = BiteCommands;
+		};
+		B17E000000000000000000F6 /* BiteKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
+			productName = BiteKit;
+		};
+		B17E00000000000000000106 /* BiteKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B17E00000000000000000010 /* XCLocalSwiftPackageReference "Packages/BiteKit" */;
+			productName = BiteKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

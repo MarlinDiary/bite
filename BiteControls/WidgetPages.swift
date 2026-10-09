@@ -19,7 +19,8 @@ nonisolated enum WidgetPage: String, AppEnum {
     }
 }
 
-/// What a widget shows in the gallery before Bite has written any page.
+/// What a widget shows in the gallery before Bite has written any page: the pages Bite opens with
+/// (see `FirstLaunchPages`).
 nonisolated enum SamplePages {
     /// The pages as Bite last wrote them for the widgets, or these, before it has.
     static func orShelf() -> [String] {
@@ -27,10 +28,5 @@ nonisolated enum SamplePages {
             .flatMap { PageShelf(folder: $0).read() } ?? markdown
     }
 
-    static let markdown = [
-        "# Welcome to Bite\nSeven dots, seven pages for whatever you're juggling right now.\n",
-        "# Groceries\n- [ ] Oat milk\n- [ ] Sourdough\n- [x] Eggs\n- [ ] Lemons\n- [ ] Coffee beans\n",
-        "# This week\n1. Call the plumber\n2. Book the dentist\n3. Return the library books\n",
-        "", "", "", "",
-    ]
+    static let markdown = FirstLaunchPages.markdown
 }

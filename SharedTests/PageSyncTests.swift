@@ -64,21 +64,16 @@ struct PageSyncTests {
         #expect(PageSync.reconcile(local: "a\nB\n", remote: "a\nb\n", agreed: "a\nb\n", dot: 5, takingRemote: true) == "a\nB\n")
     }
 
-    /// The first-launch pages are told apart however they're written, on a phone or on a Mac.
+    /// The first-launch pages are told apart as they came, however they're written out, and an
+    /// empty page is never one.
     @Test func untouchedFirstLaunchPagesAreKnown() {
         for dot in 0..<4 {
             #expect(SampleContent.isUntouched(SampleContent.markdown(for: dot), dot: dot))
             #expect(!SampleContent.isUntouched(SampleContent.markdown(for: dot) + "one more line\n", dot: dot))
         }
-        // The other device's wording, a tap rather than a click.
-        let phone = SampleContent.markdown(for: 0).replacingOccurrences(of: "Click a dot up top, or press ⌘1 to ⌘7, to switch.",
-                                                                     with: "Swipe, or tap a dot up top to switch.")
-            .replacingOccurrences(of: "Click a checkbox", with: "Tap a checkbox")
-        let mac = SampleContent.markdown(for: 0).replacingOccurrences(of: "Swipe, or tap a dot up top to switch.",
-                                                                   with: "Click a dot up top, or press ⌘1 to ⌘7, to switch.")
-            .replacingOccurrences(of: "Tap a checkbox", with: "Click a checkbox")
-        #expect(SampleContent.isUntouched(phone, dot: 0))
-        #expect(SampleContent.isUntouched(mac, dot: 0))
+        // Written out again, a list's markers as Bite writes them.
+        let rewritten = MarkdownSerializer.markdown(from: MarkdownParser.parse(SampleContent.markdown(for: 3)))
+        #expect(SampleContent.isUntouched(rewritten, dot: 3))
         #expect(!SampleContent.isUntouched("", dot: 5))
     }
 

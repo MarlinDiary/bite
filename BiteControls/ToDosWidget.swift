@@ -110,7 +110,7 @@ struct ToDosView: View {
             ToDoCount(count: entry.open)
         case .accessoryInline:
             Label {
-                Text(entry.open == 0 ? "All done" : entry.open == 1 ? "1 to-do" : "\(entry.open) to-dos")
+                Text(entry.open == 0 ? String(localized: "All done") : String(localized: "\(entry.open) to-dos"))
             } icon: {
                 Image("bite.ring")
             }
@@ -217,7 +217,7 @@ private struct AllDone: View {
     let date: Date
 
     var body: some View {
-        DotStatement(title: "All done", ink: DotPalette.colors[1], line: TimeOfDay.wish(at: date))
+        DotStatement(title: String(localized: "All done"), ink: DotPalette.colors[1], line: TimeOfDay.wish(at: date))
     }
 }
 
@@ -245,7 +245,7 @@ private struct ToDoCount: View {
         }
         .widgetAccentable()
         .accessibilityElement()
-        .accessibilityLabel(count == 0 ? "Nothing to do" : count == 1 ? "1 to-do" : "\(count) to-dos")
+        .accessibilityLabel(count == 0 ? String(localized: "Nothing to do") : String(localized: "\(count) to-dos"))
     }
 }
 #endif

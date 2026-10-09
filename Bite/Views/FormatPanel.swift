@@ -142,11 +142,11 @@ struct FormatPanelView: View {
     private static let inset: CGFloat = 16
 
     /// Each line style in the page's own type, as the system's panel shows its styles.
-    private static let lineStyles: [(title: String, kind: BlockKind, font: Font)] = [
+    private static let lineStyles: [(title: LocalizedStringResource, kind: BlockKind, font: Font)] = [
         ("Heading 1", .heading1, .system(size: 28, weight: .bold)),
         ("Heading 2", .heading2, .system(size: 22, weight: .bold)),
         ("Heading 3", .heading3, .system(size: 19, weight: .semibold)),
-        ("Text", .paragraph, .system(size: 17)),
+        (LocalizedStringResource("line-style.text", defaultValue: "Text"), .paragraph, .system(size: 17)),
     ]
 
     var body: some View {
@@ -168,7 +168,7 @@ struct FormatPanelView: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
-                    ForEach(Self.lineStyles, id: \.title) { style in
+                    ForEach(Self.lineStyles, id: \.kind) { style in
                         let isOn = panel.lineStyle == style.kind
                         Button {
                             panel.setLineStyle(style.kind)

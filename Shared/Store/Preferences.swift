@@ -106,7 +106,9 @@ enum Preferences {
 /// What Settings says before every page is reset (see `DotStore.resetAllPages`).
 enum PageReset {
     static var message: String {
-        let devices = Preferences.syncsWithICloud ? ", here and on your other devices" : ""
-        return "All seven pages go back to how they were the first time Bite opened\(devices). This can't be undone."
+        // Whole sentences, each language's own way round.
+        Preferences.syncsWithICloud
+            ? String(localized: "All seven pages go back to how they were the first time Bite opened, here and on your other devices. This can't be undone.")
+            : String(localized: "All seven pages go back to how they were the first time Bite opened. This can't be undone.")
     }
 }

@@ -1,3 +1,4 @@
+import Foundation
 import BiteKit
 
 /// What the format bar's buttons, and on a Mac the Format menu, do to the page. In the order the
@@ -10,7 +11,10 @@ enum FormatAction: CaseIterable {
         case .todo: "checklist"
         case .bullet: "list.bullet"
         case .ordered: "list.number"
-        case .heading: "textformat"
+        // The system's text size, as its menu is the heading sizes, which the system draws in each
+        // language's own script, a big character and a small one (user, 2026-10-09). An iPad's Aa,
+        // the whole format panel, keeps "textformat".
+        case .heading: "textformat.size"
         // Bite's own (Shared/Symbols.xcassets): a bar beside a block, as Notes draws its block
         // quote, with a symbol of the system's private to it (user, 2026-10-08).
         case .quote: "bite.quote"
@@ -27,19 +31,19 @@ enum FormatAction: CaseIterable {
 
     var title: String {
         switch self {
-        case .todo: "To-do"
-        case .bullet: "Bulleted List"
-        case .ordered: "Numbered List"
-        case .heading: "Heading"
-        case .quote: "Quote"
-        case .code: "Code Block"
-        case .bold: "Bold"
-        case .italic: "Italic"
-        case .strikethrough: "Strikethrough"
-        case .link: "Link"
-        case .outdent: "Outdent"
-        case .indent: "Indent"
-        case .dismiss: "Hide Keyboard"
+        case .todo: String(localized: "To-do")
+        case .bullet: String(localized: "Bulleted List")
+        case .ordered: String(localized: "Numbered List")
+        case .heading: String(localized: "Heading")
+        case .quote: String(localized: "Quote")
+        case .code: String(localized: "Code Block")
+        case .bold: String(localized: "Bold")
+        case .italic: String(localized: "Italic")
+        case .strikethrough: String(localized: "Strikethrough")
+        case .link: String(localized: "Link")
+        case .outdent: String(localized: "Outdent")
+        case .indent: String(localized: "Indent")
+        case .dismiss: String(localized: "Hide Keyboard")
         }
     }
 

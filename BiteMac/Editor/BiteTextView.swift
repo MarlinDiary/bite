@@ -705,7 +705,7 @@ final class BiteTextView: NSTextView {
         let point = convert(event.locationInWindow, from: nil)
         guard let editor, let location = linkLocation(at: point), let link = editor.link(at: location) else {
             let menu = super.menu(for: event)?.tidied() ?? NSMenu()
-            let add = NSMenuItem(title: "Add Link…", action: #selector(addLink(_:)), keyEquivalent: "k")
+            let add = NSMenuItem(title: String(localized: "Add Link…"), action: #selector(addLink(_:)), keyEquivalent: "k")
             add.target = self
             menu.insertItem(.separator(), at: 0)
             menu.insertItem(aimed(FormatMenu.make(withLink: false)), at: 0)
@@ -731,11 +731,11 @@ final class BiteTextView: NSTextView {
         let menu = NSMenu()
         menu.delegate = MenuRow.keyboard
         let items = [
-            MenuRow.item("Open Link", symbol: "arrow.up.right.square", action: #selector(openContextLink), target: self, tint: tint),
-            MenuRow.item("Edit Link…", symbol: "pencil", action: #selector(editContextLink), target: self, tint: tint),
-            MenuRow.item("Copy Link", symbol: "doc.on.doc", action: #selector(copyContextLink), target: self, tint: tint),
+            MenuRow.item(String(localized: "Open Link"), symbol: "arrow.up.right.square", action: #selector(openContextLink), target: self, tint: tint),
+            MenuRow.item(String(localized: "Edit Link…"), symbol: "pencil", action: #selector(editContextLink), target: self, tint: tint),
+            MenuRow.item(String(localized: "Copy Link"), symbol: "doc.on.doc", action: #selector(copyContextLink), target: self, tint: tint),
             .separator(),
-            MenuRow.item("Remove Link", symbol: "link.badge.minus", action: #selector(removeContextLink), target: self, tint: tint),
+            MenuRow.item(String(localized: "Remove Link"), symbol: "link.badge.minus", action: #selector(removeContextLink), target: self, tint: tint),
         ]
         items.forEach(menu.addItem)
         return menu

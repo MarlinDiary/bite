@@ -57,7 +57,7 @@ private struct PageCard: View {
             Group {
                 if glance.isEmpty {
                     // In the middle of the room the system keeps clear, not of the whole screen.
-                    DotStatement(title: ink.name, ink: ink, line: WatchLook.emptyLine(waitingForICloud: store.isWaitingForICloud),
+                    DotStatement(title: ink.localizedName, ink: ink, line: WatchLook.emptyLine(waitingForICloud: store.isWaitingForICloud),
                                  sizes: WatchLook.emptySizes)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {

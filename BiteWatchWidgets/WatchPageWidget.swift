@@ -72,7 +72,7 @@ nonisolated struct WatchPageProvider: AppIntentTimelineProvider {
     /// A watch face offers a widget's settings as choices to pick from: a page each.
     func recommendations() -> [AppIntentRecommendation<WatchPageConfiguration>] {
         WidgetPage.allCases.map { page in
-            AppIntentRecommendation(intent: WatchPageConfiguration(page: page), description: DotPalette.colors[page.dot].name)
+            AppIntentRecommendation(intent: WatchPageConfiguration(page: page), description: DotPalette.colors[page.dot].localizedName)
         }
     }
 
@@ -106,13 +106,13 @@ struct WatchPageView: View {
                 WatchRing(ink: ink)
             }
             .accessibilityElement()
-            .accessibilityLabel("\(ink.name) page")
+            .accessibilityLabel("\(ink.localizedName) page")
         case .accessoryCorner:
             WatchRing(ink: ink, share: 0.95)
-                .widgetLabel(entry.glance.title ?? ink.name)
+                .widgetLabel(entry.glance.title ?? ink.localizedName)
         default:
             if entry.glance.isEmpty {
-                DotStatement(title: ink.name, ink: ink, line: WatchLook.emptyLine)
+                DotStatement(title: ink.localizedName, ink: ink, line: WatchLook.emptyLine)
                     .padding(margins)
             } else {
                 // Down to the bottom edge, the next line fading under it, as in Bite's other

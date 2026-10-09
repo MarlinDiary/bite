@@ -44,7 +44,7 @@ final class LinkSheet: NSObject, UIAdaptivePresentationControllerDelegate {
         settle(keeping: true)
         self.link = link
         self.page = page
-        title = link.isNew ? "Add Link" : "Edit Link"
+        title = link.isNew ? String(localized: "Add Link") : String(localized: "Edit Link")
         // Text that only says the address isn't typed: the address stands in for it, in grey,
         // and follows the address until text is typed.
         text = link.saysItsAddress ? "" : link.text
@@ -234,7 +234,7 @@ struct LinkSheetView: View {
                 Section("Text") {
                     field(text: $sheet.text) {
                         // Empty, the text is the address, which stands in for it.
-                        TextField(sheet.address.isEmpty ? "Optional" : sheet.address, text: $sheet.text)
+                        TextField(sheet.address.isEmpty ? String(localized: "Optional") : sheet.address, text: $sheet.text)
                             .focused($row, equals: .text)
                             // Link text is mostly mid-sentence.
                             .textInputAutocapitalization(.never)

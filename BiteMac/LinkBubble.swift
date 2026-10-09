@@ -46,11 +46,11 @@ final class LinkBubble: NSView {
         editButton.translatesAutoresizingMaskIntoConstraints = false
         editButton.target = self
         editButton.action = #selector(editPressed)
-        editButton.attributedTitle = NSAttributedString(string: "Edit", attributes: [
+        editButton.attributedTitle = NSAttributedString(string: String(localized: "Edit"), attributes: [
             .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium),
             .foregroundColor: NSColor.labelColor,
         ])
-        editButton.setAccessibilityLabel("Edit link")
+        editButton.setAccessibilityLabel(String(localized: "Edit link"))
         content.addSubview(editButton)
 
         NSLayoutConstraint.activate([

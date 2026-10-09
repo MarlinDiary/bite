@@ -17,7 +17,7 @@ struct PageView: View {
         let glance = PageGlance(markdown: store.markdown[dot])
         ScrollView {
             if glance.isEmpty {
-                DotStatement(title: ink.name, ink: ink, line: WatchLook.emptyLine(waitingForICloud: store.isWaitingForICloud),
+                DotStatement(title: ink.localizedName, ink: ink, line: WatchLook.emptyLine(waitingForICloud: store.isWaitingForICloud),
                              sizes: WatchLook.emptySizes)
                     .padding(.top, 24)
             } else {

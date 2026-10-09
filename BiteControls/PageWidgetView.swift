@@ -41,7 +41,7 @@ struct PageWidgetView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay {
                 if showsEmptyPage {
-                    DotStatement(title: DotPalette.colors[entry.page].name, ink: ink, line: "Nothing here yet")
+                    DotStatement(title: DotPalette.colors[entry.page].localizedName, ink: ink, line: String(localized: "Nothing here yet"))
                 }
             }
             .widgetURL(PageTurns.link(to: entry.page))
@@ -170,7 +170,7 @@ private struct GlassDotBar: View {
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(DotPalette.colors[dot].name) page")
+                    .accessibilityLabel("\(DotPalette.colors[dot].localizedName) page")
                 }
             }
             .frame(width: Self.size.width, height: Self.size.height)
@@ -199,7 +199,7 @@ private struct DotColumn: View {
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(DotPalette.colors[dot].name) page")
+                .accessibilityLabel("\(DotPalette.colors[dot].localizedName) page")
                 .position(x: proxy.size.width - WidgetCorner.radius, y: WidgetCorner.radius + CGFloat(dot) * pitch)
             }
         }
@@ -272,7 +272,7 @@ private struct PageRing: View {
         }
         .widgetAccentable()
         .accessibilityElement()
-        .accessibilityLabel("\(DotPalette.colors[entry.page].name) page")
+        .accessibilityLabel("\(DotPalette.colors[entry.page].localizedName) page")
     }
 }
 #endif

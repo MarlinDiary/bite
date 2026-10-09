@@ -107,12 +107,12 @@ struct DotMenu: View {
     /// The same menu, for an iPad's bar button, made as it opens.
     private func menuElements() -> [UIMenuElement] {
         let isEmpty = store.isEmpty[dot]
-        func action(_ title: String, _ symbol: String, isOff: Bool = false, _ handler: @escaping () -> Void) -> UIAction {
-            UIAction(title: title, image: UIImage(systemName: symbol), attributes: isOff ? .disabled : []) { _ in handler() }
+        func action(_ title: LocalizedStringResource, _ symbol: String, isOff: Bool = false, _ handler: @escaping () -> Void) -> UIAction {
+            UIAction(title: String(localized: title), image: UIImage(systemName: symbol), attributes: isOff ? .disabled : []) { _ in handler() }
         }
         let share: UIMenuElement = isEmpty
             ? action("Share", "square.and.arrow.up", isOff: true) {}
-            : UIMenu(title: "Share", image: UIImage(systemName: "square.and.arrow.up"), children: [
+            : UIMenu(title: String(localized: "Share"), image: UIImage(systemName: "square.and.arrow.up"), children: [
                 action("Text", "text.alignleft") { ShareSheet.present(text: store.currentMarkdown(dot: dot), in: window.window) },
                 action("PDF", "doc.richtext") { export(.pdf) },
                 action("Image", "photo") { export(.image) },

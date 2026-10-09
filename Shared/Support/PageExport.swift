@@ -35,7 +35,7 @@ enum PageExport {
     /// What the file is called: the page's first words, or its dot's name, as a page with no words
     /// is called in Messages.
     static func name(page: Int, markdown: String) -> String {
-        let title = PageGlance(markdown: markdown).title ?? "\(DotPalette.colors[page].name) Dot"
+        let title = PageGlance(markdown: markdown).title ?? DotPalette.colors[page].pageName
         // Nothing a file's name can't hold, and not a whole paragraph of it.
         let name = String(title.map { "/:\\".contains($0) ? "-" : $0 }.prefix(60))
         return name.trimmingCharacters(in: .whitespaces)

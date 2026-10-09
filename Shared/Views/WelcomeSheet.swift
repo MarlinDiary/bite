@@ -103,7 +103,7 @@ struct WelcomeSheet: View {
     }
 
     /// How a dot is picked on this device. The other lines read the same everywhere.
-    private static var switching: String {
+    private static var switching: LocalizedStringKey {
         #if os(macOS)
         "One for each dot, for whatever's on your mind. Click a dot, or press ⌘1 to ⌘7, to switch."
         #elseif os(visionOS)
@@ -130,7 +130,7 @@ struct WelcomeSheet: View {
     private static let symbolSize: CGFloat = 30
     #endif
 
-    private func row(symbol: String, title: String, text: String) -> some View {
+    private func row(symbol: String, title: LocalizedStringKey, text: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: Self.symbolSize * 0.6) {
             Image(systemName: symbol)
                 .font(.system(size: Self.symbolSize, weight: .regular))

@@ -1,0 +1,132 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Add to ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Add to ${applicationName}",
+              "Add a to-do to ${applicationName}",
+              "Add a task to ${applicationName}",
+              "Add to ${page} in ${applicationName}",
+              "Add to the ${page} page in ${applicationName}",
+              "Add a to-do to ${page} in ${applicationName}",
+              "Add a to-do to the ${page} page in ${applicationName}"
+            ]
+          }
+        },
+        "ja" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}に追加",
+              "${applicationName}にToDoを追加",
+              "${applicationName}にタスクを追加",
+              "${applicationName}の${page}に追加",
+              "${applicationName}の${page}のページに追加",
+              "${applicationName}の${page}にToDoを追加"
+            ]
+          }
+        },
+        "ko" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}에 추가",
+              "${applicationName}에 할 일 추가",
+              "${applicationName}에 작업 추가",
+              "${applicationName}의 ${page}에 추가",
+              "${applicationName}의 ${page} 페이지에 추가",
+              "${applicationName}의 ${page}에 할 일 추가"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "添加到${applicationName}",
+              "在${applicationName}中添加待办事项",
+              "在${applicationName}中添加任务",
+              "添加到${applicationName}的${page}",
+              "在${applicationName}的${page}页面添加待办事项",
+              "在${applicationName}的${page}中添加待办事项"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "加到${applicationName}",
+              "在${applicationName}加入待辦事項",
+              "在${applicationName}加入任務",
+              "加到${applicationName}的${page}",
+              "在${applicationName}的${page}頁面加入待辦事項",
+              "在${applicationName}的${page}加入待辦事項"
+            ]
+          }
+        }
+      }
+    },
+    "Open ${page} in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Open ${page} in ${applicationName}",
+              "Open the ${page} page in ${applicationName}",
+              "Show ${page} in ${applicationName}"
+            ]
+          }
+        },
+        "ja" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}で${page}を開く",
+              "${applicationName}で${page}のページを開く",
+              "${applicationName}で${page}を表示"
+            ]
+          }
+        },
+        "ko" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}에서 ${page} 열기",
+              "${applicationName}에서 ${page} 페이지 열기",
+              "${applicationName}에서 ${page} 보기"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在${applicationName}中打开${page}",
+              "在${applicationName}中打开${page}页面",
+              "在${applicationName}中显示${page}"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在${applicationName}打開${page}",
+              "在${applicationName}打開${page}頁面",
+              "在${applicationName}顯示${page}"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

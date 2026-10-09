@@ -94,17 +94,17 @@ struct WatchToDosView: View {
             }
         case .accessoryCorner:
             ToDoCount(count: count, share: 0.95)
-                .widgetLabel(entry.toDos.first?.text ?? "All done")
+                .widgetLabel(entry.toDos.first?.text ?? String(localized: "All done"))
         case .accessoryInline:
             Label {
-                Text(count == 0 ? "All done" : count == 1 ? "1 to-do" : "\(count) to-dos")
+                Text(count == 0 ? String(localized: "All done") : String(localized: "\(count) to-dos"))
             } icon: {
                 Image("bite.ring")
             }
         default:
             if entry.toDos.isEmpty {
                 // Bite's orange dot, its icon's, as the full stop.
-                DotStatement(title: "All done", ink: DotPalette.colors[1], line: TimeOfDay.wish(at: entry.date))
+                DotStatement(title: String(localized: "All done"), ink: DotPalette.colors[1], line: TimeOfDay.wish(at: entry.date))
             } else {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(entry.toDos.prefix(3)) { toDo in
@@ -141,6 +141,6 @@ private struct ToDoCount: View {
             }
         }
         .accessibilityElement()
-        .accessibilityLabel(count == 0 ? "Nothing to do" : count == 1 ? "1 to-do" : "\(count) to-dos")
+        .accessibilityLabel(count == 0 ? String(localized: "Nothing to do") : String(localized: "\(count) to-dos"))
     }
 }

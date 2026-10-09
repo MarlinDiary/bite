@@ -868,22 +868,22 @@ final class BiteTextView: UITextView {
         guard let link = editor.selectedLink else {
             guard editor.canEditLink else { return nil }
             return UIMenu(options: .displayInline, children: [
-                UIAction(title: "Add Link…", image: UIImage(systemName: "link")) { _ in editor.perform(.link) },
+                UIAction(title: String(localized: "Add Link…"), image: UIImage(systemName: "link")) { _ in editor.perform(.link) },
             ])
         }
         let location = link.range.location
         var items: [UIMenuElement] = []
         if editor.canOpenLink(at: location) {
-            items.append(UIAction(title: "Open Link", image: UIImage(systemName: "arrow.up.right.square")) { _ in
+            items.append(UIAction(title: String(localized: "Open Link"), image: UIImage(systemName: "arrow.up.right.square")) { _ in
                 editor.openLink(at: location)
             })
         }
         items += [
-            UIAction(title: "Edit Link…", image: UIImage(systemName: "pencil")) { _ in editor.editLink(at: location) },
-            UIAction(title: "Copy Link", image: UIImage(systemName: "doc.on.doc")) { _ in
+            UIAction(title: String(localized: "Edit Link…"), image: UIImage(systemName: "pencil")) { _ in editor.editLink(at: location) },
+            UIAction(title: String(localized: "Copy Link"), image: UIImage(systemName: "doc.on.doc")) { _ in
                 Clipboard.string = EditorController.PageLink.url(for: link.destination)?.absoluteString ?? link.destination
             },
-            UIAction(title: "Remove Link", image: UIImage(systemName: "link.badge.minus")) { _ in editor.removeLink(link) },
+            UIAction(title: String(localized: "Remove Link"), image: UIImage(systemName: "link.badge.minus")) { _ in editor.removeLink(link) },
         ]
         return UIMenu(options: .displayInline, children: items)
     }
@@ -912,9 +912,9 @@ final class BiteTextView: UITextView {
         let outdent = UIKeyCommand(input: "\t", modifierFlags: .shift, action: #selector(outdentLine))
         outdent.wantsPriorityOverSystemBehavior = true
         // Notion's shortcuts for the styles the system has none for.
-        let strikethrough = UIKeyCommand(title: "Strikethrough", action: #selector(toggleStrikethrough),
+        let strikethrough = UIKeyCommand(title: String(localized: "Strikethrough"), action: #selector(toggleStrikethrough),
                                          input: "s", modifierFlags: [.command, .shift])
-        let code = UIKeyCommand(title: "Code", action: #selector(toggleCode), input: "e", modifierFlags: .command)
+        let code = UIKeyCommand(title: String(localized: "Code"), action: #selector(toggleCode), input: "e", modifierFlags: .command)
         return (super.keyCommands ?? []) + [outdent, strikethrough, code]
     }
 
@@ -1265,7 +1265,7 @@ final class BiteTextView: UITextView {
         get {
             let links = (editor?.links() ?? []).filter { editor?.canOpenLink(at: $0.range.location) == true }.prefix(20)
             let opens = links.map { link in
-                UIAccessibilityCustomAction(name: "Open \(link.text)") { [weak self] _ in
+                UIAccessibilityCustomAction(name: String(localized: "Open \(link.text)")) { [weak self] _ in
                     self?.editor?.openLink(at: link.range.location)
                     return true
                 }

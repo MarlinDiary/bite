@@ -52,7 +52,7 @@ struct DotSwitcher: View {
                     .compositingGroup()
                     .opacity(touchedDot == dot ? 0.72 : 1)
                     .accessibilityElement()
-                    .accessibilityLabel("\(DotPalette.colors[dot].name) dot")
+                    .accessibilityLabel("\(DotPalette.colors[dot].localizedName) dot")
                     .accessibilityValue(hasContent ? "Has content" : "Empty")
                     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
                     .accessibilityAction {

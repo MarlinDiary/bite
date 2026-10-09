@@ -45,7 +45,7 @@ struct Shortcut: Codable, Equatable {
             return "F\(index + 1)"
         }
         switch Int(event.keyCode) {
-        case kVK_Space: return "Space"
+        case kVK_Space: return String(localized: "Space")
         case kVK_Return: return "\u{21A9}"
         case kVK_Tab: return "\u{21E5}"
         case kVK_Delete: return "\u{232B}"

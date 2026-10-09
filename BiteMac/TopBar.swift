@@ -51,7 +51,7 @@ enum TopBar {
 /// A button at one end of the bar, of the "…" button's size, glass and colour.
 struct BarButton: View {
     let symbol: String
-    let label: String
+    let label: LocalizedStringKey
     let ink: Color
     /// The symbol's size, a phone's, scaled as the bar is: the "…" is 17 points, the cross 14.
     var size: CGFloat = 17

@@ -7,46 +7,46 @@ enum MainMenu {
     static func make() -> NSMenu {
         let main = NSMenu()
         main.addItem(submenu("Bite", [
-            item("About Bite", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            item(String(localized: "About Bite"), #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
             .separator(),
-            item("Settings…", #selector(AppDelegate.showSettings(_:)), ","),
+            item(String(localized: "Settings…"), #selector(AppDelegate.showSettings(_:)), ","),
             .separator(),
-            item("Quit Bite", #selector(NSApplication.terminate(_:)), "q"),
+            item(String(localized: "Quit Bite"), #selector(NSApplication.terminate(_:)), "q"),
         ]))
-        main.addItem(submenu("Edit", [
-            item("Undo", Selector(("undo:")), "z"),
-            item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+        main.addItem(submenu(String(localized: "Edit"), [
+            item(String(localized: "Undo"), Selector(("undo:")), "z"),
+            item(String(localized: "Redo"), Selector(("redo:")), "z", [.command, .shift]),
             .separator(),
-            item("Cut", #selector(NSText.cut(_:)), "x"),
-            item("Copy", #selector(NSText.copy(_:)), "c"),
-            item("Paste", #selector(NSText.paste(_:)), "v"),
-            item("Paste and Match Style", #selector(NSTextView.pasteAsPlainText(_:)), "v", [.command, .option, .shift]),
-            item("Delete", #selector(NSText.delete(_:))),
-            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+            item(String(localized: "Cut"), #selector(NSText.cut(_:)), "x"),
+            item(String(localized: "Copy"), #selector(NSText.copy(_:)), "c"),
+            item(String(localized: "Paste"), #selector(NSText.paste(_:)), "v"),
+            item(String(localized: "Paste and Match Style"), #selector(NSTextView.pasteAsPlainText(_:)), "v", [.command, .option, .shift]),
+            item(String(localized: "Delete"), #selector(NSText.delete(_:))),
+            item(String(localized: "Select All"), #selector(NSText.selectAll(_:)), "a"),
             .separator(),
-            submenu("Find", [
-                findItem("Find…", .showFindInterface, "f"),
-                findItem("Find Next", .nextMatch, "g"),
-                findItem("Find Previous", .previousMatch, "g", [.command, .shift]),
+            submenu(String(localized: "Find"), [
+                findItem(String(localized: "Find…"), .showFindInterface, "f"),
+                findItem(String(localized: "Find Next"), .nextMatch, "g"),
+                findItem(String(localized: "Find Previous"), .previousMatch, "g", [.command, .shift]),
             ]),
-            submenu("Spelling", [
-                item("Show Spelling and Grammar", #selector(NSText.showGuessPanel(_:)), ":"),
-                item("Check Document Now", #selector(NSText.checkSpelling(_:)), ";"),
-                item("Check Spelling While Typing", #selector(NSTextView.toggleContinuousSpellChecking(_:))),
+            submenu(String(localized: "Spelling"), [
+                item(String(localized: "Show Spelling and Grammar"), #selector(NSText.showGuessPanel(_:)), ":"),
+                item(String(localized: "Check Document Now"), #selector(NSText.checkSpelling(_:)), ";"),
+                item(String(localized: "Check Spelling While Typing"), #selector(NSTextView.toggleContinuousSpellChecking(_:))),
             ]),
-            submenu("Substitutions", [
-                item("Smart Quotes", #selector(NSTextView.toggleAutomaticQuoteSubstitution(_:))),
-                item("Text Replacement", #selector(NSTextView.toggleAutomaticTextReplacement(_:))),
+            submenu(String(localized: "Substitutions"), [
+                item(String(localized: "Smart Quotes"), #selector(NSTextView.toggleAutomaticQuoteSubstitution(_:))),
+                item(String(localized: "Text Replacement"), #selector(NSTextView.toggleAutomaticTextReplacement(_:))),
             ]),
         ]))
         main.addItem(FormatMenu.make())
-        main.addItem(submenu("Dots", DotPalette.colors.indices.map { dot in
-            let dotItem = item(DotPalette.colors[dot].name, #selector(PanelController.selectDot(_:)), "\(dot + 1)")
+        main.addItem(submenu(String(localized: "Dots"), DotPalette.colors.indices.map { dot in
+            let dotItem = item(DotPalette.colors[dot].localizedName, #selector(PanelController.selectDot(_:)), "\(dot + 1)")
             dotItem.tag = dot
             return dotItem
         }))
-        main.addItem(submenu("Window", [
-            item("Close", #selector(NSWindow.performClose(_:)), "w"),
+        main.addItem(submenu(String(localized: "Window"), [
+            item(String(localized: "Close"), #selector(NSWindow.performClose(_:)), "w"),
         ]))
         return main
     }

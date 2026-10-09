@@ -71,8 +71,8 @@ struct PagePicker: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(isEmpty[page])
-                    .accessibilityLabel(isEmpty[page] ? "\(DotPalette.colors[page].name) page, empty" : card.title)
-                    .accessibilityHint(isEmpty[page] ? "" : "Adds the page to the message")
+                    .accessibilityLabel(isEmpty[page] ? String(localized: "\(DotPalette.colors[page].localizedName) page, empty") : card.title)
+                    .accessibilityHint(isEmpty[page] ? "" : String(localized: "Adds the page to the message"))
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
                     .tag(page)
@@ -98,7 +98,7 @@ struct PickerCardFace: View {
             PageWash(ink: ink)
             if glance.isEmpty {
                 // As a widget says a page has nothing on it.
-                DotStatement(title: ink.name, ink: ink, line: "Nothing here yet")
+                DotStatement(title: ink.localizedName, ink: ink, line: String(localized: "Nothing here yet"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 PageGlanceView(glance: glance, page: card.page, ink: ink, metrics: GlanceMetrics(scale: 0.8), ticks: false,
@@ -128,7 +128,7 @@ private struct DotRow: View {
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(DotPalette.colors[dot].name) page")
+                .accessibilityLabel("\(DotPalette.colors[dot].localizedName) page")
                 .accessibilityAddTraits(dot == selection ? .isSelected : [])
             }
         }

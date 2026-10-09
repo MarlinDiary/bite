@@ -11,7 +11,7 @@ extension PageCard {
     /// or dark as the person looking has it, and the bubble's tail runs on from it: nothing an app
     /// sends changes the tail's colour, which under the card alone was another colour from it.
     var barTitle: String {
-        heading ?? "\(DotPalette.colors[page].name) Dot"
+        heading ?? DotPalette.colors[page].pageName
     }
 
     /// The tallest a card is: Messages shows a card's picture at most 248 points tall in a bubble
@@ -54,7 +54,7 @@ extension PageCard {
         message.layout = layout
         message.url = url
         message.summaryText = barTitle
-        message.accessibilityLabel = "\(DotPalette.colors[page].name) page: \(title)"
+        message.accessibilityLabel = String(localized: "\(DotPalette.colors[page].localizedName) page: \(title)")
         return message
     }
 }

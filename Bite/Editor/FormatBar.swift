@@ -139,12 +139,12 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         makeLinkRows()
         glass.contentView.addSubview(linkRows)
 
-        let cancel = BarButton(image: Self.symbol("xmark"), title: "Cancel", handler: UIAction { [weak self] _ in
+        let cancel = BarButton(image: Self.symbol("xmark"), title: String(localized: "Cancel"), handler: UIAction { [weak self] _ in
             self?.cancelLink()
         })
         // In the text's colour, as Cancel and every other symbol on the bar: the page's colour
         // there says a style is on.
-        let done = BarButton(image: Self.symbol("checkmark"), title: "Done", handler: UIAction { [weak self] _ in
+        let done = BarButton(image: Self.symbol("checkmark"), title: String(localized: "Done"), handler: UIAction { [weak self] _ in
             self?.finishLink()
         })
         linkTitle.font = .preferredFont(forTextStyle: .headline)
@@ -361,10 +361,11 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     /// The heading levels the heading button offers, one for each level the page shows, the line's
     /// ticked. Largest first.
     static let headingLevels: [(title: String, kind: BlockKind)] = [
-        ("Heading 1", .heading1), ("Heading 2", .heading2), ("Heading 3", .heading3),
+        (String(localized: "Heading 1"), .heading1), (String(localized: "Heading 2"), .heading2), (String(localized: "Heading 3"), .heading3),
     ]
-    /// What takes a line's heading off, offered only on a heading.
-    static let plainText = "Text"
+    /// What takes a line's heading off, offered only on a heading. A key of its own: other
+    /// languages call the line's style and a link's text by different words.
+    static let plainText = String(localized: "line-style.text", defaultValue: "Text")
 
     /// The heading levels, and on a heading, above them with a line between, plain text: as Notes'
     /// list styles menu has None only on a list.
@@ -468,7 +469,7 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         linkText.isScrollEnabled = false
         linkText.textContainer.lineFragmentPadding = 0
         linkText.textColor = .label
-        linkText.accessibilityLabel = "Link text and address"
+        linkText.accessibilityLabel = String(localized: "Link text and address")
         // The keys' own Return, as on the page, which the keys move over from: Done made it a tick.
         linkText.returnKeyType = .default
         linkText.keyboardType = .default
@@ -543,7 +544,7 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         linkText.typingAttributes = textAttributes
         nameLabel.text = namePlaceholder
         nameLabel.alpha = nameText.isEmpty ? 1 : 0
-        addressLabel.text = "Address"
+        addressLabel.text = String(localized: "Address")
         addressLabel.alpha = addressText.isEmpty ? 1 : 0
         placeRows()
     }
@@ -594,7 +595,7 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     }
 
     private var namePlaceholder: String {
-        address.isEmpty ? "Text" : address
+        address.isEmpty ? String(localized: "Text") : address
     }
 
     /// The link's text as it stands, nothing if it's blank: then it's the address.
@@ -670,7 +671,7 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
             applyLink()
             if link.range.location > current.range.location { link.range.location = storage.length - fromEnd }
         }
-        linkTitle.text = link.isNew ? "Add Link" : "Edit Link"
+        linkTitle.text = link.isNew ? String(localized: "Add Link") : String(localized: "Edit Link")
         // Text that only says the address isn't typed: the address stands in for it, in grey,
         // which says so, and follows the address until text is typed. The rows are set before
         // the glass grows for them, to as tall as they stand.

@@ -66,8 +66,8 @@ final class LinkCard: NSView, NSTextFieldDelegate {
         content.translatesAutoresizingMaskIntoConstraints = false
         glass.contentView = content
 
-        let nameStack = makeRow(symbol: "character.cursor.ibeam", field: nameField, placeholder: "Text", title: "Text")
-        let addressStack = makeRow(symbol: "link", field: addressField, placeholder: "Address", title: "Address")
+        let nameStack = makeRow(symbol: "character.cursor.ibeam", field: nameField, placeholder: String(localized: "Text"), title: String(localized: "Text"))
+        let addressStack = makeRow(symbol: "link", field: addressField, placeholder: String(localized: "Address"), title: String(localized: "Address"))
         // Tab moves between the rows, and Return (see `control(_:textView:doCommandBy:)`).
         nameField.nextKeyView = addressField
         addressField.nextKeyView = nameField
@@ -158,7 +158,7 @@ final class LinkCard: NSView, NSTextFieldDelegate {
 
     /// Text left empty is the address, which stands in for it, in grey.
     private func showAddress() {
-        nameField.placeholderString = address.isEmpty ? "Text" : address
+        nameField.placeholderString = address.isEmpty ? String(localized: "Text") : address
     }
 
     /// Shows `link` in the card, its text above where it goes, to change, and moves the keys over

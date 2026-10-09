@@ -1,3 +1,5 @@
+import Foundation
+
 /// A dot's colour, as sRGB hex for light and dark appearance.
 public struct DotColor: Sendable, Hashable {
     public let name: String
@@ -22,4 +24,17 @@ public enum DotPalette {
     public static let empty = DotColor(name: "Empty", light: 0xBEBEC2, dark: 0x5E5E62)
 
     public static var count: Int { colors.count }
+}
+
+extension DotColor {
+    /// The colour's name in the language Bite is shown in. `name` stays as it is, English, as it
+    /// names Bite's pictures and icons too.
+    public var localizedName: String {
+        Bundle.module.localizedString(forKey: name, value: name, table: nil)
+    }
+
+    /// What a page with no title of its own is called: "Yellow Dot".
+    public var pageName: String {
+        String(format: String(localized: "%@ Dot", bundle: .module), localizedName)
+    }
 }

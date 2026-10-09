@@ -229,7 +229,7 @@ final class PageWindows {
     private func updateTitle(of window: PageWindow) {
         guard let store, let scene = window.window?.windowScene, store.markdown.indices.contains(window.page) else { return }
         let page = window.page
-        let title = PageGlance(markdown: store.markdown[page]).title ?? "\(DotPalette.colors[page].name) Dot"
+        let title = PageGlance(markdown: store.markdown[page]).title ?? DotPalette.colors[page].pageName
         if scene.title != title { scene.title = title }
     }
 

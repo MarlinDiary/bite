@@ -12,7 +12,7 @@ struct SystemBarButton: UIViewRepresentable {
     }
 
     let symbol: String
-    let title: String
+    let title: LocalizedStringResource
     /// The end of the dot bar it stands at, its edge on this view's.
     let edge: Edge
     /// The symbol's colour: the page's, as the dot bar's.
@@ -23,7 +23,7 @@ struct SystemBarButton: UIViewRepresentable {
     var menu: (() -> [UIMenuElement])?
 
     func makeUIView(context: Context) -> SystemBarButtonView {
-        SystemBarButtonView(symbol: symbol, title: title, edge: edge, coordinator: context.coordinator)
+        SystemBarButtonView(symbol: symbol, title: String(localized: title), edge: edge, coordinator: context.coordinator)
     }
 
     func updateUIView(_ view: SystemBarButtonView, context: Context) {

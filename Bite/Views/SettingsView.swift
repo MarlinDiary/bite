@@ -118,7 +118,7 @@ private struct AppIconPicker: View {
                             .padding(.vertical, -11)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(DotPalette.colors[index].name)
+                    .accessibilityLabel(DotPalette.colors[index].localizedName)
                     .accessibilityAddTraits(choice == index ? .isSelected : [])
                 }
             }

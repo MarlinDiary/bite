@@ -18,7 +18,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private func makeWindow(store: DotStore) -> NSWindow {
         let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(store: store)))
-        window.title = "Settings"
+        window.title = String(localized: "Settings")
         window.styleMask = [.titled, .closable]
         window.level = PanelController.levelAbove
         window.isReleasedWhenClosed = false
@@ -105,7 +105,7 @@ struct SettingsView: View {
             }
             Section {
                 LabeledContent("Command Line Tool") {
-                    Button(copiedCommand ? "Copied" : "Copy Command") {
+                    Button(copiedCommand ? String(localized: "Copied") : String(localized: "Copy Command")) {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(CommandLineTool.installCommand(), forType: .string)
                         copiedCommand = true
@@ -181,7 +181,7 @@ private struct ShortcutRecorder: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Button(isRecording ? "Type Shortcut" : shortcut?.title ?? "Record Shortcut") {
+            Button(isRecording ? String(localized: "Type Shortcut") : shortcut?.title ?? String(localized: "Record Shortcut")) {
                 isRecording ? stopRecording() : startRecording()
             }
             .frame(minWidth: 120)

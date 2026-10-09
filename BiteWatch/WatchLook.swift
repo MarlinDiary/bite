@@ -20,9 +20,9 @@ enum WatchLook {
     static let textSize: CGFloat = 16
 
     /// What an empty page says, as its widget does.
-    static let emptyLine = "Nothing here yet"
+    static let emptyLine = String(localized: "Nothing here yet")
     /// What it says while a new watch waits for iCloud: it may not be empty there.
-    static let waitingLine = "Coming from iCloud…"
+    static let waitingLine = String(localized: "Coming from iCloud…")
 
     /// The line under an empty page's name.
     static func emptyLine(waitingForICloud: Bool) -> String {

@@ -8,10 +8,10 @@ public enum TimeOfDay {
 
     public static func wish(at date: Date, calendar: Calendar = .current) -> String {
         switch calendar.component(.hour, from: date) {
-        case 5..<12: "Enjoy your morning"
-        case 12..<17: "Enjoy your afternoon"
-        case 17..<22: "Enjoy your evening"
-        default: "Sleep well"
+        case 5..<12: String(localized: "Enjoy your morning", bundle: .module)
+        case 12..<17: String(localized: "Enjoy your afternoon", bundle: .module)
+        case 17..<22: String(localized: "Enjoy your evening", bundle: .module)
+        default: String(localized: "Sleep well", bundle: .module)
         }
     }
 

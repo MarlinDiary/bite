@@ -4,8 +4,8 @@ import UIKit
 #endif
 
 // What Bite can do for Siri and Shortcuts, and Spotlight with them: open a page, and add a to-do
-// to one. The App Shortcuts below give Siri phrases for each, there as soon as Bite is, in English
-// as the app is.
+// to one. The App Shortcuts below give Siri phrases for each, there as soon as Bite is, in each
+// language Bite speaks (see AppShortcuts.xcstrings).
 
 /// A page to open, by its dot's colour, shown with its ring, as Spotlight's results for its lines
 /// are.

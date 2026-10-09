@@ -57,7 +57,7 @@ struct MenuBarCommands: Commands {
         }
         CommandMenu("Dots") {
             ForEach(DotPalette.colors.indices, id: \.self) { dot in
-                Button(DotPalette.colors[dot].name) {
+                Button(DotPalette.colors[dot].localizedName) {
                     window?.page = dot
                 }
                 .keyboardShortcut(KeyEquivalent(Character(String(dot + 1))))
@@ -65,7 +65,7 @@ struct MenuBarCommands: Commands {
         }
     }
 
-    private func format(_ title: String, _ action: FormatAction, key: KeyEquivalent? = nil,
+    private func format(_ title: LocalizedStringKey, _ action: FormatAction, key: KeyEquivalent? = nil,
                         modifiers: EventModifiers = .command) -> some View {
         Button(title) { editing { $0.perform(action) } }
             .keyboardShortcut(key.map { KeyboardShortcut($0, modifiers: modifiers) })

@@ -6,23 +6,23 @@ enum FormatMenu {
     /// Every style, with Notion's shortcuts for those the system has none for. Also in the text's
     /// right-click menu, without Link, as Add Link… is above it there.
     static func make(withLink: Bool = true) -> NSMenuItem {
-        let link = withLink ? [item("Link", #selector(BiteTextView.addLink(_:)), "k")] : []
-        return submenu("Format", [
-            item("Bold", #selector(BiteTextView.toggleBold(_:)), "b"),
-            item("Italic", #selector(BiteTextView.toggleItalic(_:)), "i"),
-            item("Strikethrough", #selector(BiteTextView.toggleStrikethrough(_:)), "s", [.command, .shift]),
-            item("Code", #selector(BiteTextView.toggleInlineCode(_:)), "e"),
+        let link = withLink ? [item(String(localized: "Link"), #selector(BiteTextView.addLink(_:)), "k")] : []
+        return submenu(String(localized: "Format"), [
+            item(String(localized: "Bold"), #selector(BiteTextView.toggleBold(_:)), "b"),
+            item(String(localized: "Italic"), #selector(BiteTextView.toggleItalic(_:)), "i"),
+            item(String(localized: "Strikethrough"), #selector(BiteTextView.toggleStrikethrough(_:)), "s", [.command, .shift]),
+            item(String(localized: "Code"), #selector(BiteTextView.toggleInlineCode(_:)), "e"),
         ] + link + [
             .separator(),
-            item("To-do", #selector(BiteTextView.toggleTodoList(_:))),
-            item("Bulleted List", #selector(BiteTextView.toggleBulletedList(_:))),
-            item("Numbered List", #selector(BiteTextView.toggleNumberedList(_:))),
-            item("Heading", #selector(BiteTextView.cycleHeading(_:))),
-            item("Quote", #selector(BiteTextView.toggleQuote(_:))),
-            item("Code Block", #selector(BiteTextView.toggleCodeBlock(_:))),
+            item(String(localized: "To-do"), #selector(BiteTextView.toggleTodoList(_:))),
+            item(String(localized: "Bulleted List"), #selector(BiteTextView.toggleBulletedList(_:))),
+            item(String(localized: "Numbered List"), #selector(BiteTextView.toggleNumberedList(_:))),
+            item(String(localized: "Heading"), #selector(BiteTextView.cycleHeading(_:))),
+            item(String(localized: "Quote"), #selector(BiteTextView.toggleQuote(_:))),
+            item(String(localized: "Code Block"), #selector(BiteTextView.toggleCodeBlock(_:))),
             .separator(),
-            item("Indent", #selector(BiteTextView.indentLines(_:)), "]"),
-            item("Outdent", #selector(BiteTextView.outdentLines(_:)), "["),
+            item(String(localized: "Indent"), #selector(BiteTextView.indentLines(_:)), "]"),
+            item(String(localized: "Outdent"), #selector(BiteTextView.outdentLines(_:)), "["),
         ])
     }
 

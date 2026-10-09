@@ -13,11 +13,13 @@ enum SampleContent {
         #endif
     }
 
-    /// Whether `markdown` is a dot's first-launch page as it came.
+    /// Whether `markdown` is a dot's first-launch page as it came, in whichever language: the
+    /// device that made it may speak another.
     static func isUntouched(_ markdown: String, dot: Int) -> Bool {
-        guard FirstLaunchPages.markdown.indices.contains(dot) else { return false }
-        let sample = FirstLaunchPages.markdown[dot]
-        return !sample.isEmpty && normalized(sample) == normalized(markdown)
+        let page = normalized(markdown)
+        return FirstLaunchPages.everyLanguage.contains { samples in
+            samples.indices.contains(dot) && !samples[dot].isEmpty && normalized(samples[dot]) == page
+        }
     }
 
     private static func normalized(_ markdown: String) -> String {

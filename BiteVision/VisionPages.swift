@@ -50,7 +50,7 @@ struct VisionPages: View {
     private func title(of dot: Int) -> String {
         // Read for the page's changes, which come in as other devices' do.
         let _ = store.revisions[dot]
-        return PageGlance(markdown: store.markdown[dot]).title ?? DotPalette.colors[dot].name
+        return PageGlance(markdown: store.markdown[dot]).title ?? DotPalette.colors[dot].localizedName
     }
 
     /// A page's dot, in its colour once it has something in it, filled in for the page on show,

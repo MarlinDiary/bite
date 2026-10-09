@@ -518,10 +518,10 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         menu.addItem(settingsItem())
         menu.addItem(statisticsItem(dot: dot))
         menu.addItem(.separator())
-        menu.addItem(item("Copy Markdown", symbol: "doc.on.doc", action: #selector(copyMarkdown), isEnabled: hasText))
-        menu.addItem(item("Copy Plain Text", symbol: "doc.plaintext", action: #selector(copyPlainText), isEnabled: hasText))
+        menu.addItem(item(String(localized: "Copy Markdown"), symbol: "doc.on.doc", action: #selector(copyMarkdown), isEnabled: hasText))
+        menu.addItem(item(String(localized: "Copy Plain Text"), symbol: "doc.plaintext", action: #selector(copyPlainText), isEnabled: hasText))
         // Neither red nor asked about: the page is cleared as an edit, which undo brings back.
-        menu.addItem(item("Clear Text", symbol: "eraser", action: #selector(clearText), isEnabled: hasText))
+        menu.addItem(item(String(localized: "Clear Text"), symbol: "eraser", action: #selector(clearText), isEnabled: hasText))
         menu.addItem(.separator())
         menu.addItem(shareItem(isEnabled: hasText))
         menu.addItem(.separator())
@@ -545,14 +545,14 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         let statistics = PageStatistics(document: MarkdownParser.parse(store.currentMarkdown(dot: dot)))
         let submenu = NSMenu()
         submenu.autoenablesItems = false
-        submenu.addItem(MenuRow.info("Words", value: statistics.words.formatted()))
-        submenu.addItem(MenuRow.info("Characters", value: statistics.characters.formatted()))
-        submenu.addItem(MenuRow.info("Paragraphs", value: statistics.paragraphs.formatted()))
+        submenu.addItem(MenuRow.info(String(localized: "Words"), value: statistics.words.formatted()))
+        submenu.addItem(MenuRow.info(String(localized: "Characters"), value: statistics.characters.formatted()))
+        submenu.addItem(MenuRow.info(String(localized: "Paragraphs"), value: statistics.paragraphs.formatted()))
         if let modified = store.modified[dot] {
             submenu.addItem(.separator())
-            submenu.addItem(MenuRow.info("Modified", value: ModifiedDate.text(modified)))
+            submenu.addItem(MenuRow.info(String(localized: "Modified"), value: ModifiedDate.text(modified)))
         }
-        return MenuRow.item("Statistics", symbol: "chart.bar", submenu: submenu,
+        return MenuRow.item(String(localized: "Statistics"), symbol: "chart.bar", submenu: submenu,
                             tint: NSColor(hex: DotPalette.colors[dot].light))
     }
 
@@ -561,22 +561,22 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         let submenu = NSMenu()
         submenu.autoenablesItems = false
         submenu.delegate = MenuRow.keyboard
-        submenu.addItem(item("Text", symbol: "text.alignleft", action: #selector(shareText)))
-        submenu.addItem(item("PDF", symbol: "doc.richtext", action: #selector(sharePDF)))
-        submenu.addItem(item("Image", symbol: "photo", action: #selector(shareImage)))
-        submenu.addItem(item("Markdown", symbol: "doc.text", action: #selector(shareMarkdown)))
-        let item = MenuRow.item("Share", symbol: "square.and.arrow.up", submenu: submenu,
+        submenu.addItem(item(String(localized: "Text"), symbol: "text.alignleft", action: #selector(shareText)))
+        submenu.addItem(item(String(localized: "PDF"), symbol: "doc.richtext", action: #selector(sharePDF)))
+        submenu.addItem(item(String(localized: "Image"), symbol: "photo", action: #selector(shareImage)))
+        submenu.addItem(item(String(localized: "Markdown"), symbol: "doc.text", action: #selector(shareMarkdown)))
+        let item = MenuRow.item(String(localized: "Share"), symbol: "square.and.arrow.up", submenu: submenu,
                                 tint: NSColor(hex: DotPalette.colors[store.selection].light))
         item.isEnabled = isEnabled
         return item
     }
 
     private func settingsItem() -> NSMenuItem {
-        item("Settings…", symbol: "gearshape", key: ",", action: #selector(AppDelegate.showSettings(_:)), target: NSApp.delegate)
+        item(String(localized: "Settings…"), symbol: "gearshape", key: ",", action: #selector(AppDelegate.showSettings(_:)), target: NSApp.delegate)
     }
 
     private func quitItem() -> NSMenuItem {
-        item("Quit Bite", symbol: "power", key: "q", action: #selector(NSApplication.terminate(_:)), target: NSApp)
+        item(String(localized: "Quit Bite"), symbol: "power", key: "q", action: #selector(NSApplication.terminate(_:)), target: NSApp)
     }
 
     /// With the phone's pictures, the keys the same commands have in Bite's menus, and the page's
@@ -806,7 +806,7 @@ extension PanelController: NSSharingServicePickerDelegate {
                               proposedSharingServices proposedServices: [NSSharingService]) -> [NSSharingService] {
         guard let file = items.first as? URL else { return proposedServices }
         let image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: nil) ?? NSImage()
-        let save = NSSharingService(title: "Save…", image: image, alternateImage: nil) { [weak self] in
+        let save = NSSharingService(title: String(localized: "Save…"), image: image, alternateImage: nil) { [weak self] in
             self?.save(file)
         }
         return proposedServices + [save]

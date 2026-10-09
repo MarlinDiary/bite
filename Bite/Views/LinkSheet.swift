@@ -68,17 +68,22 @@ final class LinkSheet: NSObject, UIAdaptivePresentationControllerDelegate {
         while let presented = presenter.presentedViewController { presenter = presented }
         let card = LinkCard(rootView: LinkSheetView(sheet: self).tint(Color(uiColor: textView.tintColor)))
         card.modalPresentationStyle = .formSheet
-        card.sheetPresentationController?.largestUndimmedDetentIdentifier = Self.neverUndimmed
         card.presentationController?.delegate = self
+        // Apple Vision Pro's card comes up in front of its window, the keys in front of both, as
+        // they were: the sizes and drawer here are a phone's and an iPad's.
+        #if !os(visionOS)
+        card.sheetPresentationController?.largestUndimmedDetentIdentifier = Self.neverUndimmed
         fit(card, narrow: textView.traitCollection.horizontalSizeClass == .compact, animated: false)
         widthChange = textView.registerForTraitChanges([UITraitHorizontalSizeClass.self]) { [weak self, weak card] (textView: BiteTextView, _) in
             guard let card else { return }
             self?.fit(card, narrow: textView.traitCollection.horizontalSizeClass == .compact, animated: true)
         }
+        #endif
         self.card = card
         presenter.present(card, animated: true)
     }
 
+    #if !os(visionOS)
     /// A size of the card it never comes to (see `show(over:)`).
     private static let neverUndimmed = UISheetPresentationController.Detent.Identifier("bite.linkCard.neverUndimmed")
 
@@ -113,6 +118,7 @@ final class LinkSheet: NSObject, UIAdaptivePresentationControllerDelegate {
             change()
         }
     }
+    #endif
 
     private func stopFollowingWidth() {
         if let widthChange { page?.textView.unregisterForTraitChanges(widthChange) }
@@ -186,6 +192,7 @@ final class LinkSheet: NSObject, UIAdaptivePresentationControllerDelegate {
 /// The card's controller. As a drawer, in a narrow window, it follows its form in height as the
 /// card does, the form saying it as the card's size (see `LinkSheet.fit`).
 private final class LinkCard<Content: View>: UIHostingController<Content> {
+    #if !os(visionOS)
     override var preferredContentSize: CGSize {
         didSet {
             guard preferredContentSize.height != oldValue.height, let sheet = sheetPresentationController,
@@ -193,6 +200,7 @@ private final class LinkCard<Content: View>: UIHostingController<Content> {
             sheet.animateChanges { sheet.invalidateDetents() }
         }
     }
+    #endif
 }
 
 /// The card, laid out as Notes' Add Link: where the link goes, then its text, each in a group of
@@ -240,8 +248,10 @@ struct LinkSheetView: View {
             .fittedSheet(closeButton: false)
             .environment(\.sheetIsCard, true)
             // As a drawer, its glass shows through, as the phone's drawers' does (see
-            // `LinkSheet.fit`): the white behind the form hid it.
+            // `LinkSheet.fit`): the white behind the form hid it. Apple Vision Pro's is glass.
+            #if !os(visionOS)
             .containerBackground(sheet.isDrawer ? AnyShapeStyle(.clear) : AnyShapeStyle(.background), for: .navigation)
+            #endif
             .navigationTitle(sheet.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

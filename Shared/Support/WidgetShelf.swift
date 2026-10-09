@@ -22,7 +22,7 @@ final class WidgetShelf {
         // Where Bite's share extension opens: the page Bite was last on.
         try? shelf?.writeLastPage(store.selection)
         store.onSelectionForExtensions = { [weak self] page in try? self?.shelf?.writeLastPage(page) }
-        #if os(iOS)
+        #if os(iOS) || os(visionOS)
         // A to-do ticked in a widget, which the system runs in Bite: onto the page now, and, with
         // Bite off screen, up to iCloud before the system stops it again.
         ToDoTicks.taker = { [weak self] in

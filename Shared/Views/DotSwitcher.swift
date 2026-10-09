@@ -85,7 +85,12 @@ struct DotSwitcher: View {
         .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
             dotGlows = Preferences.dotGlows
         }
+        #if os(visionOS)
+        // Apple Vision Pro's own glass: Liquid Glass isn't there.
+        .glassBackgroundEffect(in: .capsule)
+        #else
         .glassEffect(.regular.interactive(), in: .capsule)
+        #endif
     }
 
     private func lift() {

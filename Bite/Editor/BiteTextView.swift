@@ -14,7 +14,8 @@ final class BiteTextView: UITextView {
     /// Puts found text out as a finger lands. The text view's own `touchesBegan` missed a quick
     /// tap: UIKit's text tap took the touch before it got there.
     private let touchDown = TouchDownRecognizer()
-    /// Air above the first line, under the dot bar.
+    /// Air above the first line, under the dot bar, or on Apple Vision Pro under the window's bar
+    /// of buttons.
     private let airOverText: CGFloat = 24
     /// Room under the last line when scrolled to the end.
     private let bottomTextInset: CGFloat = 28
@@ -322,7 +323,9 @@ final class BiteTextView: UITextView {
     func configure() {
         backgroundColor = .clear
         alwaysBounceVertical = true
+        #if !os(visionOS)
         keyboardDismissMode = .interactive
+        #endif
         contentInsetAdjustmentBehavior = .never
         // The insets below already allow for the safe area; UIKit would add it a second time.
         automaticallyAdjustsScrollIndicatorInsets = false
@@ -370,7 +373,8 @@ final class BiteTextView: UITextView {
     /// menu bar's Edit ▸ Find, and the bar's own replace. Not on a phone, which wasn't asked for it,
     /// nor in the menu over selected text (user, 2026-10-09).
     private func updateFinding() {
-        let finds = traitCollection.userInterfaceIdiom == .pad
+        // And on Apple Vision Pro, with a keyboard's ⌘F.
+        let finds = [.pad, .vision].contains(traitCollection.userInterfaceIdiom)
         if isFindInteractionEnabled != finds { isFindInteractionEnabled = finds }
     }
     #endif
@@ -410,8 +414,13 @@ final class BiteTextView: UITextView {
         updateInsets()
     }
 
-    /// The margin each side of the text, at least.
+    /// The margin each side of the text, at least. On Apple Vision Pro wider, under its windows'
+    /// far rounder corners: at the phone's, the text crowded the window's edges (user, 2026-10-09).
+    #if os(visionOS)
+    static let sideMargin: CGFloat = 40
+    #else
     static let sideMargin: CGFloat = 22
+    #endif
     /// The text's widest, on an iPad: Notion's page measure, 44 of its body's ems, as on a Mac,
     /// whose 660 points are 44 of its 15-point ems. Lines run across an iPad's whole width were
     /// too long to read.
@@ -451,8 +460,9 @@ final class BiteTextView: UITextView {
         var left = Self.sideMargin + sides.left
         var right = Self.sideMargin + sides.right
         // On an iPad, lines stop at a readable length, as they do on a Mac: a wider window only
-        // widens the margins, the text staying in the middle.
-        if traitCollection.userInterfaceIdiom == .pad {
+        // widens the margins, the text staying in the middle. So on Apple Vision Pro, whose
+        // windows are made as wide as wanted.
+        if [.pad, .vision].contains(traitCollection.userInterfaceIdiom) {
             let room = (bounds.width - left - right - Self.widestText) / 2
             if room > 0 {
                 left += room
@@ -838,11 +848,11 @@ final class BiteTextView: UITextView {
     ///
     /// An iPad has no format bar on its keys, nor its link button: links are added here, after
     /// Cut, Copy and Paste, as Notes has them, and changed in a card in the middle of the screen
-    /// (see `LinkSheet`). On a link, what a Mac's right-click has for one.
+    /// (see `LinkSheet`). On a link, what a Mac's right-click has for one. So on Apple Vision Pro.
     override func editMenu(for textRange: UITextRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
         var children = Self.trimmed(suggestedActions)
         #if !SHARE_EXTENSION
-        if traitCollection.userInterfaceIdiom == .pad, let links = linkMenu() {
+        if [.pad, .vision].contains(traitCollection.userInterfaceIdiom), let links = linkMenu() {
             let edit = children.firstIndex { ($0 as? UIMenu)?.identifier == .standardEdit }
             children.insert(links, at: edit.map { $0 + 1 } ?? 0)
         }
@@ -1302,6 +1312,10 @@ final class BiteTextView: UITextView {
     /// found odd (2026-10-08). In a window as narrow as a phone, the phone's sheet, as Bite's
     /// other sheets are there (2026-10-09, see `fittedSheet`).
     func showWebPage(_ url: URL) {
+        // On Apple Vision Pro, in a Safari window of its own beside Bite's, as visionOS opens links.
+        #if os(visionOS)
+        UIApplication.shared.open(url)
+        #else
         let responders = sequence(first: self as UIResponder, next: \.next)
         guard var presenter = responders.first(where: { $0 is UIViewController }) as? UIViewController else { return }
         // Over anything already shown over the page.
@@ -1324,11 +1338,14 @@ final class BiteTextView: UITextView {
             safari.modalPresentationStyle = .pageSheet
         }
         presenter.present(safari, animated: true)
+        #endif
     }
 
     /// The web pages the page links to, readied in Safari's own view while it's on screen.
     private var prewarmed: [URL] = []
+    #if !os(visionOS)
     private var prewarming: SFSafariViewController.PrewarmingToken?
+    #endif
 
     /// Readies Safari's own view for `pages`, as the page linking to them comes on screen: Safari's
     /// service started and their sites connected to, so a link tapped comes up sooner. Safari's
@@ -1341,8 +1358,11 @@ final class BiteTextView: UITextView {
     }
 
     private func startPrewarming() {
+        // Safari's view can't be readied on Apple Vision Pro.
+        #if !os(visionOS)
         prewarming?.invalidate()
         prewarming = prewarmed.isEmpty ? nil : SFSafariViewController.prewarmConnections(to: prewarmed)
+        #endif
     }
 
     /// The page has the keys, or they've moved over to one of its links in the format bar.
@@ -1485,13 +1505,17 @@ final class BiteTextView: UITextView {
 
     @objc private func didBecomeActive() {
         foundLight.countDown()
+        #if !os(visionOS)
         if prewarming == nil, !prewarmed.isEmpty { startPrewarming() }
+        #endif
     }
 
     @objc private func didEnterBackground() {
         hideFound(.atOnce)
+        #if !os(visionOS)
         prewarming?.invalidate()
         prewarming = nil
+        #endif
     }
 
     let foundLight = FoundLight()
@@ -1541,28 +1565,35 @@ final class BiteTextView: UITextView {
 
     /// A box clicks crisply under the finger as it's ticked, and gives softly as it's unticked.
     /// It was the lightest tap there is, either way, and easily missed.
+    #if !os(visionOS)
     private lazy var tickHaptic = UIImpactFeedbackGenerator(style: .rigid, view: self)
     private lazy var untickHaptic = UIImpactFeedbackGenerator(style: .soft, view: self)
+    #endif
 
     private func playCheckboxHaptic(isChecked: Bool, at point: CGPoint) {
         guard Preferences.playsHaptics else { return }
         #if DEBUG
         checkboxHapticsForTesting.append(isChecked)
         #endif
+        // Apple Vision Pro has nothing to feel it by.
+        #if !os(visionOS)
         if isChecked {
             tickHaptic.impactOccurred(intensity: 0.9, at: point)
         } else {
             untickHaptic.impactOccurred(intensity: 0.7, at: point)
         }
+        #endif
     }
 
     /// Ready as a finger lands on a checkbox, so the click comes as it lifts and not a moment
     /// later.
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        #if !os(visionOS)
         if Preferences.playsHaptics, let touch = touches.first, todoLocation(at: touch.location(in: self)) != nil {
             tickHaptic.prepare()
             untickHaptic.prepare()
         }
+        #endif
         super.touchesBegan(touches, with: event)
     }
 

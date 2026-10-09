@@ -27,19 +27,29 @@ struct SettingsView: View {
                 }
                 Section {
                     Toggle("Check Spelling", isOn: $checksSpelling)
+                    // Apple Vision Pro opens links in Safari's own window, having no Safari to
+                    // open them in Bite with, and has no screen that goes off.
+                    #if !os(visionOS)
                     Toggle("Open Links in Bite", isOn: $opensLinksInBite)
+                    #endif
                     // An iPad plays no haptics, and its Bite is a window of any shape, which no way
                     // up suits better.
                     if UIDevice.current.userInterfaceIdiom == .phone {
                         Toggle("Haptics", isOn: $playsHaptics)
                         Toggle("Lock to Portrait", isOn: $locksPortrait)
                     }
+                    #if !os(visionOS)
                     Toggle("Keep Screen On", isOn: $keepsScreenOn)
+                    #endif
                 }
+                // Apple Vision Pro has no other icons for an app, and the dots in its tab column
+                // are pictures, which don't glow.
+                #if !os(visionOS)
                 Section {
                     AppIconPicker()
                     Toggle("Glowing Dot", isOn: $dotGlows)
                 }
+                #endif
                 Section {
                     Button("Reset All Pages", role: .destructive) {
                         isConfirmingReset = true

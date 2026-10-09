@@ -18,8 +18,9 @@ extension EnvironmentValues {
     /// Whether a sheet shown from here is a card in the middle of the window, rather than a drawer
     /// from the bottom (see `fittedSheet`): on an iPad, unless the window is as narrow as a phone,
     /// which the view showing the sheet says. A sheet's own width is the sheet's, not its
-    /// window's.
-    @Entry var sheetIsCard = UIDevice.current.userInterfaceIdiom == .pad
+    /// window's. On Apple Vision Pro, always: a sheet comes up there as a card in front of its
+    /// window.
+    @Entry var sheetIsCard = [.pad, .vision].contains(UIDevice.current.userInterfaceIdiom)
 }
 
 private struct FittedSheet: ViewModifier {

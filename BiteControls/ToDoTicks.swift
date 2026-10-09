@@ -7,8 +7,9 @@ import BiteKit
 /// Bite, started out of sight if it isn't running, as a Live Activity's buttons do: on the widgets'
 /// copy of the page first, which they show it by, then onto the page itself and up to iCloud at
 /// once (see `WidgetShelf`). Run in the widgets' own process, the tick waited for Bite to be
-/// opened before it reached the page, or iCloud. The Mac runs it in the widgets' process, which
-/// tells Bite, in the menu bar, to take it.
+/// opened before it reached the page, or iCloud. Apple Vision Pro runs it in Bite too (seen with
+/// Bite open, in the simulator). The Mac runs it in the widgets' process, which tells Bite, in the
+/// menu bar, to take it.
 struct ToggleToDoIntent: AppIntent {
     static let title: LocalizedStringResource = "Tick Off To-Do"
     static let isDiscoverable = false
@@ -41,7 +42,7 @@ struct ToggleToDoIntent: AppIntent {
     }
 }
 
-#if os(iOS)
+#if os(iOS) || os(visionOS)
 extension ToggleToDoIntent: LiveActivityIntent {}
 #endif
 

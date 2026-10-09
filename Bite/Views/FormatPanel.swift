@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import BiteKit
 
+#if !os(visionOS)
 /// The Aa button at the dot bar's start, on an iPad: Bite's format panel grows out of it, as
 /// Notes' does out of its own. An iPad shows no format bar on its keys (see
 /// `PagerContainerView.showsBar`). Nothing on a phone, whose bar has them.
@@ -34,6 +35,7 @@ struct FormatButton: View {
         }
     }
 }
+#endif
 
 /// Bite's format panel, out of Aa, drawn as the system's own (`UITextFormattingViewController`,
 /// Notes' and Mail's) is, with Bite's styles in it. The system's has an underline and a dashed
@@ -82,7 +84,7 @@ final class FormatPanel: NSObject, UIPopoverPresentationControllerDelegate {
         top.present(panel, animated: true)
     }
 
-    #if DEBUG
+    #if DEBUG && !os(visionOS)
     /// Opens the panel as Aa does, out of the dot bar's start, for a picture of it.
     func showForTesting() {
         func button(in view: UIView) -> SystemBarButtonView? {
@@ -130,8 +132,9 @@ final class FormatPanel: NSObject, UIPopoverPresentationControllerDelegate {
 
 /// The panel's rows, laid out and coloured as the system's format panel's, measured from it on a
 /// 13-inch iPad: 375 by 195 points, rows 44 tall and 15 apart, groups as capsules on the system's
-/// fill, their buttons a point apart.
-private struct FormatPanelView: View {
+/// fill, their buttons a point apart. Apple Vision Pro's Aa shows it too, in a popover of
+/// SwiftUI's (see `VisionPage`).
+struct FormatPanelView: View {
     let panel: FormatPanel
 
     static let size = CGSize(width: 375, height: 195)

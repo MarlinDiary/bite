@@ -91,9 +91,14 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         // link's rows too (user, 2026-10-05), though it stands still a few frames as the caret
         // moves between them: iOS holds the main thread about 30 ms telling the keys, and the
         // glass's give runs on it a frame at a time.
+        #if os(visionOS)
+        // Not shown on Apple Vision Pro, whose keys float apart from the page.
+        let glass = UIVisualEffectView(effect: nil)
+        #else
         let effect = UIGlassEffect(style: .regular)
         effect.isInteractive = true
         let glass = UIVisualEffectView(effect: effect)
+        #endif
         glassView = glass
         glass.translatesAutoresizingMaskIntoConstraints = false
         // A capsule, and with a link's rows a card, its corners the capsule's ends.
@@ -567,7 +572,11 @@ final class FormatBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
         addressLineTop = second.minY
         // Down to the last line's bottom and the space under it: what the text says it takes
         // leaves out an empty address's line.
+        #if os(visionOS)
+        let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
+        #else
         let scale = window?.screen.scale ?? 3
+        #endif
         let fitsLines = ((end.midY + lineHeight / 2 + linePadding) * scale).rounded() / scale
         let height = max(2 * Self.rowHeight, fitsText, fitsLines)
         guard abs(height - rowsHeight) > 0.5 else { return }

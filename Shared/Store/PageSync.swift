@@ -2,7 +2,7 @@ import CloudKit
 import Foundation
 import OSLog
 import BiteKit
-#if os(iOS)
+#if os(iOS) || os(visionOS)
 import UIKit
 #endif
 
@@ -309,12 +309,12 @@ final class PageSync: CKSyncEngineDelegate {
         }
     }
 
-    #if os(iOS)
+    #if os(iOS) || os(visionOS)
     private var leavingTask = UIBackgroundTaskIdentifier.invalid
 
-    /// Bite is leaving the screen on the phone, which stops it soon after: what's still to go up
-    /// goes now, not a moment later, with time asked of the system to finish sending it. Typed
-    /// just before leaving, it otherwise waited until Bite was opened again.
+    /// Bite is leaving the screen on the phone or Apple Vision Pro, which stops it soon after:
+    /// what's still to go up goes now, not a moment later, with time asked of the system to finish
+    /// sending it. Typed just before leaving, it otherwise waited until Bite was opened again.
     func sendBeforeLeaving() {
         guard let engine else { return }
         store.reportPendingEdits()

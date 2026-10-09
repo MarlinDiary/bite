@@ -42,6 +42,16 @@ struct PageSyncTests {
         #expect(PageSync.unsent(local: local, agreed: agreed) == [2, 3, 5])
     }
 
+    /// With the pages' zone gone from iCloud, as an App Store build finds it where development ones
+    /// synced, every page goes up, unchanged ones too, or a new device would never get them; and an
+    /// emptied one agreed on before. A page never written stays.
+    @Test func aZoneMadeAgainGetsEveryPage() {
+        let local = ["", "\n", "mine\n", "", "same\n", "changed\n"]
+        let agreed: [String?] = [nil, nil, nil, "gone\n", "same\n", "old\n"]
+        #expect(PageSync.resent(local: local, agreed: agreed) == [2, 3, 4, 5])
+        #expect(PageSync.unsent(local: local, agreed: agreed) == [2, 3, 5])
+    }
+
     /// Signed out of iCloud, or iCloud not allowed, a new watch stops waiting for its pages; a
     /// network that's down only holds them up.
     @Test func someFailuresMeanNothingsComing() {

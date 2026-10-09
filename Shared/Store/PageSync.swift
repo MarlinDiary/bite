@@ -54,6 +54,8 @@ final class PageSync: CKSyncEngineDelegate {
     private var isChecking = false
     /// Where the last check left off: the next brings only what changed since.
     private var checkToken: CKServerChangeToken?
+    /// Set as the pages' zone is made again in iCloud (see `zoneIsGone`), until a check finds it.
+    private var isRemakingZone = false
     /// Asked too often, or busy, iCloud says when to come back.
     private var checksPausedUntil: ContinuousClock.Instant?
     /// Whether the last check brought a page changed elsewhere.
@@ -178,6 +180,14 @@ final class PageSync: CKSyncEngineDelegate {
         }
     }
 
+    /// The pages that go up to a zone made again (see `zoneIsGone`): every page with something on
+    /// it, and every page agreed on before, an emptied one too, which empties it elsewhere.
+    static func resent(local: [String], agreed: [String?]) -> [Int] {
+        local.indices.filter { dot in
+            (agreed.indices.contains(dot) && agreed[dot] != nil) || !DotStore.isBlank(local[dot])
+        }
+    }
+
     /// A push from iCloud, as another device changed a page: brought down at once. Says whether a
     /// page came in, which the phone tells the system, to be woken for pushes as often as is useful.
     @discardableResult
@@ -262,6 +272,7 @@ final class PageSync: CKSyncEngineDelegate {
         } catch let error as CKError {
             failed = true
             if error.code == .changeTokenExpired { checkToken = nil }
+            if error.code == .zoneNotFound { zoneIsGone(engine: engine) }
             if let seconds = error.retryAfterSeconds { checksPausedUntil = .now + .seconds(seconds) }
             noteFailure("CKError \(error.code.rawValue), \(error.localizedDescription)"
                         + (error.retryAfterSeconds.map { ", again after \($0) s" } ?? ""))
@@ -274,6 +285,7 @@ final class PageSync: CKSyncEngineDelegate {
         if tookAny { save() }
         if !failed {
             lastFailure = nil
+            isRemakingZone = false
             heardFromICloud("First check")
         }
         lastCheckBroughtChanges = tookNew
@@ -652,7 +664,7 @@ final class PageSync: CKSyncEngineDelegate {
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(id)])
             }
         case .zoneNotFound:
-            engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+            zoneIsGone(engine: engine)
             engine.state.add(pendingRecordZoneChanges: [.saveRecord(id)])
         case .unknownItem:
             // Gone from iCloud: it goes up afresh.
@@ -682,6 +694,23 @@ final class PageSync: CKSyncEngineDelegate {
         saved.pages = Array(repeating: nil, count: DotPalette.count)
         engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
         engine.state.add(pendingRecordZoneChanges: (0..<DotPalette.count).map { .saveRecord(recordID(for: $0)) })
+    }
+
+    /// iCloud has no zone for the pages, as when an App Store build first runs where development
+    /// ones synced: each has its own iCloud. The zone's made again, and every page goes up as it
+    /// is here. Pages this device has, unchanged, went up too, or a new device would never get
+    /// them. What was last agreed stays: every device last agreed through the other iCloud, so a
+    /// page another device sent first is merged with this one's, not kept twice.
+    private func zoneIsGone(engine: CKSyncEngine) {
+        guard !isRemakingZone else { return }
+        isRemakingZone = true
+        Self.note("The pages' zone wasn't in iCloud: making it again")
+        for dot in saved.pages.indices { saved.pages[dot]?.systemFields = nil }
+        engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+        let pages = Self.resent(local: store.markdown, agreed: saved.pages.map { $0?.text })
+        engine.state.add(pendingRecordZoneChanges: pages.map { .saveRecord(recordID(for: $0)) })
+        save()
+        scheduleSend()
     }
 
     // MARK: Records

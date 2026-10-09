@@ -26,6 +26,9 @@ final class DotStore {
         }
     }
 
+    /// Whether the pages were made just now, Bite opening for the first time: its welcome shows
+    /// then (see `Welcome`).
+    @ObservationIgnored let isFirstLaunch: Bool
     @ObservationIgnored private let folder: URL
     @ObservationIgnored private var unsaved: Set<Int> = []
     @ObservationIgnored private var saveTask: Task<Void, Never>?
@@ -114,6 +117,7 @@ final class DotStore {
                 : try? Self.fileURL(for: dot, in: folder).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
         }
         selection = min(max(UserDefaults.standard.integer(forKey: Self.selectionKey), 0), DotPalette.count - 1)
+        self.isFirstLaunch = isFirstLaunch
         if isFirstLaunch {
             unsaved = Set(0..<DotPalette.count)
             saveNow()

@@ -10,28 +10,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func show(store: DotStore) {
         let window = window ?? makeWindow(store: store)
         self.window = window
-        if !window.isVisible { centre(window) }
+        if !window.isVisible { window.centreOnScreenInUse() }
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
-    }
-
-    /// In the middle of the screen in use, the one with the pointer, below its menu bar and above
-    /// its Dock. AppKit's `center()` puts a window higher than the middle.
-    private func centre(_ window: NSWindow) {
-        // Sized first: SwiftUI sizes the window only once it's laid out, and centred before, the
-        // window's corner went in the middle.
-        if let content = window.contentViewController?.view {
-            window.setContentSize(content.fittingSize)
-        }
-        let pointer = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }) ?? NSScreen.main else {
-            window.center()
-            return
-        }
-        let area = screen.visibleFrame
-        let size = window.frame.size
-        window.setFrameOrigin(NSPoint(x: (area.midX - size.width / 2).rounded(), y: (area.midY - size.height / 2).rounded()))
     }
 
     private func makeWindow(store: DotStore) -> NSWindow {
@@ -57,6 +39,26 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         makeWindow(store: store)
     }
     #endif
+}
+
+extension NSWindow {
+    /// In the middle of the screen in use, the one with the pointer, below its menu bar and above
+    /// its Dock. AppKit's `center()` puts a window higher than the middle.
+    func centreOnScreenInUse() {
+        // Sized first: SwiftUI sizes the window only once it's laid out, and centred before, the
+        // window's corner went in the middle.
+        if let content = contentViewController?.view {
+            setContentSize(content.fittingSize)
+        }
+        let pointer = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }) ?? NSScreen.main else {
+            center()
+            return
+        }
+        let area = screen.visibleFrame
+        let size = frame.size
+        setFrameOrigin(NSPoint(x: (area.midX - size.width / 2).rounded(), y: (area.midY - size.height / 2).rounded()))
+    }
 }
 
 struct SettingsView: View {

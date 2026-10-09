@@ -11,6 +11,8 @@ struct VisionPages: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
     @State private var editors = VisionEditors()
+    /// Bite's welcome, the first time it opens (see `Welcome`).
+    @State private var showsWelcome = false
 
     var body: some View {
         @Bindable var store = store
@@ -27,7 +29,13 @@ struct VisionPages: View {
                 }
             }
         }
-        .onAppear { editors.connect(to: store) }
+        .onAppear {
+            editors.connect(to: store)
+            if Welcome.isDue(firstLaunch: store.isFirstLaunch) { showsWelcome = true }
+        }
+        .sheet(isPresented: $showsWelcome) {
+            WelcomeSheet()
+        }
         // A Spotlight result, opened here.
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
             SpotlightIndex.open(activity, in: store)

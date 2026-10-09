@@ -67,9 +67,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         GlobalShortcut.shared.onPress = { [weak panel] in panel?.toggle() }
         GlobalShortcut.shared.registerSaved()
-        // Opened for the first time, it shows where it went.
-        if !UserDefaults.standard.bool(forKey: Self.hasOpenedKey) {
+        // Opened for the first time, it shows where it went, after its welcome.
+        let isFirstLaunch = !UserDefaults.standard.bool(forKey: Self.hasOpenedKey)
+        if isFirstLaunch {
             UserDefaults.standard.set(true, forKey: Self.hasOpenedKey)
+        }
+        if Welcome.isDue(firstLaunch: isFirstLaunch) {
+            WelcomeWindowController.shared.show { [weak panel] in panel?.showOnceRingIsPlaced() }
+        } else if isFirstLaunch {
             panel.showOnceRingIsPlaced()
         }
         #if DEBUG

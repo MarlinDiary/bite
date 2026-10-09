@@ -30,6 +30,11 @@ enum DebugSnapshot {
     /// `-snapshotSettings` the Settings window.
     static func run(panel: PanelController, store: DotStore) {
         let arguments = CommandLine.arguments
+        // `-showWelcome` pictures the welcome window alone, as it is before the panel comes down.
+        if arguments.contains("-showWelcome") {
+            capture()
+            return
+        }
         if let index = arguments.firstIndex(of: "-snapshotDot"), index + 1 < arguments.count, let dot = Int(arguments[index + 1]) {
             store.selection = dot
         }

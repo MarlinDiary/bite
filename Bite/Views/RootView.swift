@@ -20,6 +20,8 @@ private struct WindowPages: View {
     @State private var window: PageWindow
     @Environment(DotStore.self) private var store
     @Environment(\.scenePhase) private var scenePhase
+    /// Bite's welcome, the first time it opens (see `Welcome`).
+    @State private var showsWelcome = false
 
     init(savedPage: Binding<Int>, firstPage: Int) {
         _savedPage = savedPage
@@ -51,6 +53,12 @@ private struct WindowPages: View {
             }
             // Opened in a window already open, rather than a new one.
             .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+            .sheet(isPresented: $showsWelcome) {
+                WelcomeSheet()
+            }
+            .onAppear {
+                if Welcome.isDue(firstLaunch: store.isFirstLaunch) { showsWelcome = true }
+            }
             #if DEBUG
             .onAppear {
                 // `-showLinkSheet` brings up Add Link as Bite launches, with `-startLine`, for a

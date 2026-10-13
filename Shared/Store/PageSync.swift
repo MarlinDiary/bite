@@ -83,8 +83,18 @@ final class PageSync: CKSyncEngineDelegate {
             var systemFields: Data?
             /// When iCloud saved that version: a fetch that crossed a send can bring an older one.
             var modified: Date? = nil
+            /// The iCloud it was agreed through (see `environment`); none from before that was kept.
+            var environment: String? = nil
+
+            /// Agreed through the other iCloud, or one not known: see `reconcile`.
+            var isElsewhere: Bool { environment != PageSync.environment }
         }
     }
+
+    /// The iCloud this build syncs through. Development builds have one of their own, apart from
+    /// the App Store's, and a device that moves from one to the other brings what it agreed there.
+    nonisolated static let environment = Bundle.main.object(forInfoDictionaryKey: "BiteICloudEnvironment") as? String
+        ?? "Development"
 
     /// Not in the app the tests run in, which would sync the person's own pages from there, nor in
     /// one launched to take pictures of itself (`-snapshot`).
@@ -168,8 +178,18 @@ final class PageSync: CKSyncEngineDelegate {
     /// never agreed with iCloud, as a new device's pages start, which would only cross iCloud's own
     /// on their way down, and hold them up.
     private func sendUnsentPages() {
-        let unsent = Self.unsent(local: store.markdown, agreed: saved.pages.map { $0?.text })
-        engine?.state.add(pendingRecordZoneChanges: unsent.map { .saveRecord(recordID(for: $0)) })
+        let agreed = saved.pages.map { $0?.text }
+        var pages = Self.unsent(local: store.markdown, agreed: agreed)
+        // Agreed through the other iCloud: they go up as to a zone made again (see `zoneIsGone`),
+        // and one this iCloud has already comes back to be merged with this device's first.
+        let moved = saved.pages.indices.filter { saved.pages[$0]?.isElsewhere == true }
+        if !moved.isEmpty {
+            Self.note("\(moved.count) pages agreed through the other iCloud")
+            for dot in moved { saved.pages[dot]?.systemFields = nil }
+            let resent = Self.resent(local: store.markdown, agreed: agreed).filter(moved.contains)
+            pages = Array(Set(pages).union(resent)).sorted()
+        }
+        engine?.state.add(pendingRecordZoneChanges: pages.map { .saveRecord(recordID(for: $0)) })
     }
 
     /// The pages `sendUnsentPages` sends, given this device's pages and what iCloud last agreed.
@@ -543,7 +563,7 @@ final class PageSync: CKSyncEngineDelegate {
                 guard let dot = dot(for: record.recordID) else { continue }
                 wentUp(record, dot: dot)
                 saved.pages[dot] = Saved.Page(text: Self.text(of: record), systemFields: Self.systemFields(of: record),
-                                              modified: record.modificationDate)
+                                              modified: record.modificationDate, environment: Self.environment)
             }
             for failure in sent.failedRecordSaves {
                 if let dot = dot(for: failure.record.recordID) { wentUp(failure.record, dot: dot) }
@@ -579,9 +599,10 @@ final class PageSync: CKSyncEngineDelegate {
     }
 
     /// An older version of a page than the one agreed, as a fetch that crossed a send can bring.
+    /// The other iCloud's times say nothing of this one's.
     private func isOlderThanAgreed(_ record: CKRecord) -> Bool {
-        guard let dot = dot(for: record.recordID), let agreed = saved.pages[dot]?.modified,
-              let modified = record.modificationDate else { return false }
+        guard let dot = dot(for: record.recordID), let page = saved.pages[dot], !page.isElsewhere,
+              let agreed = page.modified, let modified = record.modificationDate else { return false }
         return modified < agreed
     }
 
@@ -602,10 +623,12 @@ final class PageSync: CKSyncEngineDelegate {
         // This device's own text, back before word that it went up: what's here grew from it, and
         // merged with what they last agreed on it would be in twice.
         let agreed = remote == sending[dot] ? remote : saved.pages[dot]?.text
+        let agreedElsewhere = remote != sending[dot] && saved.pages[dot]?.isElsewhere == true
         guard remote != agreed else {
             // Nothing new from elsewhere, as when this device's own text comes back: only which
             // version iCloud has changes.
-            saved.pages[dot] = Saved.Page(text: remote, systemFields: Self.systemFields(of: record), modified: record.modificationDate)
+            saved.pages[dot] = Saved.Page(text: remote, systemFields: Self.systemFields(of: record),
+                                          modified: record.modificationDate, environment: Self.environment)
             if store.markdown[dot] != remote {
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(record.recordID)])
                 scheduleSend()
@@ -615,10 +638,12 @@ final class PageSync: CKSyncEngineDelegate {
         lastActivity = .now
         store.reportPendingEdits()
         let local = store.markdown[dot]
-        let merged = Self.reconcile(local: local, remote: remote, agreed: agreed, dot: dot, takingRemote: takesICloudPages)
+        let merged = Self.reconcile(local: local, remote: remote, agreed: agreed, dot: dot,
+                                    agreedElsewhere: agreedElsewhere, takingRemote: takesICloudPages)
         let age = record.modificationDate.map { Date.now.timeIntervalSince($0) } ?? 0
         Self.log.info("Page \(dot + 1): \(local.count) here, \(remote.count) in iCloud, kept \(merged.count), saved \(age, format: .fixed(precision: 1)) s ago")
-        saved.pages[dot] = Saved.Page(text: remote, systemFields: Self.systemFields(of: record), modified: record.modificationDate)
+        saved.pages[dot] = Saved.Page(text: remote, systemFields: Self.systemFields(of: record),
+                                      modified: record.modificationDate, environment: Self.environment)
         if merged != local {
             let modified = Self.whenChanged(merged: merged, remote: remote, there: record.modificationDate, here: store.modified[dot])
             store.applyRemote(dot: dot, markdown: merged, modified: modified)
@@ -640,7 +665,15 @@ final class PageSync: CKSyncEngineDelegate {
     /// person's, and an iPad joining once filled pages left empty everywhere else with them. Else
     /// an empty page, or iCloud's untouched one, takes the other side's, and two different pages are
     /// both kept whole, unless iCloud's is to be taken.
-    static func reconcile(local: String, remote: String, agreed: String?, dot: Int, takingRemote: Bool = false) -> String {
+    ///
+    /// What was agreed through the other iCloud (`agreedElsewhere`) is only a guess at where
+    /// iCloud's page came from. Another device that moved brought the same, and their changes merge;
+    /// but a device that started in this iCloud began with its first-launch pages, and taken as
+    /// changes to what was agreed, they once wiped out the person's pages on the phone. So the merge
+    /// stands only if it keeps most of this device's lines and iCloud's page isn't a first-launch
+    /// one; else it's as the first time.
+    static func reconcile(local: String, remote: String, agreed: String?, dot: Int, agreedElsewhere: Bool = false,
+                          takingRemote: Bool = false) -> String {
         guard let agreed else {
             if takingRemote { return remote }
             let remoteIsSample = SampleContent.isUntouched(remote, dot: dot)
@@ -649,7 +682,23 @@ final class PageSync: CKSyncEngineDelegate {
             if DotStore.isBlank(local) { return remote }
             return TextMerge.merge(base: "", local: local, remote: remote)
         }
-        return TextMerge.merge(base: agreed, local: local, remote: remote)
+        let merged = TextMerge.merge(base: agreed, local: local, remote: remote)
+        if agreedElsewhere, SampleContent.isUntouched(remote, dot: dot) || !keepsMostLines(of: local, in: merged) {
+            return reconcile(local: local, remote: remote, agreed: nil, dot: dot)
+        }
+        return merged
+    }
+
+    /// Whether at least half of a page's lines with something on them are still in another.
+    static func keepsMostLines(of page: String, in other: String) -> Bool {
+        let lines = page.split(separator: "\n").filter { !$0.allSatisfy(\.isWhitespace) }
+        var left = Dictionary(other.split(separator: "\n").map { ($0, 1) }, uniquingKeysWith: +)
+        var kept = 0
+        for line in lines where left[line, default: 0] > 0 {
+            left[line]! -= 1
+            kept += 1
+        }
+        return kept * 2 >= lines.count
     }
 
     private func failed(_ id: CKRecord.ID, _ error: CKError, engine: CKSyncEngine) {

@@ -7,6 +7,8 @@
 		<string>com.chenyeni.bite.refresh</string>
 		<string>com.chenyeni.bite.processing</string>
 	</array>
+	<key>BiteICloudEnvironment</key>
+	<string>$(BITE_ICLOUD_ENVIRONMENT)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

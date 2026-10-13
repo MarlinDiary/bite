@@ -67,6 +67,48 @@ struct PageSyncTests {
         #expect(PageSync.reconcile(local: "mine\n", remote: "theirs\n", agreed: nil, dot: 5) == "mine\ntheirs\n")
     }
 
+    /// A phone moving from development builds to the App Store's found the Vision Pro's first-launch
+    /// pages in that iCloud, merged them as changes to what it had agreed through the other, and
+    /// lost the person's pages to them. Agreed through the other iCloud, a first-launch page from
+    /// this one never takes the place of a page of the person's, nor fills one they left empty.
+    @Test func aPageAgreedThroughTheOtherICloudIsNeverLostToAFirstLaunchPage() {
+        let mine = "# 待办\n- [ ] call the plumber\n- [x] pay rent\n"
+        for dot in 0..<4 {
+            let sample = SampleContent.markdown(for: dot)
+            #expect(PageSync.reconcile(local: mine, remote: sample, agreed: mine, dot: dot, agreedElsewhere: true) == mine)
+            #expect(PageSync.reconcile(local: "", remote: sample, agreed: "", dot: dot, agreedElsewhere: true) == "")
+            // Agreed through this iCloud, it's a change made on purpose, as Start Over makes.
+            #expect(PageSync.reconcile(local: mine, remote: sample, agreed: mine, dot: dot) == sample)
+        }
+    }
+
+    /// A first-launch page typed on since, from a device that began in this iCloud, shares nothing
+    /// with what was agreed through the other: both are kept whole, this device's first.
+    @Test func aPageAgreedThroughTheOtherICloudKeepsItsLinesBesideOneTypedAfresh() {
+        let mine = "a\nb\nc\n"
+        let theirs = SampleContent.markdown(for: 1) + "- [ ] lemons\n"
+        let page = PageSync.reconcile(local: mine, remote: theirs, agreed: mine, dot: 1, agreedElsewhere: true)
+        #expect(page == mine + theirs)
+    }
+
+    /// Another device that moved brought the same page agreed: what it changed since merges in.
+    @Test func aPageAgreedThroughTheOtherICloudMergesWithOneThatMovedToo() {
+        let agreed = "a\nb\nc\nd\n"
+        #expect(PageSync.reconcile(local: agreed, remote: "a\nb\nC\nd\ne\n", agreed: agreed, dot: 5, agreedElsewhere: true)
+                == "a\nb\nC\nd\ne\n")
+        #expect(PageSync.reconcile(local: "a\nB\nc\nd\n", remote: "a\nb\nc\nd\ne\n", agreed: agreed, dot: 5, agreedElsewhere: true)
+                == "a\nB\nc\nd\ne\n")
+    }
+
+    /// Half a page's lines kept is most of them; blank lines don't count, and a line twice must be
+    /// there twice.
+    @Test func mostLinesAreKeptFromHalf() {
+        #expect(PageSync.keepsMostLines(of: "a\nb\n\nc\nd\n", in: "a\nb\nx\n"))
+        #expect(!PageSync.keepsMostLines(of: "a\nb\nc\nd\n", in: "a\nx\n"))
+        #expect(!PageSync.keepsMostLines(of: "a\na\na\n", in: "a\n"))
+        #expect(PageSync.keepsMostLines(of: "", in: "x\n"))
+    }
+
     /// A device joining with `-takeICloudPages` takes iCloud's pages the first time, its own
     /// set aside, and merges as any other afterwards.
     @Test func takingICloudsPagesIsOnlyTheFirstTime() {

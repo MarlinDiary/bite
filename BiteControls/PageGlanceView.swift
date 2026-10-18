@@ -278,9 +278,13 @@ struct PageGlanceView: View {
     private func text(_ line: PageGlance.Line) -> some View {
         // A done to-do is struck through as a whole, in its text's own grey: a widget leaves out a
         // line through text given a colour of its own.
+        // All of a page, as a picture or for a scroll view, keeps every row of every line: drawn at
+        // three times its points, rounding made the lines a little taller than they measured, and
+        // a paragraph whose first row just filled the width gave up its second to fit.
         Text(line.kind == .divider ? AttributedString() : attributed(line))
             .strikethrough(line.kind == .todo && line.isChecked)
             .lineSpacing(rowSpacing(line.kind))
+            .fixedSize(horizontal: false, vertical: showsAll)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 

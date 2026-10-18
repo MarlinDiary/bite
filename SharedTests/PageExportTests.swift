@@ -61,6 +61,38 @@ struct PageExportTests {
         #expect((properties[kCGImagePropertyPixelHeight] as? Int ?? 0) > 3 * 100)
     }
 
+    /// Every row of every line goes into a picture, on the page's wash to its edges. Drawn at
+    /// three times its points, a paragraph whose first row just filled the width once gave up its
+    /// second row to fit, and the picture had bare strips at its top and bottom.
+    @Test func aPictureKeepsEveryRowOnItsWash() throws {
+        let markdown = """
+        # 写作笔记
+        任何内容都是为了让人看懂而写的。读完仍然不懂，这篇文章就失败了。
+        不要先预想一套理想的结果，再照着它去写。
+        ## 让 AI 帮忙时
+        - 先理顺自己的想法，再给出清晰的修改意见
+        - 读着不舒服，就直接说出来
+        ## 写作约束
+        ### 先想清楚再写
+        - [ ] 动笔前用一句话说清这一节是干什么的
+        - [x] 一段只说一件事
+        > 文字只服务于叙事本身。
+        ---
+        最后通读一遍再交。
+        """
+        let data = try #require(PageExport.data(.image, page: 4, markdown: markdown, scale: 3))
+        let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        // The picture's middle column of pixels, top to bottom: wash all the way, nothing clear.
+        var pixels = [UInt8](repeating: 0, count: image.height * 4)
+        let context = try #require(CGContext(data: &pixels, width: 1, height: image.height, bitsPerComponent: 8, bytesPerRow: 4,
+                                             space: CGColorSpaceCreateDeviceRGB(),
+                                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: -CGFloat(image.width / 2), y: 0, width: CGFloat(image.width), height: CGFloat(image.height)))
+        let clear = stride(from: 3, to: pixels.count, by: 4).filter { pixels[$0] < 250 }.count
+        #expect(clear == 0)
+    }
+
     @Test func markdownIsThePageAsItIs() throws {
         let markdown = "# Groceries\n- [ ] Milk\n\n**Bold** and [a link](https://example.com)"
         let data = try #require(PageExport.data(.markdown, page: 0, markdown: markdown, scale: 1))

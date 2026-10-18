@@ -12,6 +12,7 @@
 
 <p align="center">
   <a href="https://apps.apple.com/app/id6820961696"><img src="https://img.shields.io/badge/App_Store-free-0071E3?logo=apple&logoColor=white" alt="Free on the App Store"></a>
+  <a href="https://github.com/MarlinDiary/bite/releases/latest"><img src="https://img.shields.io/github/v/release/MarlinDiary/bite?label=Mac%20download&logo=github&logoColor=white&color=1D1D1F" alt="Download Bite for Mac from GitHub"></a>
   <img src="https://img.shields.io/badge/iOS_%C2%B7_iPadOS_%C2%B7_macOS_%C2%B7_watchOS_%C2%B7_visionOS-26-1D1D1F?logo=apple&logoColor=white" alt="iOS, iPadOS, macOS, watchOS and visionOS 26">
   <img src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white" alt="Swift 6">
 </p>
@@ -57,6 +58,8 @@ Your pages stay in step through your own iCloud. Change a page on two devices at
 ### Mac
 
 Bite lives in the menu bar, a keyboard shortcut away. It has desktop widgets, a Share extension, a right-click menu for links and formatting, and Share as text, PDF, image or Markdown, with Save… for a file.
+
+Bite for Mac is also a download, from [GitHub Releases](https://github.com/MarlinDiary/bite/releases/latest). Signed and notarized by Apple, it keeps itself up to date and syncs through the same iCloud as Bite from the App Store. Keep one of the two on each Mac.
 
 <p align="center">
   <img src=".github/readme/mac.webp" alt="A MacBook Pro in Space Black with Bite's panel open on This week, in dark mode">
@@ -176,5 +179,5 @@ Tests live in `BiteTests`, `BiteMacTests`, `BiteWatchTests`, `BiteVisionUITests`
 ---
 
 <p align="center">
-  <a href="https://apps.apple.com/app/id6820961696">App Store</a> · <a href="https://chenyeni.com/bite/">Website</a> · <a href="https://chenyeni.com/bite/support/">Support</a> · <a href="https://chenyeni.com/bite/privacy/">Privacy</a>
+  <a href="https://apps.apple.com/app/id6820961696">App Store</a> · <a href="https://github.com/MarlinDiary/bite/releases/latest">Mac download</a> · <a href="https://chenyeni.com/bite/">Website</a> · <a href="https://chenyeni.com/bite/support/">Support</a> · <a href="https://chenyeni.com/bite/privacy/">Privacy</a>
 </p>

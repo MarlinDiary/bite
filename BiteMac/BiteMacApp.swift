@@ -67,6 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         GlobalShortcut.shared.onPress = { [weak panel] in panel?.toggle() }
         GlobalShortcut.shared.registerSaved()
+        #if DIRECT_DISTRIBUTION
+        Updates.shared.start()
+        #endif
         // Opened for the first time, it shows where it went, after its welcome.
         let isFirstLaunch = !UserDefaults.standard.bool(forKey: Self.hasOpenedKey)
         if isFirstLaunch {

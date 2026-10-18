@@ -534,6 +534,11 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         let menu = NSMenu()
         menu.delegate = MenuRow.keyboard
         menu.addItem(settingsItem())
+        #if DIRECT_DISTRIBUTION
+        menu.addItem(item(String(localized: "Check for Updates…"), symbol: "arrow.down.circle",
+                          action: #selector(Updates.checkForUpdates(_:)), target: Updates.shared,
+                          isEnabled: Updates.shared.canCheck))
+        #endif
         menu.addItem(.separator())
         menu.addItem(quitItem())
         return menu

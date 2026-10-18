@@ -133,7 +133,7 @@ struct EditorFuzzTests {
 
         // Each line's own and derived attributes run the whole length of the line.
         let keys: [NSAttributedString.Key] = [.biteBlock, .biteIndent, .biteChecked, .biteNumber, .biteNumberStyle,
-                                              .biteLanguage, .biteOrdinal, .biteShownStyle, .biteRunPosition]
+                                              .biteLanguage, .biteOrdinal, .biteShownStyle, .biteRunPosition, .biteKindAbove]
         for (index, line) in lines.enumerated() {
             for key in keys {
                 var range = NSRange()
@@ -174,6 +174,10 @@ struct EditorFuzzTests {
             }
             if storage.attribute(.biteRunPosition, at: line.location, effectiveRange: nil) as? Int != position.rawValue {
                 problems.append("line \(index): run position")
+            }
+            let kindAbove = index > 0 ? blocks[index - 1].kind.rawValue : ""
+            if storage.attribute(.biteKindAbove, at: line.location, effectiveRange: nil) as? String != kindAbove {
+                problems.append("line \(index): kind above")
             }
         }
 

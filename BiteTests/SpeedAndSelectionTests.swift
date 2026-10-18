@@ -153,7 +153,7 @@ struct LoadedStyleTests {
             var rangeA = NSRange(), rangeB = NSRange()
             let attributesA = a.attributes(at: location, effectiveRange: &rangeA)
             let attributesB = b.attributes(at: location, effectiveRange: &rangeB)
-            for key: NSAttributedString.Key in [.biteBlock, .biteIndent, .biteInline, .biteOrdinal, .biteRunPosition, .font, .foregroundColor, .strikethroughStyle, .backgroundColor] {
+            for key: NSAttributedString.Key in [.biteBlock, .biteIndent, .biteInline, .biteOrdinal, .biteRunPosition, .biteKindAbove, .font, .foregroundColor, .strikethroughStyle, .backgroundColor] {
                 #expect(String(describing: attributesA[key]) == String(describing: attributesB[key]), "\(key.rawValue) at \(location)")
             }
             let styleA = attributesA[.paragraphStyle] as? NSParagraphStyle, styleB = attributesB[.paragraphStyle] as? NSParagraphStyle

@@ -157,7 +157,7 @@ struct PageGlanceView: View {
         return HStack(alignment: .firstTextBaseline, spacing: 0) {
             marker(for: part)
                 .frame(width: part.listLine.map { metrics.listTextX(indent: $0.indent) } ?? 0, alignment: .trailing)
-            VStack(alignment: .leading, spacing: (kind == .quote ? 6 : kind == .code ? 2 : 0) * scale) {
+            VStack(alignment: .leading, spacing: (kind == .quote ? PageSpacing.item : kind == .code ? PageSpacing.rowGap(.code) : 0) * scale) {
                 ForEach(lines.indices, id: \.self) { index in
                     text(lines[index])
                 }
@@ -177,7 +177,7 @@ struct PageGlanceView: View {
             }
         }
         // A divider's room round its rule, and an empty line's room.
-        .frame(height: kind == .divider ? 1 + metrics.body * 0.8 : part.isBlank ? metrics.body * 0.75 : nil)
+        .frame(height: kind == .divider ? 1 + dividerRoom * 2 : part.isBlank ? metrics.body * 0.75 : nil)
         .overlay {
             Rectangle()
                 .fill(Color.systemSeparator)
@@ -333,14 +333,14 @@ struct PageGlanceView: View {
     }
 
     private func rowSpacing(_ kind: BlockKind) -> CGFloat {
-        (kind.isHeading || kind == .code ? 2 : 4) * metrics.scale
+        PageSpacing.rowGap(kind) * metrics.scale
     }
 
     // MARK: Spacing
 
-    /// The room above a part, as the editor leaves after one line and before the next, and its rows.
+    /// The room above a part, as the editor leaves between two lines, and its rows.
     private func fit(of part: Part, after above: Part?) -> PartFit {
-        let gap = above.map { (spacing(of: $0.kind).after + spacing(of: part.kind).before) * metrics.scale } ?? 0
+        let gap = above.map { gap(between: $0, and: part) } ?? 0
         switch part {
         case .line(let line) where line.kind == .divider || line.isBlank:
             return PartFit(gap: gap, row: GlanceMetrics.row(metrics.body), spacing: 0, splits: false)
@@ -353,17 +353,20 @@ struct PageGlanceView: View {
         }
     }
 
-    private func spacing(of kind: BlockKind) -> (before: CGFloat, after: CGFloat) {
-        switch kind {
-        case .heading1: (14, 6)
-        case .heading2: (10, 6)
-        case .heading3, .heading4, .heading5, .heading6: (6, 4)
-        case .bullet, .ordered, .todo, .quote: (0, 6)
-        case .code: (8, 8)
-        case .divider: (0, 0)
-        case .paragraph: (0, 8)
-        }
+    /// The room between two parts, as the page's spacing has it (see `PageSpacing`): clear space
+    /// from one part's text to the next's, a code part's edge being its wash's, and a divider's
+    /// its rule, in the middle of the divider's own room. Headings set no bigger than the text, as
+    /// on the Lock Screen, are spaced as text too.
+    private func gap(between above: Part, and part: Part) -> CGFloat {
+        let spaced = { (kind: BlockKind) in metrics.flatHeadings && kind.isHeading ? BlockKind.paragraph : kind }
+        var gap = PageSpacing.gap(after: spaced(above.kind), before: spaced(part.kind)) * metrics.scale
+        if above.kind == .divider { gap -= dividerRoom }
+        if part.kind == .divider { gap -= dividerRoom }
+        return max(0, gap)
     }
+
+    /// A divider's room on either side of its rule (see `view(for:)`).
+    private var dividerRoom: CGFloat { metrics.body * 0.4 }
 }
 
 /// How a part of a page sits in its column: the room above it, and the height of its rows and the

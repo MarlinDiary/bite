@@ -1914,7 +1914,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     private func takeLineAttributes(_ range: NSRange) {
         let line = lineRange(at: range.location)
         let source = min(NSMaxRange(range), NSMaxRange(line) - 1)
-        for key in [NSAttributedString.Key.biteOrdinal, .biteShownStyle, .biteRunPosition] {
+        for key in [NSAttributedString.Key.biteOrdinal, .biteShownStyle, .biteRunPosition, .biteKindAbove] {
             if let value = storage.attribute(key, at: source, effectiveRange: nil) {
                 storage.addAttribute(key, value: value, range: range)
             }
@@ -2196,14 +2196,14 @@ final class EditorController: NSObject, EditorTextViewDelegate {
 
     /// The display attributes of `range`, on a line of kind `block`, from its inline styles.
     private func styleText(in range: NSRange, as block: BlockAttributes) {
-        let runPosition = RunPosition(rawValue: storage.attribute(.biteRunPosition, at: range.location, effectiveRange: nil) as? Int ?? 0) ?? .single
+        let kindAbove = Self.kindAbove(in: storage.attributes(at: range.location, effectiveRange: nil))
         storage.removeAttribute(.strikethroughStyle, range: range)
         storage.removeAttribute(.strikethroughColor, range: range)
         storage.removeAttribute(.backgroundColor, range: range)
         storage.removeAttribute(.underlineStyle, range: range)
         storage.removeAttribute(.underlineColor, range: range)
         for (run, inline) in inlineRuns(in: storage, range: range) {
-            storage.addAttributes(displayAttributes(for: block, inline: inline, runPosition: runPosition), range: run)
+            storage.addAttributes(displayAttributes(for: block, inline: inline, kindAbove: kindAbove), range: run)
             if inline.contains(.italic), block.kind != .code {
                 slantTextWithoutItalics(in: run)
             }
@@ -2263,20 +2263,24 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         let indent: Int
         let isChecked: Bool
         let inline: InlineStyle
-        let runPosition: RunPosition
+        let kindAbove: BlockKind?
     }
 
     private var displayAttributesCache: [DisplayKey: [NSAttributedString.Key: Any]] = [:]
 
-    private func displayAttributes(for block: BlockAttributes, inline: InlineStyle, runPosition: RunPosition) -> [NSAttributedString.Key: Any] {
-        // Only what the theme looks at: indents for lists, a code line's place in its block.
+    private func displayAttributes(for block: BlockAttributes, inline: InlineStyle, kindAbove: BlockKind?) -> [NSAttributedString.Key: Any] {
+        // Only what the theme looks at: indents for lists, the line above for the room above.
         let key = DisplayKey(kind: block.kind, indent: block.kind.isList ? block.indent : 0,
-                             isChecked: block.kind == .todo && block.isChecked, inline: inline,
-                             runPosition: block.kind == .code ? runPosition : .single)
+                             isChecked: block.kind == .todo && block.isChecked, inline: inline, kindAbove: kindAbove)
         if let attributes = displayAttributesCache[key] { return attributes }
-        let attributes = theme.displayAttributes(for: block, inline: inline, runPosition: runPosition)
+        let attributes = theme.displayAttributes(for: block, inline: inline, kindAbove: kindAbove)
         displayAttributesCache[key] = attributes
         return attributes
+    }
+
+    /// The kind of the line above, as a line's derived attributes have it (see `biteKindAbove`).
+    private static func kindAbove(in attributes: [NSAttributedString.Key: Any]) -> BlockKind? {
+        (attributes[.biteKindAbove] as? String).flatMap(BlockKind.init(rawValue:))
     }
 
     /// Chinese, Japanese and Korean fonts have no italics, so italic text in those scripts came
@@ -2294,8 +2298,8 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         }
     }
 
-    /// A page ready to show: block, inline and display attributes, numbers and places in runs of
-    /// code or quote lines, all set as the text is put together. Styling a long page line by line
+    /// A page ready to show: block, inline and display attributes, numbers, places in runs of code
+    /// or quote lines and the kind of the line above each, all set as the text is put together. Styling a long page line by line
     /// once it was in the text view took a tenth of a second. The parser has already sorted out
     /// list levels.
     func styledText(for document: BiteDocument) -> NSMutableAttributedString {
@@ -2316,15 +2320,17 @@ final class EditorController: NSObject, EditorTextViewDelegate {
                 }
             }
             let attributes = BlockAttributes(block)
+            let kindAbove = index > 0 ? blocks[index - 1].kind : nil
             var lineAttributes = attributes.dictionary
             lineAttributes[.biteOrdinal] = numbers[index]?.ordinal ?? 0
             lineAttributes[.biteShownStyle] = numbers[index]?.style?.rawValue ?? ""
             lineAttributes[.biteRunPosition] = position.rawValue
+            lineAttributes[.biteKindAbove] = kindAbove?.rawValue ?? ""
             for run in block.runs {
                 let inline = block.kind == .code ? [] : run.style
                 var runAttributes = lineAttributes
                 runAttributes[.biteInline] = inline.rawValue
-                runAttributes.merge(displayAttributes(for: attributes, inline: inline, runPosition: position)) { $1 }
+                runAttributes.merge(displayAttributes(for: attributes, inline: inline, kindAbove: kindAbove)) { $1 }
                 if block.kind != .code, let link = run.link {
                     runAttributes[.biteLink] = link
                     if !link.isEmpty { runAttributes.merge(theme.linkAttributes(for: attributes)) { $1 } }
@@ -2335,7 +2341,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
                 text.append(NSAttributedString(string: run.text, attributes: runAttributes))
             }
             lineAttributes[.biteInline] = 0
-            lineAttributes.merge(displayAttributes(for: attributes, inline: [], runPosition: position)) { $1 }
+            lineAttributes.merge(displayAttributes(for: attributes, inline: [], kindAbove: kindAbove)) { $1 }
             text.append(NSAttributedString(string: "\n", attributes: lineAttributes))
         }
         for range in italicRanges {
@@ -2449,7 +2455,8 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         storage.endEditing()
     }
 
-    /// Numbers for ordered lists, and each code or quote line's place among its neighbours.
+    /// Numbers for ordered lists, each code or quote line's place among its neighbours, and the
+    /// kind of the line above each line, which decides the room above it.
     private func updateDerivedAttributes(_ region: Region) {
         let lines = region.lines
         let numbers = ListNumbering.numbers(for: lines[region.listsFrom...].map {
@@ -2474,7 +2481,9 @@ final class EditorController: NSObject, EditorTextViewDelegate {
                 case (true, false): .last
                 }
             }
-            if setLineAttribute(.biteRunPosition, position.rawValue, on: line.range), line.block.kind == .code {
+            setLineAttribute(.biteRunPosition, position.rawValue, on: line.range)
+            let kindAbove = index > 0 ? lines[index - 1].block.kind : region.kindBefore
+            if setLineAttribute(.biteKindAbove, kindAbove?.rawValue ?? "", on: line.range) {
                 restyleLine(line.range)
             }
         }
@@ -2517,12 +2526,14 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         let block = BlockAttributes(lineAttributes)
         let inline = block.kind == .code ? [] : inline
         let runPosition = RunPosition(rawValue: lineAttributes[.biteRunPosition] as? Int ?? 0) ?? .single
+        let kindAbove = Self.kindAbove(in: lineAttributes)
         var typing = block.dictionary
         typing[.biteInline] = inline.rawValue
         typing[.biteOrdinal] = lineAttributes[.biteOrdinal] ?? 0
         typing[.biteShownStyle] = lineAttributes[.biteShownStyle] ?? ""
         typing[.biteRunPosition] = runPosition.rawValue
-        typing.merge(displayAttributes(for: block, inline: inline, runPosition: runPosition)) { $1 }
+        typing[.biteKindAbove] = kindAbove?.rawValue ?? ""
+        typing.merge(displayAttributes(for: block, inline: inline, kindAbove: kindAbove)) { $1 }
         if let link, block.kind != .code {
             typing[.biteLink] = link
             if !link.isEmpty { typing.merge(theme.linkAttributes(for: block)) { $1 } }

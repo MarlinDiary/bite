@@ -22,6 +22,9 @@ nonisolated extension NSAttributedString.Key {
     static let biteOrdinal = NSAttributedString.Key("bite.ordinal")
     /// Derived: `RunPosition.rawValue` (Int).
     static let biteRunPosition = NSAttributedString.Key("bite.runPosition")
+    /// Derived: `BlockKind.rawValue` of the line above, which decides the room above this one
+    /// (String, empty on the page's first line).
+    static let biteKindAbove = NSAttributedString.Key("bite.kindAbove")
     /// The number written on an ordered item, where a list starts (Int, -1 for none).
     static let biteNumber = NSAttributedString.Key("bite.number")
     /// The language named on a code block's fence (String, empty for none).
@@ -77,7 +80,7 @@ nonisolated struct BlockAttributes: Equatable, Sendable {
 }
 
 /// Where a code or quote line sits among the lines of its kind around it: it decides a code
-/// block's rounded corners and spacing, and where a quote's bar starts and stops.
+/// block's rounded corners, and where a quote's bar starts and stops.
 nonisolated enum RunPosition: Int, Sendable {
     case single, first, middle, last
 
@@ -147,11 +150,13 @@ nonisolated struct EditorTheme: @unchecked Sendable {
         CGFloat(min(indent, Self.deepestIndent)) * indentStep + markerWidth
     }
 
-    func displayAttributes(for block: BlockAttributes, inline: InlineStyle, runPosition: RunPosition) -> [NSAttributedString.Key: Any] {
+    /// A line's look, given what it is and the kind of the line above it (nil on the page's first
+    /// line), which decides the room above it.
+    func displayAttributes(for block: BlockAttributes, inline: InlineStyle, kindAbove: BlockKind?) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font(for: block.kind, inline: inline),
             .foregroundColor: foregroundColor(for: block, inline: inline),
-            .paragraphStyle: paragraphStyle(for: block, runPosition: runPosition),
+            .paragraphStyle: paragraphStyle(for: block, kindAbove: kindAbove),
         ]
         let isDone = block.kind == .todo && block.isChecked
         if inline.contains(.strikethrough) || isDone {
@@ -195,45 +200,42 @@ nonisolated struct EditorTheme: @unchecked Sendable {
         return .primaryText
     }
 
-    private func paragraphStyle(for block: BlockAttributes, runPosition: RunPosition) -> NSParagraphStyle {
+    private func paragraphStyle(for block: BlockAttributes, kindAbove: BlockKind?) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        style.lineSpacing = 4 * scale
-        style.paragraphSpacing = 8 * scale
-        switch block.kind {
-        case .paragraph:
-            break
-        case .heading1:
-            style.lineSpacing = 2 * scale
-            style.paragraphSpacingBefore = 14 * scale
-            style.paragraphSpacing = 6 * scale
-        case .heading2:
-            style.lineSpacing = 2 * scale
-            style.paragraphSpacingBefore = 10 * scale
-            style.paragraphSpacing = 6 * scale
-        case .heading3, .heading4, .heading5, .heading6:
-            style.lineSpacing = 2 * scale
-            style.paragraphSpacingBefore = 6 * scale
-            style.paragraphSpacing = 4 * scale
+        let kind = block.kind
+        style.lineSpacing = PageSpacing.rowGap(kind) * scale
+        switch kind {
         case .bullet, .ordered, .todo:
             let x = listTextX(indent: block.indent)
             style.firstLineHeadIndent = x
             style.headIndent = x
-            style.paragraphSpacing = 6 * scale
         case .quote:
             style.firstLineHeadIndent = quoteIndent
             style.headIndent = quoteIndent
-            style.paragraphSpacing = 6 * scale
         case .code:
             style.firstLineHeadIndent = codeInset
             style.headIndent = codeInset
             style.tailIndent = -codeInset
-            style.lineSpacing = 2 * scale
-            style.paragraphSpacingBefore = runPosition.isFirst ? 14 * scale : 0
-            style.paragraphSpacing = runPosition.isLast ? 14 * scale : 0
-        case .divider:
-            style.paragraphSpacingBefore = 4 * scale
-            style.paragraphSpacing = 10 * scale
+        default:
+            break
+        }
+        // All the room between two lines is the lower one's, so it can depend on both.
+        if let kindAbove {
+            style.paragraphSpacingBefore = max(0, roomAbove(kind, below: kindAbove))
         }
         return style
+    }
+
+    /// What TextKit needs above a line for the gap the page's spacing asks for (see
+    /// `PageSpacing`). TextKit puts the line spacing above every row, so that comes off. A code
+    /// block's gap is to its wash, which reaches `codePadding` past its text; a divider's is to
+    /// its rule, drawn halfway up the capitals on its empty line.
+    private func roomAbove(_ kind: BlockKind, below kindAbove: BlockKind) -> CGFloat {
+        var gap = PageSpacing.gap(after: kindAbove, before: kind) * scale
+        if kind == .code, kindAbove != .code { gap += codePadding }
+        if kindAbove == .code, kind != .code { gap += codePadding }
+        if kind == .divider { gap -= bodyFont.ascender - bodyFont.capHeight / 2 }
+        if kindAbove == .divider { gap -= bodyFont.capHeight / 2 - bodyFont.descender }
+        return gap - PageSpacing.rowGap(kind) * scale
     }
 }

@@ -13,6 +13,18 @@ struct PageSwiperTests {
         return swiper
     }
 
+    /// A drag of `count` moves of `distance` points, 120 a second from `start`, slow enough to go
+    /// as far as the scroll. Returns when the last came.
+    @discardableResult
+    private func drag(_ swiper: PageSwiper, by distance: CGFloat, count: Int, from start: TimeInterval = 0) -> TimeInterval {
+        var time = start
+        for _ in 0..<count {
+            time += 1.0 / 120
+            swiper.track(distance, at: time)
+        }
+        return time
+    }
+
     /// Settles the spring, a frame at a time at 120 Hz, and returns the page it landed on and
     /// whether the pages ever went past the next page and back.
     private func settle(_ swiper: PageSwiper, from start: TimeInterval) -> (page: Int?, overshot: Bool) {
@@ -28,31 +40,33 @@ struct PageSwiperTests {
 
     @Test func thePagesMovePointForPointWithTheFingers() {
         let swiper = swiper(on: 3)
-        swiper.track(-30, at: 0)
-        swiper.track(-45, at: 0.016)
-        #expect(swiper.offset == -75)
-        #expect(swiper.shownOffset == -75)
+        swiper.track(-3, at: 0)
+        swiper.track(-4.5, at: 0.016)
+        #expect(swiper.offset == -7.5)
+        #expect(swiper.shownOffset == -7.5)
+        drag(swiper, by: -5, count: 30, from: 0.016)
+        #expect(swiper.offset == -157.5)
     }
 
     @Test func pastTheFirstPageTheyMoveLessAndLess() {
         let swiper = swiper(on: 0)
-        swiper.track(100, at: 0)
+        let time = drag(swiper, by: 5, count: 20)
         #expect(swiper.shownOffset > 0 && swiper.shownOffset < 60)
-        swiper.track(200, at: 0.016)
+        drag(swiper, by: 5, count: 40, from: time)
         #expect(swiper.shownOffset < 160)
     }
 
     @Test func letGoOfPastHalfwayItGoesOn() {
         let swiper = swiper(on: 3)
-        swiper.track(-250, at: 0)
-        swiper.release(at: 0.5, springStart: 10)
+        drag(swiper, by: -5, count: 50)
+        swiper.release(at: 1, springStart: 10)
         #expect(settle(swiper, from: 10).page == 4)
     }
 
     @Test func letGoOfShortOfHalfwayItComesBack() {
         let swiper = swiper(on: 3)
-        swiper.track(-150, at: 0)
-        swiper.release(at: 0.5, springStart: 10)
+        drag(swiper, by: -5, count: 30)
+        swiper.release(at: 1, springStart: 10)
         #expect(settle(swiper, from: 10).page == 3)
     }
 
@@ -69,26 +83,45 @@ struct PageSwiperTests {
 
     @Test func aFlickBackStays() {
         let swiper = swiper(on: 3)
-        swiper.track(-150, at: 0)
-        swiper.track(30, at: 0.5)
-        swiper.track(30, at: 0.516)
+        drag(swiper, by: -5, count: 30)
+        swiper.track(15, at: 0.5)
+        swiper.track(15, at: 0.516)
         swiper.release(at: 0.53, springStart: 10)
         #expect(settle(swiper, from: 10).page == 3)
     }
 
-    /// A long swipe goes on past the next page.
+    /// A long drag goes on past the next page.
     @Test func aSwipeLongerThanAPageGoesOn() {
         let swiper = swiper(on: 1)
-        swiper.track(-450, at: 0)
+        drag(swiper, by: -5, count: 90)
         #expect(swiper.page == 2)
-        #expect(swiper.offset == -50)
+        #expect(abs(swiper.offset + 50) < 0.001)
+    }
+
+    /// A flick the system sped up goes one page, however fast: the pages go less and less of the
+    /// scroll's way the faster it goes, and never past the next page before the fingers lift.
+    @Test func aFlickTheSystemSpedUpGoesOnePage() {
+        let swiper = swiper(on: 1)
+        // 150 points every 8 milliseconds, for a tenth of a second: 1,500 of the scroll's points,
+        // nearly four pages.
+        var time = 0.0
+        for _ in 0..<12 {
+            time += 0.008
+            swiper.track(-150, at: time)
+        }
+        #expect(swiper.page == 1)
+        #expect(swiper.offset > -0.85 * 400)
+        swiper.release(at: time + 0.004, springStart: 10)
+        let landed = settle(swiper, from: 10)
+        #expect(landed.page == 2)
+        #expect(!landed.overshot)
     }
 
     /// Fingers down while the pages settle stop them where they are.
     @Test func fingersDownCatchThePages() {
         let swiper = swiper(on: 3)
-        swiper.track(-250, at: 0)
-        swiper.release(at: 0.5, springStart: 10)
+        drag(swiper, by: -5, count: 50)
+        swiper.release(at: 1, springStart: 10)
         _ = swiper.step(to: 10.05)
         let caught = swiper.offset
         swiper.catchPages()

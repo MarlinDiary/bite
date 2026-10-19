@@ -23,6 +23,10 @@ final class PageSwiper {
 
     /// The fingers' last moves, for their speed as they let go.
     private var moves: [(distance: CGFloat, time: TimeInterval)] = []
+    /// The scroll's last moves as the system sent them, for how fast it goes, and when the first
+    /// came (see `easing`).
+    private var scrolls: [(time: TimeInterval, distance: CGFloat)] = []
+    private var began: TimeInterval = 0
     private var spring: (from: CGFloat, target: CGFloat, velocity: CGFloat, start: TimeInterval)?
 
     /// How long the spring takes to settle, about as long as the phone's pager.
@@ -30,6 +34,10 @@ final class PageSwiper {
     /// Slower than this, in points a second, letting go settles on whichever page is mostly on
     /// screen; faster, a flick goes on to the next.
     static let flickSpeed: CGFloat = 250
+    /// Up to this speed, in pages a second, the pages go as far as the scroll; faster, less and
+    /// less, never past `topPagesPerSecond` (see `easing`).
+    static let fullPagesPerSecond: CGFloat = 3.7
+    static let topPagesPerSecond: CGFloat = 5.5
 
     init(pageCount: Int) {
         self.pageCount = pageCount
@@ -40,6 +48,7 @@ final class PageSwiper {
         offset = 0
         spring = nil
         moves = []
+        scrolls = []
         isTracking = true
     }
 
@@ -48,6 +57,7 @@ final class PageSwiper {
         isTracking = false
         spring = nil
         moves = []
+        scrolls = []
         offset = 0
     }
 
@@ -56,11 +66,13 @@ final class PageSwiper {
         guard isSettling else { return }
         spring = nil
         moves = []
+        scrolls = []
         isTracking = true
     }
 
     func track(_ distance: CGFloat, at time: TimeInterval) {
         guard isTracking else { return }
+        let distance = distance * easing(distance, at: time)
         offset += distance
         moves.append((distance, time))
         moves.removeAll { time - $0.time > 0.1 }
@@ -72,6 +84,25 @@ final class PageSwiper {
             page -= 1
             offset -= width
         }
+    }
+
+    /// How much of a scroll's move the pages go. The system speeds a scroll up the faster the
+    /// fingers go, as much as 38 times their way when flicked (measured on a MacBook Pro's
+    /// trackpad), and about one swipe in four flew two pages or more. Slow and medium drags go as
+    /// far as the scroll; faster, the pages go less and less further: of 85 swipes recorded and
+    /// replayed, every flick went one page, at most 0.78 of the way there before the fingers
+    /// lifted, and drags as far as before.
+    private func easing(_ distance: CGFloat, at time: TimeInterval) -> CGFloat {
+        // The swipe's first move came over the frame before.
+        if scrolls.isEmpty { began = time - 1.0 / 120 }
+        scrolls.append((time, abs(distance)))
+        scrolls.removeAll { time - $0.time > 0.1 }
+        // How fast the scroll goes, over its last few moves.
+        let span = max(min(time - began, 0.033), 1.0 / 120)
+        let speed = scrolls.filter { time - $0.time < span }.reduce(0) { $0 + $1.distance } / CGFloat(span)
+        let full = Self.fullPagesPerSecond * width, top = Self.topPagesPerSecond * width
+        guard speed > full, top > full else { return 1 }
+        return (full + (top - full) * tanh((speed - full) / (top - full))) / speed
     }
 
     /// Where the pages are drawn. Past the first page or the last they move less and less, as

@@ -3,25 +3,24 @@
     <channel>
         <title>Bite</title>
         <item>
-            <title>1.0.2</title>
-            <pubDate>Sun, 18 Oct 2026 16:05:52 +1300</pubDate>
-            <sparkle:version>11</sparkle:version>
-            <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+            <title>1.0.3</title>
+            <pubDate>Mon, 19 Oct 2026 13:54:24 +1300</pubDate>
+            <sparkle:version>12</sparkle:version>
+            <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <description><![CDATA[<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>body { font: 13px -apple-system, sans-serif; margin: 12px 16px; } ul { padding-left: 18px; } li { margin: 4px 0; }</style></head>
 <body>
 <ul>
-<li>Lines are spaced by how closely they belong: a heading sits with what's under it, and the items of a list read as one group.</li>
-<li>Your pages stay yours when a device moves between Bite's builds: another device's sample pages never take their place.</li>
-<li>Share as Image keeps every line whole.</li>
-<li>Bite from GitHub now keeps itself up to date.</li>
+<li>Swiping between pages stays smooth on pages full of text.</li>
+<li>A flick goes one page; a long drag still carries on past it.</li>
+<li>The trackpad no longer ticks as a swipe passes halfway.</li>
 </ul>
 </body>
 </html>
 ]]></description>
-            <enclosure url="https://github.com/MarlinDiary/bite/releases/download/v1.0.2/Bite-1.0.2-11.zip" length="6757789" type="application/octet-stream" sparkle:edSignature="o0vhBJouURjcWfgS2ByB+lMM5h/52NKO5aK+8lFFN8ZKI8MlX/7q9LYMlYdqaUOEAU72FuofmVDrKwwku1MSAg=="/>
+            <enclosure url="https://github.com/MarlinDiary/bite/releases/download/v1.0.3/Bite-1.0.3-12.zip" length="6765243" type="application/octet-stream" sparkle:edSignature="XMEpcKDj3bFrOz8cS8SgdwchscXndcWC64g4T7TAa168gNPuWZOltc71DZhmvd4aV5qDjY06ZIn3bDSGqIw2Bg=="/>
         </item>
     </channel>
 </rss>

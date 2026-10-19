@@ -43,6 +43,14 @@ final class PageSwiper {
         isTracking = true
     }
 
+    /// The pages put down as they are, the panel going mid-swipe.
+    func stop() {
+        isTracking = false
+        spring = nil
+        moves = []
+        offset = 0
+    }
+
     /// Fingers down while the pages settle: they stop where they are, to be moved on from there.
     func catchPages() {
         guard isSettling else { return }

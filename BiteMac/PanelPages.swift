@@ -162,7 +162,8 @@ final class PanelPages: NSObject {
     /// comes as the pointer comes onto a link, and goes as it leaves, unless it's between the
     /// link and the pill, on its way there.
     func pointerMoved(to point: NSPoint, over link: EditorController.PageLink?, on page: EditorController?) {
-        guard !linkCard.isEditingLink else { return }
+        // A swiping page isn't where AppKit has it (see `PageScrollView.shift`), nor its links.
+        guard !linkCard.isEditingLink, !swiper.isActive else { return }
         if let link, let page {
             if linkBubble.isShown, linkBubble.link == link { return }
             showBubble(for: link, on: page)
@@ -308,14 +309,18 @@ final class PanelPages: NSObject {
     /// dot bar and the wash follow the page mostly on screen.
     func showSwipe(page: Int, offset: CGFloat) {
         let width = background.bounds.width
+        // On whole pixels, the text is as sharp moving as standing.
+        let scale = background.window?.backingScaleFactor ?? 2
+        let offset = (offset * scale).rounded() / scale
         let beside = offset > 0 ? page - 1 : page + 1
         let hasBeside = offset != 0 && controllers.indices.contains(beside)
+        background.isSwiping = true
         for (index, scrollView) in scrollViews.enumerated() {
             if index == page {
-                scrollView.frame.origin.x = offset
+                scrollView.shift = offset
                 scrollView.isHidden = false
             } else if hasBeside, index == beside {
-                scrollView.frame.origin.x = offset + (offset > 0 ? -width : width)
+                scrollView.shift = offset + (offset > 0 ? -width : width)
                 scrollView.isHidden = false
             } else {
                 scrollView.isHidden = true
@@ -324,8 +329,6 @@ final class PanelPages: NSObject {
         let visible = hasBeside && abs(offset) > width / 2 ? beside : page
         guard visible != onScreen.page ?? store.selection else { return }
         onScreen.page = visible
-        // One tick for each dot passed, as on the phone.
-        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.35
             context.allowsImplicitAnimation = true
@@ -333,15 +336,25 @@ final class PanelPages: NSObject {
         }
     }
 
+    /// The panel going mid-swipe: the pages land at once on the page mostly on screen, and are
+    /// there when it's back.
+    func finishSwipe() {
+        guard swiper.isActive else { return }
+        stopSettling()
+        swiper.stop()
+        land(on: onScreen.page ?? store.selection)
+    }
+
     /// The pages have settled on `page`.
     func land(on page: Int) {
         onScreen.page = nil
         for scrollView in scrollViews {
-            scrollView.frame.origin.x = 0
+            scrollView.shift = 0
         }
         shownPage = nil
         store.selection = page
         showPage(page)
+        background.isSwiping = false
     }
 }
 
@@ -360,6 +373,16 @@ final class PageBackgroundView: NSView {
     override func scrollWheel(with event: NSEvent) {
         if takesScroll(event) { return }
         super.scrollWheel(with: event)
+    }
+
+    /// Whether a swipe has the pages away from where AppKit has them (see `PageScrollView.shift`).
+    /// A click on one meanwhile is the panel's: to AppKit, another page might be under it.
+    var isSwiping = false
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        guard isSwiping, let hit, sequence(first: hit, next: \.superview).contains(where: { $0 is PageScrollView }) else { return hit }
+        return self
     }
     private let wash = NSView()
     /// Chosen in Settings, the panel is thick frosted glass: what's behind it blurred, under the
@@ -435,10 +458,30 @@ final class PageBackgroundView: NSView {
 final class PageScrollView: NSScrollView {
     var takesScroll: (NSEvent) -> Bool = { _ in false }
 
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        // Its layer from the start, there for `shift` to move whenever a swipe comes.
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
     override func scrollWheel(with event: NSEvent) {
         if takesScroll(event) { return }
         lastScrollByHand = CACurrentMediaTime()
         super.scrollWheel(with: event)
+    }
+
+    /// How far right of its frame the page is drawn, as a swipe moves it: its layer moves, and
+    /// its frame stays. A frame moved had AppKit lay the page out again, and draw all its text
+    /// again as more of it came into view, each frame: frames went missing on a page of text.
+    var shift: CGFloat = 0 {
+        didSet {
+            guard shift != oldValue else { return }
+            layer?.transform = CATransform3DMakeTranslation(shift, 0, 0)
+        }
     }
 
     // MARK: Scroll indicator

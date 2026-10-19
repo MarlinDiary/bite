@@ -309,12 +309,20 @@ struct MacPanelTests {
         let store = store()
         store.selection = 1
         let panel = panel(store)
-        let pages = panel.controllers.map { $0.textView.enclosingScrollView }
+        let pages = panel.controllers.map { $0.textView.enclosingScrollView as? PageScrollView }
         let width = try #require(pages[1]?.superview?.bounds.width)
         panel.showSwipe(page: 1, offset: -0.3 * width)
-        #expect(pages[1]?.frame.minX == -0.3 * width)
-        // A page's width on from the offset, which at some widths isn't 0.7 of it to the last bit.
-        #expect(abs((pages[2]?.frame.minX ?? 0) - 0.7 * width) < 0.001)
+        // Drawn moved, to the nearest pixel, and a page's width on from that.
+        let shift = try #require(pages[1]?.shift)
+        #expect(abs(shift + 0.3 * width) <= 0.25)
+        #expect(pages[2]?.shift == shift + width)
+        #expect(pages[1]?.layer?.transform.m41 == shift)
+        #expect(pages[2]?.layer?.transform.m41 == shift + width)
+        // At once, under the fingers, with nothing animating them there.
+        #expect(pages[1]?.layer?.animationKeys() == nil)
+        // To AppKit they're where they were, so it neither lays them out nor draws them again.
+        #expect(pages[1]?.frame.minX == 0)
+        #expect(pages[2]?.frame.minX == 0)
         #expect(pages.indices.filter { pages[$0]?.isHidden == false } == [1, 2])
         #expect(panel.onScreen.page == nil)
         panel.showSwipe(page: 1, offset: -0.6 * width)
@@ -322,7 +330,7 @@ struct MacPanelTests {
         panel.land(on: 2)
         #expect(store.selection == 2)
         #expect(pages.indices.filter { pages[$0]?.isHidden == false } == [2])
-        #expect(pages[2]?.frame.minX == 0)
+        #expect(pages.allSatisfy { $0?.shift == 0 && CATransform3DIsIdentity($0?.layer?.transform ?? CATransform3DIdentity) })
         #expect(panel.onScreen.page == nil)
     }
 
@@ -331,12 +339,72 @@ struct MacPanelTests {
         let store = store()
         store.selection = 0
         let panel = panel(store)
-        let pages = panel.controllers.map { $0.textView.enclosingScrollView }
+        let pages = panel.controllers.map { $0.textView.enclosingScrollView as? PageScrollView }
         panel.showSwipe(page: 0, offset: 30)
         #expect(pages.indices.filter { pages[$0]?.isHidden == false } == [0])
         panel.land(on: 0)
         #expect(store.selection == 0)
-        #expect(pages[0]?.frame.minX == 0)
+        #expect(pages[0]?.shift == 0)
+    }
+
+    /// While a swipe has the pages away from where AppKit has them, a click on them is the
+    /// panel's: to AppKit, the page under the pointer might be another.
+    @Test func aClickWhileSwipingIsThePanels() throws {
+        let store = store()
+        store.selection = 1
+        let panel = panel(store)
+        let background = try #require(panel.windowForTesting.contentView)
+        let page = try #require(panel.controllers[1].textView.enclosingScrollView)
+        let point = background.convert(NSPoint(x: background.bounds.midX, y: background.bounds.midY), to: background.superview)
+        #expect(background.hitTest(point)?.isDescendant(of: page) == true)
+        panel.showSwipe(page: 1, offset: -0.3 * background.bounds.width)
+        #expect(background.hitTest(point) === background)
+        panel.land(on: 1)
+        #expect(background.hitTest(point)?.isDescendant(of: page) == true)
+    }
+
+    /// A scroll from two fingers on a trackpad, at `phase` of their gesture, as the system sends it.
+    private func scroll(across: Double, phase: CGScrollPhase) throws -> NSEvent {
+        let event = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                                         wheel1: 0, wheel2: Int32(across), wheel3: 0))
+        event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: across)
+        event.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: Int64(across))
+        event.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase.rawValue))
+        // Made up, an event's time is 0; the system's are nanoseconds since the Mac started.
+        event.timestamp = CGEventTimestamp(ProcessInfo.processInfo.systemUptime * 1_000_000_000)
+        return try #require(NSEvent(cgEvent: event))
+    }
+
+    /// Put away mid-swipe, the pages land at once on the page mostly on screen, and clicks are
+    /// the pages' again.
+    @Test(.enabled(if: NSEvent.isSwipeTrackingFromScrollEventsEnabled))
+    func thePanelGoingMidSwipeLandsThePages() async throws {
+        let store = store()
+        store.selection = 1
+        let panel = panel(store)
+        panel.show()
+        // Up whatever else has the keys meanwhile, as one dragged away is.
+        panel.placement.isDetached = true
+        let background = try #require(panel.windowForTesting.contentView)
+        let width = background.bounds.width
+        #expect(panel.takesScroll(try scroll(across: -10, phase: .began)))
+        // Steadily past halfway, and the fingers still down.
+        var moved: CGFloat = 10
+        while moved < 0.65 * width {
+            await wait(0.008)
+            #expect(panel.takesScroll(try scroll(across: -10, phase: .changed)))
+            moved += 10
+        }
+        #expect(panel.onScreen.page == 2)
+        panel.hide()
+        #expect(store.selection == 2)
+        #expect(panel.onScreen.page == nil)
+        let pages = panel.controllers.map { $0.textView.enclosingScrollView as? PageScrollView }
+        #expect(pages.allSatisfy { $0?.shift == 0 })
+        #expect(pages.indices.filter { pages[$0]?.isHidden == false } == [2])
+        let point = background.convert(NSPoint(x: background.bounds.midX, y: background.bounds.midY), to: background.superview)
+        #expect(background.hitTest(point)?.isDescendant(of: try #require(pages[2])) == true)
     }
 
     /// Text found from a search outside Bite is lit as the panel comes up on its page, and put out

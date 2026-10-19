@@ -276,6 +276,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
         // A link being changed is kept as typed, as when the keys go anywhere else.
         if linkCard.isEditingLink { linkCard.finish() }
         pages.hideBubble()
+        pages.finishSwipe()
         store.saveNow()
         onVisibleChange(false)
         placement.isDetached = false
@@ -293,6 +294,7 @@ final class PanelController: NSObject, NSWindowDelegate, NSMenuItemValidation {
     /// Another window of Bite's, Settings, is coming up in front.
     func hideForOtherWindow() {
         guard !placement.isDetached, isShown else { return }
+        pages.finishSwipe()
         store.saveNow()
         onVisibleChange(false)
         statusItem?.isHighlighted = false

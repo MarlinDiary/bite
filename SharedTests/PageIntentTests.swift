@@ -76,8 +76,6 @@ struct PageIntentTests {
 
     /// Opened, the page is picked, and the Mac's panel is told to come up on it.
     @Test func openingPicksThePage() {
-        let original = UserDefaults.standard.object(forKey: "selectedDot")
-        defer { UserDefaults.standard.set(original, forKey: "selectedDot") }
         let store = DotStore(folder: folder())
         var shown: [Int] = []
         store.showInEditor = { shown.append($0) }

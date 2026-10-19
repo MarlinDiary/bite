@@ -160,8 +160,6 @@ struct PageSyncTests {
 
     /// Sync hears of another page being picked, someone using Bite, and only when it is another.
     @Test func pickingAnotherPageIsHeard() {
-        let kept = UserDefaults.standard.object(forKey: "selectedDot")
-        defer { UserDefaults.standard.set(kept, forKey: "selectedDot") }
         let store = store()
         var heard = 0
         store.onSelectionChange = { heard += 1 }
@@ -169,6 +167,16 @@ struct PageSyncTests {
         store.selection = other
         store.selection = other
         #expect(heard == 1)
+    }
+
+    /// A store of pages of its own, as a test's is, picks pages without touching the page the
+    /// person picked, which Bite opens on next time.
+    @Test func aStoreOfItsOwnLeavesThePersonsPickAlone() {
+        let picked = UserDefaults.standard.object(forKey: "selectedDot") as? Int
+        let store = store()
+        #expect(store.selection == 0)
+        store.selection = ((picked ?? 0) + 3) % DotPalette.count
+        #expect(UserDefaults.standard.object(forKey: "selectedDot") as? Int == picked)
     }
 
     /// iCloud is asked every second while Bite is on screen, every half second while changes

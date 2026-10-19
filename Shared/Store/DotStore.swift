@@ -18,7 +18,9 @@ final class DotStore {
     @ObservationIgnored private(set) var modified: [Date?]
     var selection: Int {
         didSet {
-            UserDefaults.standard.set(selection, forKey: Self.selectionKey)
+            if keepsSelection {
+                UserDefaults.standard.set(selection, forKey: Self.selectionKey)
+            }
             if selection != oldValue {
                 onSelectionChange?()
                 onSelectionForExtensions?(selection)
@@ -94,6 +96,10 @@ final class DotStore {
     @ObservationIgnored var showInEditor: ((Int) -> Void)?
 
     private static let selectionKey = "selectedDot"
+    /// Whether these are the person's own pages, whose page picked is kept for Bite to open on
+    /// next time. A store of pages of its own, a test's, a snapshot's or the share sheet's copy,
+    /// leaves the person's pick alone: put back after a test, it undid a page picked meanwhile.
+    @ObservationIgnored private let keepsSelection: Bool
 
     static var defaultFolder: URL {
         URL.applicationSupportDirectory.appending(path: "Dots", directoryHint: .isDirectory)
@@ -116,7 +122,8 @@ final class DotStore {
                 ? .now
                 : try? Self.fileURL(for: dot, in: folder).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
         }
-        selection = min(max(UserDefaults.standard.integer(forKey: Self.selectionKey), 0), DotPalette.count - 1)
+        keepsSelection = folder == Self.defaultFolder
+        selection = keepsSelection ? min(max(UserDefaults.standard.integer(forKey: Self.selectionKey), 0), DotPalette.count - 1) : 0
         self.isFirstLaunch = isFirstLaunch
         if isFirstLaunch {
             unsaved = Set(0..<DotPalette.count)

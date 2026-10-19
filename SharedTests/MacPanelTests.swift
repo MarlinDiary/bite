@@ -306,8 +306,6 @@ struct MacPanelTests {
     /// Two fingers sliding sideways: the pages follow, the dot bar shows the page mostly on screen,
     /// and the swipe lands on the page beside.
     @Test func aSwipeMovesToThePageBeside() throws {
-        let original = UserDefaults.standard.object(forKey: "selectedDot")
-        defer { UserDefaults.standard.set(original, forKey: "selectedDot") }
         let store = store()
         store.selection = 1
         let panel = panel(store)
@@ -330,8 +328,6 @@ struct MacPanelTests {
 
     /// Past the first page there's none to come in.
     @Test func pastTheFirstPageNothingComesIn() {
-        let original = UserDefaults.standard.object(forKey: "selectedDot")
-        defer { UserDefaults.standard.set(original, forKey: "selectedDot") }
         let store = store()
         store.selection = 0
         let panel = panel(store)
@@ -346,8 +342,6 @@ struct MacPanelTests {
     /// Text found from a search outside Bite is lit as the panel comes up on its page, and put out
     /// as another page is shown, and as the panel is put away, to be gone when they're back.
     @Test func foundTextGoesWithItsPageOrThePanel() {
-        let original = UserDefaults.standard.object(forKey: "selectedDot")
-        defer { UserDefaults.standard.set(original, forKey: "selectedDot") }
         let store = store()
         let panel = panel(store)
         panel.show()
@@ -367,8 +361,6 @@ struct MacPanelTests {
 
     /// A page opened from Siri or Shortcuts: the panel comes up on it, or goes to it.
     @Test func aPageOpenedFromSiriBringsThePanelUp() {
-        let original = UserDefaults.standard.object(forKey: "selectedDot")
-        defer { UserDefaults.standard.set(original, forKey: "selectedDot") }
         let store = store()
         let panel = panel(store)
         let pages = panel.controllers.map { $0.textView.enclosingScrollView }

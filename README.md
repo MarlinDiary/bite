@@ -73,6 +73,14 @@ Open Bite in as many windows as you like with ⌘N, each on its own page, or the
   <img src=".github/readme/ipads.webp" alt="Two iPad Pro: Bite's format panel open over the Formatting page in silver, and This week in dark mode in Space Black">
 </p>
 
+### iPhone Duo
+
+Folded or open, the seven dots go down the side of the screen, where your thumb is. As you type they draw in to the page's own dot, with Aa and the … button rising out of the keys. Open, a page keeps a readable width, and in Split View Bite sits beside another app, or beside itself.
+
+<p align="center">
+  <img src=".github/readme/duo.webp" alt="iPhone Duo folded, in Star White, with This week being typed and the dots drawn in above Aa and the … button, and iPhone Duo open, in Night Sky, with This week in dark mode and the seven dots down the side">
+</p>
+
 ### Apple Watch
 
 Read your pages, tick off to-dos and add a line, right from your wrist. Complications and the Smart Stack keep a page a glance away.

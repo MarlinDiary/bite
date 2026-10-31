@@ -1,8 +1,13 @@
+import SwiftUI
 import UIKit
 
 /// What Settings asks of the screen while Bite is in front: that it stays on, and on a phone, that
 /// Bite stays upright.
 enum ScreenChoices {
+    /// Whether iPhone folds, as iPhone Duo does, as its hinge has told (see `HingeReader`): there
+    /// Bite stays upright on the outer display only, the inner one turning whatever an app allows.
+    @MainActor static var folds = false
+
     /// The ways Bite turns: upright only, on a phone when Settings says so, else as its Info.plist
     /// lists for the device.
     static var orientations: UIInterfaceOrientationMask {
@@ -23,4 +28,22 @@ enum ScreenChoices {
             }
         }
     }
+}
+
+/// Hears from iPhone's hinge, where it has one, that it folds (see `ScreenChoices.folds`).
+struct HingeReader: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        #if os(iOS)
+        if #available(iOS 27.1, *) {
+            view.addInteraction(UIHingeInteraction { _, update in
+                if update.hinge != nil { ScreenChoices.folds = true }
+            })
+        }
+        #endif
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {}
 }

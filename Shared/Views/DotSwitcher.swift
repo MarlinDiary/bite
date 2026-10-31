@@ -14,6 +14,15 @@ struct DotSwitcher: View {
     /// Called with true as a finger comes down on the bar, before it opens a page, and with
     /// false once it's lifted.
     var onTouch: (Bool) -> Void = { _ in }
+    /// Which way the dots run: across, or down a column of the screen's side, as the system's tab
+    /// bar does on iPhone Duo.
+    var axis: Axis = .horizontal
+    /// How thick the capsule is across the way the dots run: the system's glass is thicker down
+    /// iPhone Duo's column, the dots the same.
+    var thickness = DotSwitcher.height
+    /// Whether the capsule is glass of its own: not down iPhone Duo's column, where the glass is
+    /// UIKit's, which draws in to a round button (see `SideColumn`).
+    var glass = true
     @Environment(DotStore.self) private var store
     @Environment(\.dotColors) private var dotColors
     /// The dot under the finger while one is down on the bar.
@@ -40,14 +49,15 @@ struct DotSwitcher: View {
     private var scale: CGFloat { Self.scale }
 
     var body: some View {
-        HStack(spacing: 0) {
+        let layout = axis == .horizontal ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+        layout {
             ForEach(0..<DotPalette.count, id: \.self) { dot in
                 let isSelected = highlighted == dot
                 let hasContent = dotColors.isColoured(dot, isSelected: isSelected, isEmpty: store.isEmpty)
                 // An empty page's grey isn't lit: lit past white, a grey is white.
                 DotIndicator(ink: hasContent ? DotPalette.colors[dot] : DotPalette.empty, isSelected: isSelected,
                              glows: dotGlows && hasContent)
-                    .frame(width: dotWidth, height: Self.height)
+                    .frame(width: axis == .horizontal ? dotWidth : thickness, height: axis == .horizontal ? thickness : dotWidth)
                     // The dot under the finger dims a little, as one piece, instantly.
                     .compositingGroup()
                     .opacity(touchedDot == dot ? 0.72 : 1)
@@ -62,13 +72,13 @@ struct DotSwitcher: View {
                     }
             }
         }
-        .padding(.horizontal, inset)
+        .padding(axis == .horizontal ? .horizontal : .vertical, inset)
         .contentShape(.capsule)
         .gesture(
             DragGesture(minimumDistance: 0)
                 .updating($isTouched) { _, state, _ in state = true }
                 .onChanged { value in
-                    let dot = dot(at: value.location.x)
+                    let dot = dot(at: axis == .horizontal ? value.location.x : value.location.y)
                     // The finger's first touch is a tap; every dot after that, a slide.
                     let isTouchDown = touchedDot == nil
                     if isTouchDown { onTouch(true) }
@@ -85,12 +95,7 @@ struct DotSwitcher: View {
         .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
             dotGlows = Preferences.dotGlows
         }
-        #if os(visionOS)
-        // Apple Vision Pro's own glass: Liquid Glass isn't there.
-        .glassBackgroundEffect(in: .capsule)
-        #else
-        .glassEffect(.regular.interactive(), in: .capsule)
-        #endif
+        .modifier(DotGlass(isOn: glass))
     }
 
     private func lift() {
@@ -99,9 +104,28 @@ struct DotSwitcher: View {
         onTouch(false)
     }
 
-    /// The dot at `x` across the bar; past either end, the one at that end.
+    /// The dot at `x` along the bar; past either end, the one at that end.
     private func dot(at x: CGFloat) -> Int {
         min(max(Int(((x - inset) / dotWidth).rounded(.down)), 0), DotPalette.count - 1)
+    }
+}
+
+/// The dot bar's glass, unless it's to have none of its own.
+private struct DotGlass: ViewModifier {
+    let isOn: Bool
+
+    func body(content: Content) -> some View {
+        if isOn {
+            content
+                #if os(visionOS)
+                // Apple Vision Pro's own glass: Liquid Glass isn't there.
+                .glassBackgroundEffect(in: .capsule)
+                #else
+                .glassEffect(.regular.interactive(), in: .capsule)
+                #endif
+        } else {
+            content
+        }
     }
 }
 

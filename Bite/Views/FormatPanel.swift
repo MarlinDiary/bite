@@ -63,8 +63,10 @@ final class FormatPanel: NSObject, UIPopoverPresentationControllerDelegate {
     /// The kinds of line the panel's buttons turn lines into, and back.
     static let lineKinds: [FormatAction: BlockKind] = [.bullet: .bullet, .ordered: .ordered, .todo: .todo, .quote: .quote]
 
-    /// Opens the panel out of `item`, as a popover.
-    func show(from item: UIBarButtonItem, in window: UIWindow?) {
+    /// Opens the panel out of `item`, as a popover: an iPad's Aa, or iPhone Duo's down the status
+    /// bar's column (see `SideColumn`), the panel's measures `metrics`.
+    func show(from item: any UIPopoverPresentationControllerSourceItem, in window: UIWindow?,
+              metrics: FormatPanelView.Metrics = .regular) {
         // One still out in another of Bite's windows goes first.
         if let panel, panel.view.window !== window {
             panel.presentingViewController?.dismiss(animated: false)
@@ -74,9 +76,9 @@ final class FormatPanel: NSObject, UIPopoverPresentationControllerDelegate {
         while let presented = top.presentedViewController { top = presented }
         refresh()
         let tint = FormatBar.shared.editor?.textView.tintColor ?? .tintColor
-        let panel = UIHostingController(rootView: FormatPanelView(panel: self).tint(Color(uiColor: tint)))
+        let panel = UIHostingController(rootView: FormatPanelView(panel: self, metrics: metrics).tint(Color(uiColor: tint)))
         panel.view.backgroundColor = .clear
-        panel.preferredContentSize = FormatPanelView.size
+        panel.preferredContentSize = metrics.size
         panel.modalPresentationStyle = .popover
         panel.popoverPresentationController?.sourceItem = item
         panel.popoverPresentationController?.delegate = self
@@ -86,14 +88,14 @@ final class FormatPanel: NSObject, UIPopoverPresentationControllerDelegate {
 
     #if DEBUG && !os(visionOS)
     /// Opens the panel as Aa does, out of the dot bar's start, for a picture of it.
-    func showForTesting() {
+    func showForTesting(metrics: FormatPanelView.Metrics = .regular) {
         func button(in view: UIView) -> SystemBarButtonView? {
             if let button = view as? SystemBarButtonView, button.item.menu == nil { return button }
             return view.subviews.lazy.compactMap(button(in:)).first
         }
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         guard let window = scenes.first?.keyWindow, let aa = button(in: window) else { return }
-        show(from: aa.item, in: window)
+        show(from: aa.item, in: window, metrics: metrics)
     }
     #endif
 
@@ -130,16 +132,35 @@ final class FormatPanel: NSObject, UIPopoverPresentationControllerDelegate {
     }
 }
 
-/// The panel's rows, laid out and coloured as the system's format panel's, measured from it on a
-/// 13-inch iPad: 375 by 195 points, rows 44 tall and 15 apart, groups as capsules on the system's
-/// fill, their buttons a point apart. Apple Vision Pro's Aa shows it too, in a popover of
-/// SwiftUI's (see `VisionPage`).
+/// The panel's rows, laid out and coloured as the system's format panel's, measured from it:
+/// groups as capsules on the system's fill, their buttons a point apart, 16 points in from the
+/// panel's sides and 14 apart. Apple Vision Pro's Aa shows it too, in a popover of SwiftUI's (see
+/// `VisionPage`).
 struct FormatPanelView: View {
     let panel: FormatPanel
+    var metrics = Metrics.regular
 
-    static let size = CGSize(width: 375, height: 195)
-    private static let rowHeight: CGFloat = 44
+    /// The panel's measures, as the system's own panel has them: on a 13-inch iPad, and on iPhone
+    /// Duo's outer screen, where it's narrower and its rows a little shorter and closer (iOS 27.1).
+    /// There it was the iPad's, nearly the screen's width, too big (user, 2026-10-21).
+    struct Metrics {
+        let width: CGFloat
+        let rowHeight: CGFloat
+        let rowSpacing: CGFloat
+        let top: CGFloat
+        let bottom: CGFloat
+
+        static let regular = Metrics(width: 375, rowHeight: 44, rowSpacing: 15, top: 17, bottom: 16)
+        static let compact = Metrics(width: 320, rowHeight: 42, rowSpacing: 14, top: 16, bottom: 16)
+
+        /// Three rows: the line's style, the text's, and the lists and indenting.
+        var size: CGSize {
+            CGSize(width: width, height: top + 3 * rowHeight + 2 * rowSpacing + bottom)
+        }
+    }
+
     private static let inset: CGFloat = 16
+    private static let groupSpacing: CGFloat = 14
 
     /// Each line style in the page's own type, as the system's panel shows its styles.
     private static let lineStyles: [(title: LocalizedStringResource, kind: BlockKind, font: Font)] = [
@@ -150,17 +171,20 @@ struct FormatPanelView: View {
     ]
 
     var body: some View {
-        VStack(spacing: 15) {
+        let width = metrics.width - 2 * Self.inset
+        // The lists' three buttons and indenting's two about as wide as each other, as on an iPad.
+        let lists = metrics.width == Metrics.regular.width ? 200 : ((width - Self.groupSpacing) * 3 / 5).rounded()
+        VStack(spacing: metrics.rowSpacing) {
             styleRow
-            group([.bold, .italic, .strikethrough, .quote], width: Self.size.width - 2 * Self.inset)
-            HStack(spacing: 14) {
-                group([.bullet, .ordered, .todo], width: 200)
-                group([.outdent, .indent], width: Self.size.width - 2 * Self.inset - 200 - 14)
+            group([.bold, .italic, .strikethrough, .quote], width: width)
+            HStack(spacing: Self.groupSpacing) {
+                group([.bullet, .ordered, .todo], width: lists)
+                group([.outdent, .indent], width: width - lists - Self.groupSpacing)
             }
         }
-        .padding(.top, 17)
-        .padding(.bottom, 16)
-        .frame(width: Self.size.width)
+        .padding(.top, metrics.top)
+        .padding(.bottom, metrics.bottom)
+        .frame(width: metrics.width)
     }
 
     /// The line styles, in a row that scrolls to the panel's edges, the line's own lit.
@@ -177,7 +201,7 @@ struct FormatPanelView: View {
                                 .font(style.font)
                                 .foregroundStyle(isOn ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                                 .padding(.horizontal, 18)
-                                .frame(height: Self.rowHeight)
+                                .frame(height: metrics.rowHeight)
                                 .background {
                                     if isOn { Capsule().fill(.tint) }
                                 }
@@ -197,7 +221,7 @@ struct FormatPanelView: View {
                 if let style = panel.lineStyle { proxy.scrollTo(style) }
             }
         }
-        .frame(height: Self.rowHeight)
+        .frame(height: metrics.rowHeight)
     }
 
     /// Buttons side by side in a capsule, a point apart, as the system's panel has its own.
@@ -222,7 +246,7 @@ struct FormatPanelView: View {
                 .accessibilityAddTraits(isOn ? .isSelected : [])
             }
         }
-        .frame(width: width, height: Self.rowHeight)
+        .frame(width: width, height: metrics.rowHeight)
         .clipShape(.capsule)
     }
 }

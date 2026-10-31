@@ -31,14 +31,16 @@ struct SettingsView: View {
                     // open them in Bite with, and has no screen that goes off.
                     #if !os(visionOS)
                     Toggle("Open Links in Bite", isOn: $opensLinksInBite)
-                    #endif
                     // An iPad plays no haptics, and its Bite is a window of any shape, which no way
                     // up suits better.
                     if UIDevice.current.userInterfaceIdiom == .phone {
                         Toggle("Haptics", isOn: $playsHaptics)
-                        Toggle("Lock to Portrait", isOn: $locksPortrait)
+                        // On iPhone Duo it holds on the outer display only: the inner one turns
+                        // whatever an app allows, as the system's own lock, one for each, can't.
+                        Toggle(isOn: $locksPortrait) {
+                            ScreenChoices.folds ? Text("Lock Outer Display to Portrait") : Text("Lock to Portrait")
+                        }
                     }
-                    #if !os(visionOS)
                     Toggle("Keep Screen On", isOn: $keepsScreenOn)
                     #endif
                 }

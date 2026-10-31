@@ -3,26 +3,19 @@ import UIKit
 import BiteKit
 
 /// The "…" button: settings, the page's statistics, copying it as Markdown or plain text, clearing
-/// it, and sharing it: as text, or as a PDF, a picture or its Markdown.
+/// it, and sharing it: as text, or as a PDF, a picture or its Markdown. Settings and Statistics
+/// come up from its window, as the window has them (see `DotMenuSheets`), so they stay up as the
+/// button moves: on iPhone Duo, from the dot bar's end to the status bar's column as it folds.
 struct DotMenu: View {
     let dot: Int
     @Environment(DotStore.self) private var store
     /// Its window's, whose Settings the menu bar's Settings… asks for too, on an iPad.
     @Environment(PageWindow.self) private var window
-    @State private var shownStatistics: ShownStatistics?
-    @Environment(\.horizontalSizeClass) private var widthClass
+    /// How big its glass is: the dot bar's height, or the status bar's column's on iPhone Duo.
+    @Environment(\.barButtonSize) private var size
 
     var body: some View {
-        @Bindable var window = window
         button
-            .sheet(isPresented: $window.isShowingSettings) {
-                SettingsView()
-                    .environment(\.sheetIsCard, sheetIsCard)
-            }
-            .sheet(item: $shownStatistics) { shown in
-                StatisticsView(statistics: shown.statistics, modified: shown.modified)
-                    .environment(\.sheetIsCard, sheetIsCard)
-            }
             #if DEBUG
             .onAppear {
                 // `-showSettings` opens Settings as the app launches, for a picture of it.
@@ -92,8 +85,9 @@ struct DotMenu: View {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.primary)
-                    // The glass style pads this out to 44 points, the height of the dot bar.
-                    .frame(width: 30, height: 30)
+                    // The glass style pads this out by 7 points all round: to 44 points, the height
+                    // of the dot bar, or the status bar's column's 48 on iPhone Duo.
+                    .frame(width: size - 14, height: size - 14)
             }
             .menuOrder(.fixed)
             // The system's glass button, not a glass effect on the label: the menu grows out of it
@@ -132,11 +126,6 @@ struct DotMenu: View {
         ]
     }
 
-    /// On an iPad a card in the middle of the window, unless the window's as narrow as a phone,
-    /// where it's the phone's drawer (see `fittedSheet`).
-    private var sheetIsCard: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad && widthClass != .compact
-    }
 
     /// The page as a file, to the share sheet: to Files, a printer, or another app.
     private func export(_ format: PageExport.Format) {
@@ -147,14 +136,49 @@ struct DotMenu: View {
     /// Counted as it opens, with typing from a moment ago, which changed the page just now.
     private func showStatistics() {
         let markdown = store.currentMarkdown(dot: dot)
-        shownStatistics = ShownStatistics(statistics: PageStatistics(document: MarkdownParser.parse(markdown)),
-                                          modified: store.modified[dot])
+        window.shownStatistics = ShownStatistics(statistics: PageStatistics(document: MarkdownParser.parse(markdown)),
+                                                 modified: store.modified[dot])
     }
 }
 
 /// What Statistics shows for a page.
-private struct ShownStatistics: Identifiable {
+struct ShownStatistics: Identifiable {
     let id = UUID()
     let statistics: PageStatistics
     let modified: Date?
+}
+
+/// Settings and a page's statistics, from the "…" button (see `DotMenu`), up from its window: in the
+/// page's colour, as they were from the button, a card in the middle of an iPad's window unless the
+/// window's as narrow as a phone, where they're the phone's drawer (see `fittedSheet`); so on
+/// iPhone Duo's inner display, as big as an iPad's, where the system puts its own sheets in the
+/// middle too, but beside another app.
+struct DotMenuSheets: ViewModifier {
+    let window: PageWindow
+    @Environment(\.horizontalSizeClass) private var widthClass
+    @Environment(\.verticalSizeClass) private var heightClass
+
+    func body(content: Content) -> some View {
+        @Bindable var window = window
+        let tint = DotPalette.colors[window.page].color
+        content
+            .sheet(isPresented: $window.isShowingSettings) {
+                SettingsView()
+                    .environment(\.sheetIsCard, sheetIsCard)
+                    .tint(tint)
+            }
+            .sheet(item: $window.shownStatistics) { shown in
+                StatisticsView(statistics: shown.statistics, modified: shown.modified)
+                    .environment(\.sheetIsCard, sheetIsCard)
+                    .tint(tint)
+            }
+    }
+
+    private var sheetIsCard: Bool {
+        switch UIDevice.current.userInterfaceIdiom {
+        case .pad: widthClass != .compact
+        case .phone: widthClass == .regular && heightClass == .regular
+        default: false
+        }
+    }
 }

@@ -16,6 +16,8 @@ final class PageWindow {
     /// Asked for by the menu bar's Settings…, which this window's "…" button shows (see
     /// `DotMenu`).
     var isShowingSettings = false
+    /// A page's statistics, asked for from the "…" button.
+    var shownStatistics: ShownStatistics?
     @ObservationIgnored weak var pager: DotPagerCoordinator?
 
     init(page: Int) {
@@ -81,6 +83,13 @@ final class PageWindows {
     private var entries: [Entry] = []
     private weak var current: PageWindow?
     private weak var store: DotStore?
+    /// Whether the keys up are another app's, beside Bite on iPhone Duo's inner screen, as UIKit
+    /// last said of them.
+    private var keysAreElsewhere = false {
+        didSet {
+            if keysAreElsewhere != oldValue { keysMoved() }
+        }
+    }
 
     /// The window in use is the one last touched or typed in, brought to the front, or opened in
     /// from elsewhere. UIKit's own key windows say nothing of it: each window is its scene's key
@@ -91,6 +100,14 @@ final class PageWindows {
             MainActor.assumeIsolated {
                 guard let self, let scene, let window = self.window(in: scene) else { return }
                 self.makeCurrent(window)
+            }
+        }
+        // Keys coming up, or changing, say whether they're Bite's or another app's. Heard as
+        // they're told of, before they move.
+        for name in [UIResponder.keyboardWillShowNotification, UIResponder.keyboardWillChangeFrameNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] note in
+                let isBites = note.userInfo?[UIResponder.keyboardIsLocalUserInfoKey] as? Bool ?? true
+                MainActor.assumeIsolated { self?.keysAreElsewhere = !isBites }
             }
         }
     }
@@ -135,10 +152,15 @@ final class PageWindows {
         UIApplication.shared.activateSceneSession(for: request)
     }
 
-    /// A window's pages touched, or typed in: it's the one in use.
+    /// A window's pages touched, or typed in: it's the one in use, and the keys type into it if a
+    /// page there has them now.
     func pagerWasUsed(_ pager: DotPagerCoordinator) {
-        guard let window = all.first(where: { $0.pager === pager }), window !== current else { return }
-        makeCurrent(window)
+        guard let window = all.first(where: { $0.pager === pager }) else { return }
+        if window !== current {
+            makeCurrent(window)
+        } else {
+            keysMoved()
+        }
     }
 
     /// A window's pages on screen, as it opens: in front if it opened there, as a new window does.
@@ -157,7 +179,8 @@ final class PageWindows {
     func makeCurrent(_ window: PageWindow) {
         // Typing in the window let go of, not reported yet, goes to the others now: before
         // they're typed in, which would leave it out.
-        if let previous = current, previous !== window {
+        let isNew = current !== window
+        if let previous = current, isNew {
             previous.pager?.controllers.forEach { $0.reportPendingChange() }
         }
         current = window
@@ -167,6 +190,22 @@ final class PageWindows {
             FormatBar.shared.refresh()
         }
         updateTitle(of: window)
+        if isNew { keysMoved() }
+    }
+
+    /// Whether the keys up, if any, type into `pager`'s window: the one in use, with a page there
+    /// being typed in or something shown over it, and the keys not another app's. Of two windows
+    /// side by side, the page the keys left keeps its caret, out of use, so being typed in isn't
+    /// enough. A pager in none of Bite's windows, as a test's, has them.
+    func hasKeys(_ pager: DotPagerCoordinator) -> Bool {
+        guard let window = all.first(where: { $0.pager === pager }) else { return true }
+        return !keysAreElsewhere && window === front && (window.editor != nil || window.window?.rootViewController?.presentedViewController != nil)
+    }
+
+    /// The keys moved over to another window, or another app, or came back: only the window they
+    /// type into has its dots drawn in (see `ColumnMover`).
+    private func keysMoved() {
+        all.forEach { $0.pager?.columnMover?.keysMoved() }
     }
 
     func pageDidChange(in window: PageWindow) {

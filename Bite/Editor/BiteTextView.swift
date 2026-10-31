@@ -15,8 +15,21 @@ final class BiteTextView: UITextView {
     /// tap: UIKit's text tap took the touch before it got there.
     private let touchDown = TouchDownRecognizer()
     /// Air above the first line, under the dot bar, or on Apple Vision Pro under the window's bar
-    /// of buttons.
-    private let airOverText: CGFloat = 24
+    /// of buttons. With the status bar down one side, as on iPhone Duo, nothing is over the page,
+    /// which starts where the system's bars would (see `SideColumn.pageTop`): there a title on the
+    /// first line is centred on the camera, across the top in the status bar's column, or with the
+    /// camera at the column's foot on the column's first button, the line as a whole, with the room
+    /// its font keeps over the letters (user, 2026-10-20). With the dot bar's air, its capitals
+    /// stood 54 points down; with none, level with the camera's top.
+    private var airOverText: CGFloat {
+        #if !SHARE_EXTENSION
+        if let window, let column = SideColumn(in: window) {
+            let title = EditorTheme(accent: .tintColor).heading1Font
+            return column.titleMiddle - title.lineHeight / 2 - SideColumn.pageTop
+        }
+        #endif
+        return 24
+    }
     /// Room under the last line when scrolled to the end.
     private let bottomTextInset: CGFloat = 28
     /// More room under the last line while typing, so the line being written can sit a couple
@@ -456,13 +469,25 @@ final class BiteTextView: UITextView {
     /// there, so dragging a selection up scrolls as soon as it reaches the dot bar instead of
     /// running on under it. The air around the text is the text container's inset.
     private func updateInsets() {
-        let sides = safeSides
+        var sides = safeSides
+        #if !SHARE_EXTENSION
+        // Clear of the dots' column, and of the status bar's glyphs in the top's corner, on iPhone
+        // Duo's inner screen upright, where the page's top runs up level with them.
+        if let window, let column = SideColumn(in: window) {
+            if column.isTrailing {
+                sides.right = max(sides.right, window.bounds.width - column.textEnd)
+            } else {
+                sides.left = max(sides.left, column.textEnd)
+            }
+        }
+        #endif
         var left = Self.sideMargin + sides.left
         var right = Self.sideMargin + sides.right
         // On an iPad, lines stop at a readable length, as they do on a Mac: a wider window only
         // widens the margins, the text staying in the middle. So on Apple Vision Pro, whose
-        // windows are made as wide as wanted.
-        if [.pad, .vision].contains(traitCollection.userInterfaceIdiom) {
+        // windows are made as wide as wanted, and on iPhone Duo's inner screen, as big as an
+        // iPad's (user, 2026-10-21).
+        if [.pad, .vision].contains(traitCollection.userInterfaceIdiom) || SideColumn.isBigScreen(traitCollection) {
             let room = (bounds.width - left - right - Self.widestText) / 2
             if room > 0 {
                 left += room
@@ -728,6 +753,11 @@ final class BiteTextView: UITextView {
     /// Where the dot bar stops covering the page, or the top of the screen while it's away.
     private var topObstruction: CGFloat {
         if isTopBarAway { return safeTop }
+        #if !SHARE_EXTENSION
+        // With the dots down a side, as on iPhone Duo, nothing is over the page's top, the status
+        // bar down that side or in the top's corner (see `SideColumn`).
+        if let window, SideColumn.isShown(in: window) { return SideColumn.pageTop }
+        #endif
         let sides = safeSides
         let placement = TopBarPlacement(safeTop: safeTop, safeSides: max(sides.left, sides.right),
                                         width: window?.bounds.width ?? bounds.width)
@@ -852,7 +882,8 @@ final class BiteTextView: UITextView {
     override func editMenu(for textRange: UITextRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
         var children = Self.trimmed(suggestedActions)
         #if !SHARE_EXTENSION
-        if [.pad, .vision].contains(traitCollection.userInterfaceIdiom), let links = linkMenu() {
+        let keysHaveNoBar = [.pad, .vision].contains(traitCollection.userInterfaceIdiom) || window.map(SideColumn.isShown(in:)) == true
+        if keysHaveNoBar, let links = linkMenu() {
             let edit = children.firstIndex { ($0 as? UIMenu)?.identifier == .standardEdit }
             children.insert(links, at: edit.map { $0 + 1 } ?? 0)
         }
@@ -1310,7 +1341,8 @@ final class BiteTextView: UITextView {
     /// middle of the window, as Bite's other cards are, not over all of it: the phone's sheet was
     /// nearly as big as the screen there, with the page as a dimmed card behind it, which the user
     /// found odd (2026-10-08). In a window as narrow as a phone, the phone's sheet, as Bite's
-    /// other sheets are there (2026-10-09, see `fittedSheet`).
+    /// other sheets are there (2026-10-09, see `fittedSheet`). On iPhone Duo's inner display, as
+    /// big as an iPad's, the iPad's card.
     func showWebPage(_ url: URL) {
         // On Apple Vision Pro, in a Safari window of its own beside Bite's, as visionOS opens links.
         #if os(visionOS)
@@ -1323,7 +1355,8 @@ final class BiteTextView: UITextView {
         let safari = SFSafariViewController(url: url)
         // Its own way in was across from the side, over the whole screen. Safari's view keeps the
         // card's own size, as a form's: a detent made it shorter, at the window's foot.
-        if traitCollection.userInterfaceIdiom == .pad, traitCollection.horizontalSizeClass != .compact {
+        let isPadWide = traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass != .compact
+        if isPadWide || SideColumn.isBigScreen(traitCollection) {
             safari.modalPresentationStyle = .formSheet
             // How the card comes in is Safari's own: on an iPad its view takes the whole window
             // and Safari draws the card in it, fading in where it ends up or coming partway up

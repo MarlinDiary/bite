@@ -53,6 +53,9 @@ private struct WindowPages: View {
             }
             // Opened in a window already open, rather than a new one.
             .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+            // Settings and Statistics, from the "…" button, wherever it stands.
+            .modifier(DotMenuSheets(window: window))
+            .background(HingeReader())
             .sheet(isPresented: $showsWelcome) {
                 WelcomeSheet()
             }

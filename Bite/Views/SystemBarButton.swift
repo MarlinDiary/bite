@@ -60,6 +60,21 @@ final class SystemBarButtonView: UIView {
     let item = UIBarButtonItem()
     private let toolbar = UIToolbar()
     private static let toolbarInset: CGFloat = 20
+    /// Whether the toolbar keeps its button out of what the system keeps clear at the screen's
+    /// edge, as it does out of a window's controls. In iPhone Duo's status bar column at the
+    /// screen's left, on its side, it moved Aa along off its glass, out of the column's own room.
+    var keepsClear = true {
+        didSet {
+            guard keepsClear != oldValue else { return }
+            safeAreaInsetsDidChange()
+            toolbar.setNeedsLayout()
+            setNeedsLayout()
+        }
+    }
+
+    override var safeAreaInsets: UIEdgeInsets {
+        keepsClear ? super.safeAreaInsets : .zero
+    }
 
     init(symbol: String, title: String, edge: SystemBarButton.Edge, coordinator: SystemBarButton.Coordinator) {
         super.init(frame: .zero)
@@ -93,8 +108,9 @@ final class SystemBarButtonView: UIView {
     }
 
     /// The button's round, as big as this view, in `view`'s space: where the toolbar has put it.
+    /// None till the toolbar has laid it out, in a window: it tells of an empty frame before.
     func buttonFrame(in view: UIView) -> CGRect? {
-        guard let frame = item.frame(in: self) else { return nil }
+        guard let frame = item.frame(in: self), !frame.isEmpty else { return nil }
         let round = CGRect(x: frame.midX - bounds.width / 2, y: frame.midY - bounds.height / 2,
                            width: bounds.width, height: bounds.height)
         return convert(round, to: view)

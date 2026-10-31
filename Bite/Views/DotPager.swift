@@ -16,6 +16,8 @@ struct DotPager: UIViewRepresentable {
     var isDotBarTouched = false
     /// Moves the dot bar up out of the way of the keys on a phone on its side.
     let topBarMover: TopBarMover
+    /// Moves the dots down the status bar's column with the keys, on iPhone Duo.
+    let columnMover: ColumnMover
     @Environment(DotStore.self) private var store
     #if !SHARE_EXTENSION
     /// Bite's window this pager is in, one of several on an iPad.
@@ -83,6 +85,7 @@ struct DotPager: UIViewRepresentable {
             if visible.wrappedValue != page { visible.wrappedValue = page }
         }
         coordinator.topBarMover = topBarMover
+        coordinator.columnMover = columnMover
         for controller in coordinator.controllers where controller.loadedRevision != store.revisions[controller.dot] {
             controller.loadedRevision = store.revisions[controller.dot]
             controller.load(markdown: store.markdown[controller.dot])
@@ -101,6 +104,13 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
     var select: ((Int) -> Void)?
     var showVisiblePage: ((Int) -> Void)?
     var topBarMover: TopBarMover?
+    var columnMover: ColumnMover? {
+        didSet {
+            #if !SHARE_EXTENSION
+            columnMover?.holdsKeys = { [weak self] in self.map(PageWindows.shared.hasKeys) ?? true }
+            #endif
+        }
+    }
     /// One tick each time a finger moves the pager to another page, swiping it or on the dot
     /// bar. A page opened from elsewhere, as at a Spotlight result, comes on quietly.
     private let haptics = UISelectionFeedbackGenerator()
@@ -164,6 +174,12 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
             self.controllers.forEach { $0.textView.isTopBarAway = isAway }
             self.topBarMover?.move(away: isAway)
         }
+        container.onKeysChange = { [weak self] keys in
+            self?.columnMover?.keysChanged(to: keys)
+        }
+        container.onKeysGoing = { [weak self] in
+            self?.columnMover?.keysGoing()
+        }
         container.editingTextView = { [weak self] in
             if let page = self?.controllers.first(where: { $0.textView.isFirstResponder }) { return page.textView }
             // The keys moved over to a link on the page, in the format bar.
@@ -184,9 +200,9 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
             controller.onEditLink = { [weak self, weak controller] link in
                 guard let self, let controller else { return }
                 #if !SHARE_EXTENSION
-                // An iPad has no bar on its keys: the link is changed in a card in the middle of
-                // the screen, as Notes has it.
-                if self.container.traitCollection.userInterfaceIdiom == .pad {
+                // An iPad has no bar on its keys, nor has iPhone Duo with its status bar down a
+                // side: the link is changed in a card, as Notes has it.
+                if !self.container.showsBar {
                     LinkSheet.shared.edit(link, on: controller)
                     return
                 }
@@ -196,9 +212,8 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
             controller.canEditLinkInBar = { [weak self, weak controller] in
                 guard let self, let controller else { return false }
                 #if !SHARE_EXTENSION
-                // An iPad's card comes up whenever the page is being typed in, keys on screen or
-                // not.
-                if self.container.traitCollection.userInterfaceIdiom == .pad { return true }
+                // The card comes up whenever the page is being typed in, keys on screen or not.
+                if !self.container.showsBar { return true }
                 #endif
                 return self.container.canEditLinks(on: controller)
             }
@@ -481,6 +496,12 @@ final class PagerContainerView: UIView {
     /// Reports the dot bar going up out of the way of the keys, or coming back, from inside the
     /// keys' animation.
     var onTopBarAwayChange: ((Bool) -> Void)?
+    /// Reports how tall the keys stand over the bottom of this view, from inside their animation
+    /// and on every step of a drag of them.
+    var onKeysChange: ((CGFloat) -> Void)?
+    /// Reports UIKit saying the keys are going, a moment after: as a finger lets go of keys it's
+    /// dragged down, which then slide away on their own.
+    var onKeysGoing: (() -> Void)?
     /// The editor that has the keyboard, if any. The bar only ever shows for one.
     var editingTextView: () -> UITextView? = { nil }
     /// Set while Writing Tools is at work on the page being edited. It brings controls of its own,
@@ -530,6 +551,7 @@ final class PagerContainerView: UIView {
     private let barTrack = PassthroughView()
     private let formatBar = FormatBar.shared
     private var reportedOverlap: CGFloat = 0
+    private var reportedKeys: CGFloat = 0
     private var reportedTopBarAway = false
     /// Whether on-screen keys are up, with the bar on top of them.
     private var barRidesOnKeys = false
@@ -644,6 +666,10 @@ final class PagerContainerView: UIView {
         if let ended = keysWhenWritingToolsEnded, abs(keys - ended) > 0.5 {
             keysWhenWritingToolsEnded = nil
         }
+        if keys != reportedKeys {
+            reportedKeys = keys
+            onKeysChange?(keys)
+        }
         // While Writing Tools is at work, and until the keys come back after it, the bar waits
         // at the bottom of the screen (see `isWritingToolsAtWork`).
         let barKeys = isWritingToolsAtWork || keysWhenWritingToolsEnded != nil ? 0 : keys
@@ -732,13 +758,15 @@ final class PagerContainerView: UIView {
 
     /// Whether the bar comes up on the keys. Not in Bite on an iPad, as Notes has none there: its
     /// styles are in the Aa panel at the top (see `FormatPanel`), and links are added and changed
-    /// from the menu over the text, in a card in the middle of the screen (see `LinkSheet`). The
-    /// share extension has neither, and keeps its bar.
-    private var showsBar: Bool {
+    /// from the menu over the text, in a card in the middle of the screen (see `LinkSheet`). Nor
+    /// with the dots down a side, as on iPhone Duo, where Aa is down their column with the
+    /// page's dot and "…" while the keys are up (user, 2026-10-19; see `SideColumn`). The share
+    /// extension has neither, and keeps its bar.
+    var showsBar: Bool {
         #if SHARE_EXTENSION
         true
         #else
-        traitCollection.userInterfaceIdiom != .pad
+        traitCollection.userInterfaceIdiom != .pad && window.map(SideColumn.isShown(in:)) != true
         #endif
     }
 
@@ -802,7 +830,10 @@ final class PagerContainerView: UIView {
     @objc private func keysWillGo() {
         keysAreGoing = true
         // Said as the phone turns upright, of keys coming straight back.
-        if !isTurning { letVanishedKeysGo() }
+        if !isTurning {
+            letVanishedKeysGo()
+            DispatchQueue.main.async { [weak self] in self?.onKeysGoing?() }
+        }
     }
 
     @objc private func keysWillCome() {
@@ -1010,12 +1041,17 @@ extension DotPagerCoordinator {
     }
 }
 
-/// Notes a touch going down on the pages, a finger's or a click's, and lets it be.
-private final class UseRecognizer: UIGestureRecognizer {
+/// Notes a touch going down, a finger's or a click's, on a window's pages, or lifting from its
+/// column, and lets it be.
+final class UseRecognizer: UIGestureRecognizer {
     private let onTouch: () -> Void
+    /// Whether it notes the touch lifting, as on the column's dots: noted going down, the dots drew
+    /// in under the finger, which then lifted from another page's dot.
+    private let onLift: Bool
 
-    init(onTouch: @escaping () -> Void) {
+    init(onLift: Bool = false, onTouch: @escaping () -> Void) {
         self.onTouch = onTouch
+        self.onLift = onLift
         super.init(target: nil, action: nil)
         cancelsTouchesInView = false
         delaysTouchesBegan = false
@@ -1023,7 +1059,17 @@ private final class UseRecognizer: UIGestureRecognizer {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard !onLift else { return }
         onTouch()
+        state = .failed
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        onTouch()
+        state = .failed
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
         state = .failed
     }
 

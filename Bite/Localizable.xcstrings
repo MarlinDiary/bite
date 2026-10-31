@@ -1569,6 +1569,34 @@
         }
       }
     },
+    "Lock Outer Display to Portrait" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アウターディスプレイを縦向きに固定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "외부 디스플레이를 세로로 고정"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外屏锁定为竖屏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外螢幕鎖定為直向"
+          }
+        }
+      }
+    },
     "Lock to Portrait" : {
       "localizations" : {
         "ja" : {

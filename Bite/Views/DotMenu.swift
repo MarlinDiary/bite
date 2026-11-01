@@ -15,6 +15,8 @@ struct DotMenu: View {
     /// How big its glass is: the dot bar's height, or the status bar's column's on iPhone Duo.
     @Environment(\.barButtonSize) private var size
     private let voice = VoiceInput.shared
+    /// Whether the dots are bars that go with the voice (see `RecordingWave`).
+    @State private var showsWave = false
 
     var body: some View {
         button
@@ -39,8 +41,10 @@ struct DotMenu: View {
     @ViewBuilder
     private var button: some View {
         if UIDevice.current.userInterfaceIdiom == .pad {
+            // Recording, a waveform lighting bar by bar: the bar button can't draw the bars that
+            // go with the voice (see `RecordingWave`).
             SystemBarButton(symbol: "ellipsis", title: "More", edge: .trailing, tint: UIColor(DotPalette.colors[dot].color),
-                            menu: { menuElements() })
+                            liveSymbol: showsRecording ? "waveform" : nil, menu: { menuElements() })
                 .frame(width: DotSwitcher.height, height: DotSwitcher.height)
         } else {
             let isEmpty = store.isEmpty[dot]
@@ -92,12 +96,27 @@ struct DotMenu: View {
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    // The glass style pads this out by 7 points all round: to 44 points, the height
-                    // of the dot bar, or the status bar's column's 48 on iPhone Duo.
-                    .frame(width: size - 14, height: size - 14)
+                Group {
+                    // So it's plain that Bite is recording, on whichever page (user, 2026-11-01).
+                    if showsWave {
+                        RecordingWave(isOn: showsRecording)
+                    } else {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(.primary)
+                // The glass style pads this out by 7 points all round: to 44 points, the height
+                // of the dot bar, or the status bar's column's 48 on iPhone Duo.
+                .frame(width: size - 14, height: size - 14)
+                // The bars stay till they've drawn back into dots.
+                .task(id: showsRecording) {
+                    if showsRecording {
+                        showsWave = true
+                    } else if (try? await Task.sleep(for: .seconds(0.5))) != nil {
+                        showsWave = false
+                    }
+                }
             }
             .menuOrder(.fixed)
             // The system's glass button, not a glass effect on the label: the menu grows out of it
@@ -106,6 +125,14 @@ struct DotMenu: View {
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
         }
+    }
+
+    /// Whether the dots show Bite recording. `-showRecordingLook` shows them so, for a picture.
+    private var showsRecording: Bool {
+        #if DEBUG
+        if CommandLine.arguments.contains("-showRecordingLook") { return true }
+        #endif
+        return voice.isRecording
     }
 
     /// Record, or while it records, on whichever page, Stop Recording (see `VoiceInput`). Off while

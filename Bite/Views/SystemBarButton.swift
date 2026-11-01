@@ -17,6 +17,9 @@ struct SystemBarButton: UIViewRepresentable {
     let edge: Edge
     /// The symbol's colour: the page's, as the dot bar's.
     let tint: UIColor
+    /// A symbol shown in place of its own meanwhile, its parts lighting one after another: the
+    /// "…" button's waveform while Bite records (see `VoiceInput`).
+    var liveSymbol: String?
     /// What a tap does, given the button to come out of. Without, the button opens `menu`.
     var action: ((UIBarButtonItem) -> Void)?
     /// The menu, made each time it opens.
@@ -30,6 +33,17 @@ struct SystemBarButton: UIViewRepresentable {
         context.coordinator.action = action
         context.coordinator.menu = menu
         view.item.tintColor = tint
+        if context.coordinator.liveSymbol != liveSymbol {
+            context.coordinator.liveSymbol = liveSymbol
+            if let image = SystemBarButtonView.image(liveSymbol ?? symbol) {
+                view.item.setSymbolImage(image, contentTransition: .replace)
+            }
+            if liveSymbol != nil {
+                view.item.addSymbolEffect(.variableColor.iterative.dimInactiveLayers.reversing)
+            } else {
+                view.item.removeAllSymbolEffects()
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -39,6 +53,7 @@ struct SystemBarButton: UIViewRepresentable {
     final class Coordinator {
         var action: ((UIBarButtonItem) -> Void)?
         var menu: (() -> [UIMenuElement])?
+        var liveSymbol: String?
 
         init(action: ((UIBarButtonItem) -> Void)?, menu: (() -> [UIMenuElement])?) {
             self.action = action
@@ -78,8 +93,7 @@ final class SystemBarButtonView: UIView {
 
     init(symbol: String, title: String, edge: SystemBarButton.Edge, coordinator: SystemBarButton.Coordinator) {
         super.init(frame: .zero)
-        // As the "…" button drew its own.
-        let image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
+        let image = Self.image(symbol)
         if coordinator.menu != nil {
             item.image = image
             item.menu = UIMenu(children: [UIDeferredMenuElement.uncached { completion in
@@ -100,6 +114,11 @@ final class SystemBarButtonView: UIView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// A symbol as the "…" button draws its own.
+    static func image(_ symbol: String) -> UIImage? {
+        UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
     }
 
     override func layoutSubviews() {

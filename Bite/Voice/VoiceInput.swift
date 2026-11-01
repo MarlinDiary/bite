@@ -3,7 +3,8 @@ import UIKit
 
 /// Voice input: what's said is written at the end of the page as it's said, the words still being
 /// made out drawn lighter, and kept as heard once it's stopped (see `tidies`). Started and stopped
-/// from the "…" menu, Record and Stop Recording, with no button of its own. It belongs to the
+/// from the "…" menu, Record and Stop Recording, with no button of its own, the button's dots drawn
+/// out into bars that go with the voice while it records (see `RecordingWave`). It belongs to the
 /// page it started on, which it goes on writing to as other pages are looked at, and from any of
 /// which it can be stopped, but not started again meanwhile.
 @MainActor @Observable
@@ -25,6 +26,17 @@ final class VoiceInput {
     /// written (user, 2026-11-01); the relay's tidy stays for when it's back, and Bite's question
     /// before recording names Claude only while it's on (see `VoiceConsentSheet`).
     static let tidies = false
+
+    /// Whether it's recording: the "…" button's dots are bars that go with the voice meanwhile
+    /// (see `RecordingWave`).
+    var isRecording: Bool {
+        if case .listening = phase { true } else { false }
+    }
+
+    /// What's been heard this last second, in `VoiceMeter`'s bands, a fiftieth of a second at a
+    /// time, each when it was heard: read as the bars are drawn rather than watched, changing as
+    /// often as it does.
+    @ObservationIgnored private var heard: [(time: TimeInterval, levels: [Double])] = []
 
     /// Whether Bite has voice input: built with its relay.
     var isAvailable: Bool {
@@ -81,7 +93,13 @@ final class VoiceInput {
         }
         let editor = pager.controllers[page]
         let session = SonioxSession(configuration: Self.configuration(heardAgainst: editor.text(limit: 2000)))
-        let capture = MicCapture { session.send($0) }
+        let meter = VoiceMeter()
+        let capture = MicCapture { [weak self] audio in
+            session.send(audio)
+            let levels = meter.levels(of: audio)
+            let time = Date.timeIntervalSinceReferenceDate
+            Task { @MainActor in self?.heard(levels, till: time) }
+        }
         do {
             let audio = AVAudioSession.sharedInstance()
             try audio.setCategory(.record, mode: .default, options: [.allowBluetoothHFP])
@@ -125,6 +143,7 @@ final class VoiceInput {
     private func stopRecording() {
         capture?.stop()
         capture = nil
+        heard = []
         if let interruptions { NotificationCenter.default.removeObserver(interruptions) }
         interruptions = nil
         // Music stopped for it plays on.
@@ -174,6 +193,27 @@ final class VoiceInput {
         let page = editor.markdownBeforeDictation(limit: 4000)
         let tidied = try? await relay.tidy(said, after: page, speakers: 1)
         editor.endDictation(replacingWith: tidied, ifStill: said)
+    }
+
+    /// Levels just heard, the last of them at `time`, a fiftieth of a second apart.
+    private func heard(_ levels: [[Double]], till time: TimeInterval) {
+        guard isRecording else { return }
+        for (index, block) in levels.enumerated() {
+            heard.append((time - Double(levels.count - 1 - index) * VoiceMeter.blockDuration, block))
+        }
+        heard.removeAll { time - $0.time > 1 }
+    }
+
+    /// How loud each of `VoiceMeter`'s bands was at `time`, from 0 to 1, between the fiftieths of a
+    /// second heard either side of it: none, nothing heard yet.
+    func levels(at time: TimeInterval) -> [Double]? {
+        guard let first = heard.first, let last = heard.last else { return nil }
+        guard let next = heard.firstIndex(where: { $0.time > time }) else { return last.levels }
+        guard next > 0 else { return first.levels }
+        let before = heard[next - 1]
+        let after = heard[next]
+        let along = (time - before.time) / (after.time - before.time)
+        return zip(before.levels, after.levels).map { $0 + ($1 - $0) * along }
     }
 
     /// What Soniox is told first: the model, the audio's format, the languages to expect, and

@@ -321,8 +321,8 @@ struct SideColumn: Equatable {
     /// The column down a big screen's right, the status bar across its top `safeTop` tall: as wide
     /// as the status bar's own down the right the other way round, its buttons starting under the
     /// status bar, a title centred on the status bar's middle. Its glyphs stand in the top's right
-    /// corner, which the page's lines keep clear of (see `textEnd`); till the system tells, as on
-    /// iPhone Duo, 144 points across.
+    /// corner, which the page's first lines keep clear of (see `statusCorner`); till the system
+    /// tells, as on iPhone Duo, 144 points across.
     private init(across safeTop: CGFloat, size: CGSize, occlusions: [CGRect], folds: [CGRect]) {
         edge = .trailing
         let width = Self.bigScreenColumn
@@ -495,10 +495,19 @@ struct SideColumn: Equatable {
         return CGRect(x: button.minX, y: (middle - DotSwitcher.width / 2).rounded(), width: Self.glass, height: DotSwitcher.width)
     }
 
-    /// How far across from the column's side the page's lines may run: to the column, or to the
-    /// status bar's glyphs in the top's corner where they're further out.
+    /// How far across from the column's side the page's lines may run: to the column.
     var textEnd: CGFloat {
-        isTrailing ? min(frame.minX, cameraRoom.minX) : max(frame.maxX, cameraRoom.maxX)
+        isTrailing ? frame.minX : frame.maxX
+    }
+
+    /// The status bar's glyphs where they stand out past the column into the page's top, across
+    /// the top of iPhone Duo's inner screen upright: wider than the column, and wider still with a
+    /// Live Activity. The lines level with them, at the page's top, stop short of them; the rest
+    /// run on to the column (user, 2026-11-02: kept clear of them all the way down, the page stood
+    /// narrow). None where the status bar is in the column.
+    var statusCorner: CGRect? {
+        let isPast = isTrailing ? cameraRoom.minX < frame.minX : cameraRoom.maxX > frame.maxX
+        return isPast ? cameraRoom : nil
     }
 
     /// Whether the keys leave the column room for two buttons only: iPhone Duo's outer screen on its

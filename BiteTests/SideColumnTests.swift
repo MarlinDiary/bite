@@ -123,7 +123,7 @@ struct SideColumnTests {
     /// On iPhone Duo's inner screen, as big as an iPad's: book-open wide, the status bar's own
     /// column down the right, the dots midway down it, the keys leaving room for all three buttons;
     /// upright, the status bar across the top, a column of the dots' own down the right under it,
-    /// the page's lines clear of the status bar's glyphs in the corner, a title centred on the
+    /// the page's first lines clear of the status bar's glyphs in the corner, a title centred on the
     /// status bar, the dots midway down, and off the fold, across the middle, while the screen's
     /// folded part way (measured with iOS 27.1).
     @Test func onTheInnerScreenTheDotsGoDownTheRightToo() throws {
@@ -134,6 +134,7 @@ struct SideColumnTests {
         #expect(wide.fold == nil)
         #expect(!wide.isShort)
         #expect(wide.textEnd == 867)
+        #expect(wide.statusCorner == nil)
         // Under the status bar's glyphs, which stand where the outer display's camera does, and
         // midway between their foot and the button; a title as high as there.
         #expect(wide.button == CGRect(x: 879, y: 597, width: 48, height: 48))
@@ -165,7 +166,14 @@ struct SideColumnTests {
                                               folds: [CGRect(x: 0, y: 455.5, width: 669, height: 40)]))
         #expect(upright.isTrailing)
         #expect(upright.frame == CGRect(x: 585, y: 0, width: 84, height: 951))
-        #expect(upright.textEnd == 525)
+        // The page's lines run to the column; at its top, level with the status bar's glyphs,
+        // they stop short of those, which a Live Activity widens.
+        #expect(upright.textEnd == 585)
+        #expect(upright.statusCorner == CGRect(x: 525, y: 0, width: 144, height: 82))
+        let withActivity = try #require(SideColumn(safeTop: 82, safeLeading: 0, safeTrailing: 0, size: CGSize(width: 669, height: 951),
+                                                   occlusions: [CGRect(x: 409, y: 0, width: 260, height: 82)], bigScreen: true))
+        #expect(withActivity.textEnd == 585)
+        #expect(withActivity.statusCorner == CGRect(x: 409, y: 0, width: 260, height: 82))
         #expect(upright.titleMiddle == 41)
         #expect(upright.firstButton == CGRect(x: 603, y: 82, width: 48, height: 48))
         #expect(upright.button == CGRect(x: 603, y: 879, width: 48, height: 48))
@@ -193,6 +201,7 @@ struct SideColumnTests {
         #expect(!left.isShort)
         #expect(left.frame == CGRect(x: 0, y: 0, width: 84, height: 669))
         #expect(left.textEnd == 84)
+        #expect(left.statusCorner == nil)
         #expect(left.firstButton == CGRect(x: 18, y: 24, width: 48, height: 48))
         #expect(left.button == CGRect(x: 18, y: 597, width: 48, height: 48))
         #expect(left.titleMiddle == 48)

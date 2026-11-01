@@ -470,15 +470,17 @@ final class BiteTextView: UITextView {
     /// running on under it. The air around the text is the text container's inset.
     private func updateInsets() {
         var sides = safeSides
+        var statusCorner: CGRect?
         #if !SHARE_EXTENSION
-        // Clear of the dots' column, and of the status bar's glyphs in the top's corner, on iPhone
-        // Duo's inner screen upright, where the page's top runs up level with them.
+        // Clear of the dots' column, and at the page's top of the status bar's glyphs in the top's
+        // corner, on iPhone Duo's inner screen upright, where the page's top runs up level with them.
         if let window, let column = SideColumn(in: window) {
             if column.isTrailing {
                 sides.right = max(sides.right, window.bounds.width - column.textEnd)
             } else {
                 sides.left = max(sides.left, column.textEnd)
             }
+            statusCorner = column.statusCorner
         }
         #endif
         var left = Self.sideMargin + sides.left
@@ -500,6 +502,7 @@ final class BiteTextView: UITextView {
             if textContainerInset.left > 0 { beginTurn() }
             textContainerInset = textInsets
         }
+        keepFirstLinesClear(of: statusCorner)
         let insets = UIEdgeInsets(top: topObstruction, left: 0,
                                   bottom: insetKeyboardOverlap > 0 ? insetKeyboardOverlap + typingRoom : safeBottom, right: 0)
         if contentInset != insets {
@@ -748,6 +751,25 @@ final class BiteTextView: UITextView {
               let line = layoutManager.textLayoutFragment(for: location)?.textLineFragments.first,
               let font = BlockLayoutFragment.fontOfEmptyLine(line) else { return 0 }
         return line.typographicBounds.height - font.lineHeight
+    }
+
+    /// The lines beside `corner`, the status bar's glyphs in the screen's top corner, with the page
+    /// at its top, stop short of it, as far from it as from the screen's side; past it they run on.
+    /// The page spans the window, its top at the window's.
+    private func keepFirstLinesClear(of corner: CGRect?) {
+        var paths: [UIBezierPath] = []
+        if let corner {
+            let top = topObstruction + textContainerInset.top
+            let start = max(0, corner.minX - Self.sideMargin - textContainerInset.left)
+            if corner.maxY > top, start < textContainer.size.width {
+                paths = [UIBezierPath(rect: CGRect(x: start, y: 0, width: bounds.width, height: corner.maxY - top))]
+            }
+        }
+        if textContainer.exclusionPaths.map(\.bounds) != paths.map(\.bounds) {
+            // Rewrapped as a Live Activity comes or goes, the lines in view stay where they are.
+            if !textContainer.exclusionPaths.isEmpty { beginTurn() }
+            textContainer.exclusionPaths = paths
+        }
     }
 
     /// Where the dot bar stops covering the page, or the top of the screen while it's away.

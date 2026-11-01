@@ -109,7 +109,6 @@ final class DotPagerCoordinator: NSObject, UIScrollViewDelegate {
             #if !SHARE_EXTENSION
             columnMover?.holdsKeys = { [weak self] in self.map(PageWindows.shared.hasKeys) ?? true }
             #endif
-            columnMover?.onColumnChange = { [weak self] in self?.container.columnChanged() }
         }
     }
     /// One tick each time a finger moves the pager to another page, swiping it or on the dot
@@ -761,23 +760,15 @@ final class PagerContainerView: UIView {
     /// styles are in the Aa panel at the top (see `FormatPanel`), and links are added and changed
     /// from the menu over the text, in a card in the middle of the screen (see `LinkSheet`). Nor
     /// with the dots down a side, as on iPhone Duo, where Aa is down their column with the
-    /// page's dot and "…" while the keys are up (user, 2026-10-19; see `SideColumn`), but under a
-    /// status bar grown for a Live Activity, where Aa's panel has no room (see
-    /// `SideColumn.formatsOnKeys`). The share extension has neither, and keeps its bar.
+    /// page's dot and "…" while the keys are up (user, 2026-10-19; see `SideColumn`), not even
+    /// where Aa's panel has no room (see `SideColumn.hasNoRoomForPanel`). The share extension has
+    /// neither, and keeps its bar.
     var showsBar: Bool {
         #if SHARE_EXTENSION
         true
         #else
         traitCollection.userInterfaceIdiom != .pad && window.map(SideColumn.keysHaveBar(in:)) != false
         #endif
-    }
-
-    /// The column down iPhone Duo's side changed, the status bar grown for a Live Activity or back:
-    /// the bar comes up out of the keys, or goes down into them, as the column clears out of their
-    /// way or comes back, in its spring.
-    func columnChanged() {
-        guard keys > 120, showsBar != barRidesOnKeys, editingTextView() != nil, !isWritingToolsAtWork else { return }
-        UIView.animate(springDuration: ColumnMover.spring, bounce: 0) { self.placeBar() }
     }
 
     /// On a phone on its side the system takes the keys away at once, though it says they slide

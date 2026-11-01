@@ -44,31 +44,39 @@ struct SideColumnTests {
     }
 
     /// A Live Activity in the Dynamic Island grows the status bar's room down the column: Aa's panel,
-    /// which the system keeps between the room and the keys, would stand squashed there, so the
-    /// format bar comes up on the keys, as Notes' toolbar does, and the column clears out of their
-    /// way (user, 2026-11-01). With no Live Activity, or on its side, Aa stays down the column. The
-    /// buttons start clear of the room, to the whole point, for Aa's toolbar moves Aa off its glass
-    /// to keep clear of any of it. The dots stand midway between the grown status bar and the button.
-    @Test func underAStatusBarGrownForALiveActivityTheFormatBarComesUp() throws {
+    /// which the system keeps between the room and the keys, would stand squashed there, so Aa goes
+    /// while the keys are up, with no format bar on them, and the column keeps what fits of its
+    /// other buttons beside them (user, 2026-11-01). With no Live Activity, or on its side, Aa stays
+    /// down the column. The buttons start clear of the room, to the whole point, for Aa's toolbar
+    /// moves Aa off its glass to keep clear of any of it. The dots stand midway between the grown
+    /// status bar and the button.
+    @Test func underAStatusBarGrownForALiveActivityAaGoes() throws {
         let plain = try #require(column())
-        #expect(!plain.formatsOnKeys)
+        #expect(!plain.hasNoRoomForPanel)
         // Aa's panel fits between the status bar and Chinese keys.
         #expect(plain.freeTop + SideColumn.panelHeight <= 678 - 305.5)
         #expect(SideColumn.panelHeight == FormatPanelView.Metrics.compact.size.height)
         let column = try #require(columnUnderLiveActivity())
-        #expect(column.formatsOnKeys)
+        #expect(column.hasNoRoomForPanel)
         #expect(!column.isShort)
         #expect(column.firstButton == CGRect(x: 394, y: 265, width: 48, height: 48))
         #expect(!column.firstButton.intersects(column.cameraRoom))
         #expect(column.cameraEnd == 264.33 - 23)
         #expect(column.dots == CGRect(x: 394, y: 311, width: 48, height: DotSwitcher.width))
         #expect(column.drawsIn(keys: 678 - 412, height: 678, onScreen: true))
+        // The column keeps what fits of its top buttons beside the keys: all three under the plain
+        // status bar, over Chinese keys too; under the grown one the "…" button alone over Chinese
+        // keys, with the page's dot over English ones, which stand 40 points lower.
+        #expect(plain.buttonsClear(ofKeys: 678 - 372.5) == 3)
+        #expect(column.buttonsClear(ofKeys: 678 - 372.5) == 1)
+        #expect(column.buttonsClear(ofKeys: 678 - 412.7) == 2)
+        #expect(column.buttonsClear(ofKeys: 678 - 320) == 0)
         let onItsSide = try #require(SideColumn(safeTop: 0, safeLeading: 84, safeTrailing: 0, size: CGSize(width: 678, height: 466),
                                                 occlusions: [CGRect(x: 29.33, y: 29.33, width: 37, height: 37), CGRect(x: 0, y: 0, width: 84, height: 82)]))
-        #expect(!onItsSide.formatsOnKeys)
+        #expect(!onItsSide.hasNoRoomForPanel)
         let inner = try #require(SideColumn(safeTop: 0, safeLeading: 0, safeTrailing: 84, size: CGSize(width: 951, height: 669),
                                             occlusions: [CGRect(x: 867, y: 0, width: 84, height: 124)], bigScreen: true))
-        #expect(!inner.formatsOnKeys)
+        #expect(!inner.hasNoRoomForPanel)
     }
 
     /// On its side the column is on the camera's side: on the left with the camera at its top, its
@@ -292,14 +300,47 @@ struct SideColumnTests {
         mover.holdsKeys = { true }
         controller.page = 0
         mover.pageChanged()
-        // A Live Activity coming while the keys are up: the format bar comes up on them, and the
-        // page's dot, Aa and the button go down under them, out of sight; and back as it goes.
+        // A Live Activity coming while the keys are up: Aa goes into the page's dot, and of the dot
+        // and the button what stands clear of the keys stays: over Chinese keys the button alone,
+        // on the dot, which is out of sight under it; over English ones both. And back as it goes.
         let grown = try #require(columnUnderLiveActivity())
+        let firstButton = grown.firstButton.offsetBy(dx: -left, dy: 0)
         mover.attachForTesting(controller, column: grown, height: 678)
         #expect(mover.isDrawnIn)
-        #expect(controller.glassFrameForTesting == CGRect(x: grown.firstButton.minX - left, y: 678 + 10, width: 48, height: 48))
-        #expect(controller.formatFrameForTesting == CGRect(x: grown.secondButton.minX - left, y: 678 + 10, width: 48, height: 48))
-        #expect(controller.menuFrameForTesting == CGRect(x: grown.button.minX - left, y: 678 + 10, width: 48, height: 48))
+        #expect(mover.keptButtons == 1)
+        #expect(controller.glassFrameForTesting == firstButton)
+        #expect(controller.formatFrameForTesting == firstButton)
+        #expect(controller.menuFrameForTesting == firstButton)
+        #expect(controller.dotIsCoveredForTesting)
+        // Keys going down under a finger leave it as it is till they're gone.
+        container.keysForTesting = 678 - 412.7
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(mover.keptButtons == 1)
+        #expect(controller.menuFrameForTesting == firstButton)
+        // English keys coming up, which stand lower: the page's dot and the button under it.
+        pager.controllers[2].textView.resignFirstResponder()
+        container.keysForTesting = 0
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        pager.controllers[2].focus()
+        container.keysForTesting = 678 - 412.7
+        UIView.animate(withDuration: 0.3) {
+            container.setNeedsLayout()
+            container.layoutIfNeeded()
+        }
+        #expect(mover.isDrawnIn)
+        #expect(mover.keptButtons == 2)
+        #expect(!controller.dotIsCoveredForTesting)
+        #expect(controller.glassFrameForTesting == firstButton)
+        #expect(controller.formatFrameForTesting == firstButton)
+        #expect(controller.menuFrameForTesting == grown.secondButton.offsetBy(dx: -left, dy: 0))
+        // Chinese keys in their place, taller: the button alone again.
+        container.keysForTesting = 678 - 372.5
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(mover.keptButtons == 1)
+        #expect(controller.menuFrameForTesting == firstButton)
         mover.attachForTesting(controller, column: column, height: 678)
         #expect(mover.isDrawnIn)
         #expect(controller.glassFrameForTesting == column.firstButton.offsetBy(dx: -left, dy: 0))

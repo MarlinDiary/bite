@@ -175,6 +175,14 @@ struct OcclusionReader: UIViewRepresentable {
         override init(frame: CGRect) {
             super.init(frame: frame)
             isUserInteractionEnabled = false
+            #if DEBUG
+            // `-statusRoomFlip`: read again as it flips (see `SideColumn.occlusions(in:)`).
+            if CommandLine.arguments.contains("-statusRoomFlip") {
+                Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.report() }
+                }
+            }
+            #endif
         }
 
         required init?(coder: NSCoder) {
@@ -224,9 +232,9 @@ struct OcclusionReader: UIViewRepresentable {
 /// shrinks, and Aa and the "…" button come up out of the keys under it, the three where a
 /// navigation bar's buttons go (user, 2026-10-19 and 20). On its side the keys leave the column too
 /// little room for three: the page's dot, the first thing to go, draws in where Aa goes and turns
-/// into it (user, 2026-10-20 and 21). Upright under a status bar grown for a Live Activity, the
-/// format bar comes up on the keys instead, as on any other phone (see `formatsOnKeys`). The top
-/// of the page is the page's.
+/// into it (user, 2026-10-20 and 21). Upright under a status bar grown for a Live Activity, where
+/// Aa's panel has no room, Aa goes and the column keeps what fits of the rest (see
+/// `hasNoRoomForPanel`). The top of the page is the page's.
 struct SideColumn: Equatable {
     var edge: HorizontalEdge
     var isTrailing: Bool { edge == .trailing }
@@ -380,10 +388,11 @@ struct SideColumn: Equatable {
         return isBigScreen(window.traitCollection) && insets.top > 0 || barEdge(window.traitCollection) != nil
     }
 
-    /// Whether on-screen keys in `window` carry the format bar: on any phone but where the column has
-    /// Aa (see `formatsOnKeys`).
+    /// Whether on-screen keys in `window` carry the format bar: on any phone but where the column
+    /// is, which has Aa; with no room for its panel, no styles to hand rather than the bar, which
+    /// the user hates to see there (2026-11-01; see `hasNoRoomForPanel`).
     static func keysHaveBar(in window: UIWindow) -> Bool {
-        !isShown(in: window) || SideColumn(in: window)?.formatsOnKeys == true
+        !isShown(in: window)
     }
 
     /// Whether the safe area says the status bar stands at a side: none kept at the top, some down
@@ -403,7 +412,24 @@ struct SideColumn: Equatable {
     static func occlusions(in window: UIWindow) -> [CGRect] {
         #if os(iOS)
         guard #available(iOS 27.1, *) else { return [] }
-        return window.reservedRegions(kind: .occlusion).filter(\.isActive).map(\.frame)
+        let regions = window.reservedRegions(kind: .occlusion).filter(\.isActive).map(\.frame)
+        #if DEBUG
+        // `-statusRoom <height>` grows the status bar's room down the column to `height`, as a Live
+        // Activity does, which the simulator can't show with Bite in front: for a look at the
+        // column under it.
+        // `-statusRoomFlip <height> [<other height>]` grows it and lets it go back, or to the other
+        // height, every 3 seconds, as a Live Activity coming and going does.
+        let arguments = CommandLine.arguments
+        if let index = arguments.firstIndex(where: { $0 == "-statusRoom" || $0 == "-statusRoomFlip" }), index + 1 < arguments.count,
+           var height = Double(arguments[index + 1]) {
+            if arguments[index] == "-statusRoomFlip", Int(Date().timeIntervalSince1970 / 3) % 2 == 0 {
+                guard index + 2 < arguments.count, let other = Double(arguments[index + 2]) else { return regions }
+                height = other
+            }
+            return regions.map { $0.minY <= 0 && $0.height > 100 ? CGRect(x: $0.minX, y: $0.minY, width: $0.width, height: height) : $0 }
+        }
+        #endif
+        return regions
         #else
         return []
         #endif
@@ -480,14 +506,14 @@ struct SideColumn: Equatable {
     /// three.
     var isShort: Bool { isOnItsSide && frame.height < 600 }
 
-    /// Whether the format bar comes up on on-screen keys, as on any other phone, in place of Aa
-    /// down the column: upright under a status bar grown for a Live Activity, Aa's panel, which the
-    /// system keeps out of the status bar's room and off the keys, had 108 points of its 186 over
-    /// Chinese keys, and stood squashed. Notes brings up its toolbar there (user, 2026-11-01). The
-    /// column clears out of the keys' way while they're up, as the dot bar goes up out of their way
-    /// on a phone on its side: over Chinese keys the bar's glass would stand 4 points under its top
-    /// button.
-    var formatsOnKeys: Bool {
+    /// Whether Aa's panel has no room over on-screen keys: upright under a status bar grown for a
+    /// Live Activity, or for the microphone's light as Bite records, the panel, which the system
+    /// keeps out of the status bar's room and off the keys, had 108 points of its 186 over Chinese
+    /// keys, and stood squashed. Aa goes then, while the keys are up, with no format bar on them in
+    /// its place as in Notes: the user hates seeing one there, and the page does without styles a
+    /// while (2026-11-01). The column keeps what of its other top buttons stands clear of the keys
+    /// (see `buttonsClear(ofKeys:)`).
+    var hasNoRoomForPanel: Bool {
         !isOnItsSide && !isOnBigScreen && roomIsAtTop && freeTop + Self.panelHeight > frame.maxY - Self.tallKeys
     }
 
@@ -509,6 +535,16 @@ struct SideColumn: Equatable {
     }
     var thirdButton: CGRect {
         secondButton.offsetBy(dx: 0, dy: Self.glass + 12)
+    }
+
+    /// How many of the column's top buttons stand clear of keys `keys` tall over the screen's foot,
+    /// 12 points over them as each stands 12 under the one before. With no room for Aa's panel, as
+    /// many as fit stay of the page's dot and the "…" button, the dot going first, rather than all
+    /// of them going: the status bar grew for the microphone's light as Bite recorded, and with the
+    /// keys up the column stood empty (user, 2026-11-01).
+    func buttonsClear(ofKeys keys: CGFloat) -> Int {
+        let keysTop = frame.maxY - keys
+        return [firstButton, secondButton, thirdButton].prefix { $0.maxY + 12 <= keysTop }.count
     }
 
     /// How far down the middle of the column's top is: the camera's, at the top, or else its first

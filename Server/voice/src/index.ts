@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { written } from "./written";
 
 interface Env {
   /** Claude, for tidying what was said. */
@@ -83,11 +84,12 @@ async function sonioxKey(env: Env): Promise<Response> {
 }
 
 /**
- * What was said into a page, tidied by Claude, streamed back as plain text as it's written. The
- * request has what was said as it stands on the page, `said`, the page before it, `page`, both
- * Markdown, and how many people spoke, `speakers`. Sonnet at low effort, thinking only between
- * tools, which tidying calls none of: done 0.3 s behind the fastest in a test of ten dictations,
- * for a quarter of what Opus in fast mode costs (user, 2026-11-01).
+ * What was said into a page, tidied by Claude, streamed back as plain text as it's written, marked
+ * at the end once all of it is (see `written`). The request has what was said as it stands on the
+ * page, `said`, the page before it, `page`, both Markdown, and how many people spoke, `speakers`.
+ * Sonnet at low effort, thinking only between tools, which tidying calls none of: done 0.3 s
+ * behind the fastest in a test of ten dictations, for a quarter of what Opus in fast mode costs
+ * (user, 2026-11-01).
  */
 async function tidy(request: Request, env: Env): Promise<Response> {
   const body = await request.json<{ said?: string; page?: string; speakers?: number }>().catch(() => null);
@@ -112,24 +114,9 @@ async function tidy(request: Request, env: Env): Promise<Response> {
   } catch (error) {
     return failure(error);
   }
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        for await (const event of events) {
-          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-            controller.enqueue(encoder.encode(event.delta.text));
-          }
-        }
-      } catch {
-        // Cut short: the app keeps what was said as it was.
-        controller.error(new Error("Cut short"));
-        return;
-      }
-      controller.close();
-    },
+  return new Response(written(events), {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
   });
-  return new Response(stream, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 }
 
 function failure(error: unknown): Response {

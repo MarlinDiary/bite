@@ -22,6 +22,14 @@ nonisolated struct VoiceRelay: Sendable {
         var errorDescription: String? { "The voice relay answered \(status)." }
     }
 
+    /// A tidy that stopped before Claude finished it.
+    struct CutShort: Error {}
+
+    /// What the relay sends after the tidy text once Claude has finished it (Server/voice
+    /// src/written.ts). A reply without it was cut short: by Claude reaching how much it may
+    /// write, after a long recording, or by a failure on the way.
+    static let finished: Character = "\u{4}"
+
     /// A Soniox key for one live transcription, to be used within 5 minutes, once.
     func sonioxKey() async throws -> String {
         let (data, response) = try await URLSession.shared.data(for: request("v1/soniox-key", body: nil))
@@ -44,7 +52,14 @@ nonisolated struct VoiceRelay: Sendable {
         let body = try JSONEncoder().encode(Body(said: said, page: page, speakers: speakers))
         let (data, response) = try await URLSession.shared.data(for: request("v1/tidy", body: body))
         try check(response)
-        return String(decoding: data, as: UTF8.self)
+        return try Self.whole(String(decoding: data, as: UTF8.self))
+    }
+
+    /// The tidy text in a reply, as long as all of it came: put in place of everything said, the
+    /// part that came would lose the rest.
+    static func whole(_ reply: String) throws -> String {
+        guard reply.last == finished else { throw CutShort() }
+        return String(reply.dropLast())
     }
 
     private func request(_ path: String, body: Data?) -> URLRequest {

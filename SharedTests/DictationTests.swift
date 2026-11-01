@@ -86,6 +86,17 @@ struct DictationTests {
         #expect(editor.markdown == "Note\nfirst try!")
     }
 
+    /// Not tidied, the tidy cut short or failed, what was said stays as it was heard.
+    @Test func notTidiedItStaysAsHeard() {
+        let editor = EditorHarness("Note")
+        editor.controller.beginDictation()
+        editor.controller.dictate("um as heard", pending: "")
+        let said = editor.controller.dictatedMarkdown
+        editor.controller.endDictation(replacingWith: nil, ifStill: said)
+        #expect(editor.markdown == "Note\num as heard")
+        #expect(!editor.controller.isDictating)
+    }
+
     /// The words still being made out aren't the page's yet: the caret goes no further than where
     /// they start, and nothing typed or deleted goes into them.
     @Test func theCaretKeepsOffWordsStillBeingMadeOut() {

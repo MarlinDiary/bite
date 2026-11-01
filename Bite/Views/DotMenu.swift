@@ -2,10 +2,11 @@ import SwiftUI
 import UIKit
 import BiteKit
 
-/// The "…" button: settings, the page's statistics, copying it as Markdown or plain text, clearing
-/// it, and sharing it: as text, or as a PDF, a picture or its Markdown. Settings and Statistics
-/// come up from its window, as the window has them (see `DotMenuSheets`), so they stay up as the
-/// button moves: on iPhone Duo, from the dot bar's end to the status bar's column as it folds.
+/// The "…" button: recording what's said onto the page, settings, the page's statistics, copying it
+/// as Markdown or plain text, clearing it, and sharing it: as text, or as a PDF, a picture or its
+/// Markdown. Settings and Statistics come up from its window, as the window has them (see
+/// `DotMenuSheets`), so they stay up as the button moves: on iPhone Duo, from the dot bar's end to
+/// the status bar's column as it folds.
 struct DotMenu: View {
     let dot: Int
     @Environment(DotStore.self) private var store
@@ -13,6 +14,7 @@ struct DotMenu: View {
     @Environment(PageWindow.self) private var window
     /// How big its glass is: the dot bar's height, or the status bar's column's on iPhone Duo.
     @Environment(\.barButtonSize) private var size
+    private let voice = VoiceInput.shared
 
     var body: some View {
         button
@@ -40,6 +42,11 @@ struct DotMenu: View {
         } else {
             let isEmpty = store.isEmpty[dot]
             Menu {
+                if voice.isAvailable {
+                    Section {
+                        recordButton
+                    }
+                }
                 Section {
                     Button("Settings", systemImage: "gearshape") {
                         window.isShowingSettings = true
@@ -98,11 +105,36 @@ struct DotMenu: View {
         }
     }
 
+    /// Record, or while it records, on whichever page, Stop Recording (see `VoiceInput`). Off while
+    /// what was said is being tidied.
+    @ViewBuilder
+    private var recordButton: some View {
+        if case .listening = voice.phase {
+            Button("Stop Recording", systemImage: "stop.circle") {
+                voice.toggle(page: dot, in: window)
+            }
+        } else {
+            Button("Record", systemImage: "mic") {
+                voice.toggle(page: dot, in: window)
+            }
+            .disabled(voice.phase != .idle)
+        }
+    }
+
     /// The same menu, for an iPad's bar button, made as it opens.
     private func menuElements() -> [UIMenuElement] {
         let isEmpty = store.isEmpty[dot]
         func action(_ title: LocalizedStringResource, _ symbol: String, isOff: Bool = false, _ handler: @escaping () -> Void) -> UIAction {
             UIAction(title: String(localized: title), image: UIImage(systemName: symbol), attributes: isOff ? .disabled : []) { _ in handler() }
+        }
+        var record: [UIMenuElement] = []
+        if voice.isAvailable {
+            let toggle = { voice.toggle(page: dot, in: window) }
+            if case .listening = voice.phase {
+                record = [UIMenu(options: .displayInline, children: [action("Stop Recording", "stop.circle", toggle)])]
+            } else {
+                record = [UIMenu(options: .displayInline, children: [action("Record", "mic", isOff: voice.phase != .idle, toggle)])]
+            }
         }
         let share: UIMenuElement = isEmpty
             ? action("Share", "square.and.arrow.up", isOff: true) {}
@@ -112,7 +144,7 @@ struct DotMenu: View {
                 action("Image", "photo") { export(.image) },
                 action("Markdown", "doc.text") { export(.markdown) },
             ])
-        return [
+        return record + [
             UIMenu(options: .displayInline, children: [
                 action("Settings", "gearshape") { window.isShowingSettings = true },
                 action("Statistics", "chart.bar") { showStatistics() },

@@ -9,3 +9,6 @@ build/
 .swiftpm/
 
 .DS_Store
+
+# Voice input's relay token, made by Server/voice/app-config.sh
+Bite/Voice/VoiceRelay.plist

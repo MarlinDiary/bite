@@ -123,6 +123,12 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         isApplyingEdit = true
         storage.setAttributedString(text)
         isApplyingEdit = false
+        // Words still being said go on at the end of the page as it now is, Clear having emptied
+        // it, say.
+        if dictation != nil {
+            dictation?.start = nil
+            dictation?.pending = nil
+        }
         unannouncedEdit = nil
         reportedEmpty = pageIsEmpty
         textView.undoManager?.removeAllActions()
@@ -371,6 +377,9 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     /// input method, cut. Returns false where the editor makes the change instead.
     func shouldChange(_ range: NSRange, to text: String) -> Bool {
         guard !isApplyingEdit else { return true }
+        // Words still being made out aren't the page's yet: they're the dictation's to change.
+        if let pending = pendingWords, NSIntersectionRange(range, pending).length > 0
+            || (range.location > pending.location && range.location < NSMaxRange(pending)) { return false }
         // UIKit's undo and redo put back text with the attributes it had; stamping it with the
         // line's style, as for typing, turned a restored bold word plain.
         if let undoManager = textView.undoManager, undoManager.isUndoing || undoManager.isRedoing { return true }
@@ -454,7 +463,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         guard !isApplyingEdit, !textView.isComposing else { return }
         // A tap put the caret somewhere.
         caretGoesToEnd = false
-        let clamped = stepOverDivider(clamp(textView.selectedRange))
+        let clamped = keptOffPendingWords(stepOverDivider(clamp(textView.selectedRange)))
         defer { lastCaretLocation = clamped.location }
         if clamped != textView.selectedRange {
             // Setting it comes back here; it's where it should be then, but never go round twice.
@@ -524,7 +533,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     /// included, so the selection is never anywhere else, not even for a moment.
     func allowedSelection(_ range: NSRange) -> NSRange {
         guard !isApplyingEdit, !textView.isComposing, storage.length > 0 else { return range }
-        return stepOverDivider(clamp(range))
+        return keptOffPendingWords(stepOverDivider(clamp(range)))
     }
 
     func undoManager(for view: NSTextView) -> UndoManager? {
@@ -1769,10 +1778,12 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     /// Replaces `range` and registers the inverse with the text view's undo manager, unless
     /// `recordsUndo` is false. `undo` overrides what undo restores; by default it's the text that
     /// was there. Unless `scrollsToCaret` is false, the caret's brought into view after, and
-    /// after undoing it.
+    /// after undoing it. Unless `tellsKeyboard` is false, the keyboard is told the text changed
+    /// under it, which has it look at the text again, its candidates and all: for text changed
+    /// after the caret, where the keyboard's suggestions don't come from, it's left alone.
     private func replace(_ range: NSRange, with replacement: NSAttributedString, selection: NSRange,
                          undo: (text: NSAttributedString, selection: NSRange)? = nil, recordsUndo: Bool = true,
-                         scrollsToCaret: Bool = true) {
+                         scrollsToCaret: Bool = true, tellsKeyboard: Bool = true) {
         // Undo puts back whole lines: those the edit touches, and the line after one that ends
         // at a line start, which the edit's last line may join. Restyling after the edit gives
         // the rest of each of those lines the kind of its first character, and an undo of just
@@ -1803,7 +1814,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         #if canImport(UIKit)
         // Tell the keyboard the text changed under it, so autocorrect and predictions work from
         // the new text rather than what was typed before the shortcut.
-        textView.inputDelegate?.textWillChange(textView)
+        if tellsKeyboard { textView.inputDelegate?.textWillChange(textView) }
         #else
         // Typing after this starts an undo step of its own, not one with the typing before it.
         textView.breakUndoCoalescing()
@@ -1816,13 +1827,14 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         // Stepped over a divider here too: UIKit says nothing when the selection is set to what
         // it was, though the line under it may have become a divider, as when lines were
         // dragged to where the caret was.
-        textView.selectedRange = stepOverDivider(clamp(selection))
+        let newSelection = stepOverDivider(clamp(selection))
+        if tellsKeyboard || newSelection != textView.selectedRange { textView.selectedRange = newSelection }
         #if canImport(UIKit)
         if !scrollsToCaret { textView.leavePageWhereItIs() }
-        textView.inputDelegate?.textDidChange(textView)
+        if tellsKeyboard { textView.inputDelegate?.textDidChange(textView) }
         #endif
         contentDidChange(in: replacedRange, scrollsToCaret: scrollsToCaret)
-        tellKeyboardOnceItsDone()
+        if tellsKeyboard { tellKeyboardOnceItsDone() }
         #if canImport(UIKit)
         // The lines' marks, a to-do's box among them, are drawn in layers of their own as the page
         // is laid out. A trackpad's click on a box lays nothing out, as a finger's tap does: the
@@ -1974,6 +1986,7 @@ final class EditorController: NSObject, EditorTextViewDelegate {
         textView.hideFound(.atOnce)
         let edited = storage.editedRange
         let delta = storage.changeInLength
+        if !isWritingDictation { dictation?.follow(edited, changeInLength: delta) }
         if isApplyingEdit {
             unannouncedEdit?.follow(edited, changeInLength: delta)
         } else if unannouncedEdit != nil {
@@ -2045,6 +2058,243 @@ final class EditorController: NSObject, EditorTextViewDelegate {
     private func clampToPage(_ range: NSRange) -> NSRange {
         let location = min(max(0, range.location), storage.length)
         return NSRange(location: location, length: max(0, min(NSMaxRange(range), storage.length) - location))
+    }
+
+    // MARK: Dictation
+
+    /// Words said into the page by voice input, written at its end as they're heard rather than
+    /// where the caret is, so the page can be typed in as they come (user, 2026-11-01): the lines
+    /// they're on, which run to the end of the page and take in whatever's typed among them, and
+    /// the words at the end still being made out, drawn lighter, which the next words heard
+    /// replace.
+    private struct Dictation {
+        /// Where the lines said start, once there are any. A line start, kept where its text is
+        /// as the page changes above it.
+        var start: Int?
+        /// The words still being made out, and where they are, while they're still there as
+        /// written.
+        var pending: (range: NSRange, text: String)?
+        /// Words heard and not written yet, as while an input method composes: those heard for
+        /// good, and the latest still being made out. Nil once all are written.
+        var unwritten: (final: String, pending: String)?
+
+        /// Keeps the places where their text is through a change the dictation didn't make, which
+        /// put `edited.length` characters where there were `edited.length - delta`. Words being
+        /// made out that the change touches are let go of, left as they are.
+        mutating func follow(_ edited: NSRange, changeInLength delta: Int) {
+            let changedEnd = NSMaxRange(edited) - delta
+            if let start {
+                if changedEnd <= start {
+                    self.start = start + delta
+                } else if edited.location < start {
+                    self.start = edited.location
+                }
+            }
+            if let range = pending?.range {
+                if changedEnd <= range.location {
+                    pending?.range.location += delta
+                } else if edited.location < NSMaxRange(range) {
+                    pending = nil
+                }
+            }
+        }
+    }
+
+    private var dictation: Dictation?
+    /// Set while the dictation writes, which it doesn't follow.
+    private var isWritingDictation = false
+    private var dictationRetry: Task<Void, Never>?
+
+    /// Whether words are being said into the page.
+    var isDictating: Bool {
+        dictation != nil
+    }
+
+    /// Starts writing what's said at the page's end (see `dictate`).
+    func beginDictation() {
+        dictation = Dictation()
+    }
+
+    /// Writes words heard at the page's end: `final` after those written for good, and `pending`
+    /// after them, in place of the last ones still being made out.
+    func dictate(_ final: String, pending: String) {
+        guard var dictation else { return }
+        var unwritten = dictation.unwritten ?? (final: "", pending: dictation.pending?.text ?? "")
+        unwritten.final += final
+        unwritten.pending = pending
+        dictation.unwritten = unwritten
+        self.dictation = dictation
+        writeDictation()
+    }
+
+    /// Writes the words still being made out in for good, as heard last, as no more are coming.
+    func settleDictation() {
+        guard let dictation else { return }
+        dictate(dictation.unwritten?.pending ?? dictation.pending?.text ?? "", pending: "")
+    }
+
+    /// The page's text, its last `limit` characters, for what's said to be heard against.
+    func text(limit: Int) -> String {
+        String(string.substring(to: max(0, storage.length - 1)).suffix(limit))
+    }
+
+    /// What's been said into the page, with whatever was typed among it, as Markdown: what's
+    /// tidied. Nil while nothing has been written.
+    var dictatedMarkdown: String? {
+        guard let start = dictation?.start, start < storage.length else { return nil }
+        let document = AttributedDocument.document(from: storage, in: NSRange(location: start, length: storage.length - start))
+        let markdown = MarkdownSerializer.markdown(from: document).trimmingCharacters(in: .whitespacesAndNewlines)
+        return markdown.isEmpty ? nil : markdown
+    }
+
+    /// The page before what's been said into it, as Markdown, its last `limit` characters: what
+    /// that's tidied to fit.
+    func markdownBeforeDictation(limit: Int) -> String {
+        guard let start = dictation?.start, start > 0 else { return "" }
+        let document = AttributedDocument.document(from: storage, in: NSRange(location: 0, length: start))
+        return String(MarkdownSerializer.markdown(from: document).suffix(limit))
+    }
+
+    /// Stops writing what's said, putting `tidied` in its place if it's still `said`: changed
+    /// since, it's left as it is. Undo puts back what was said as it was.
+    func endDictation(replacingWith tidied: String? = nil, ifStill said: String? = nil) {
+        dictationRetry?.cancel()
+        dictationRetry = nil
+        defer { dictation = nil }
+        if let pending = dictation?.pending, textIsStill(pending.text, at: pending.range) {
+            restyle(pending.range)
+        }
+        guard let tidied, let said, let start = dictation?.start, dictatedMarkdown == said,
+              !textView.isComposing else { return }
+        var blocks = MarkdownParser.parse(tidied).blocks
+        while let first = blocks.first, first.kind == .paragraph, first.text.isEmpty { blocks.removeFirst() }
+        while let last = blocks.last, last.kind == .paragraph, last.text.isEmpty { blocks.removeLast() }
+        guard !blocks.isEmpty else { return }
+        let range = NSRange(location: start, length: storage.length - start)
+        let replacement = AttributedDocument.attributedString(blocks: blocks, terminated: true)
+        let selection = textView.selectedRange
+        let caret = selection.location < start ? selection : NSRange(location: start + replacement.length - 1, length: 0)
+        let follows = followsEnd
+        // Undone, the caret's at the end of what was said.
+        let asSaid = (storage.attributedSubstring(from: range), NSRange(location: storage.length - 1, length: 0))
+        replace(range, with: replacement, selection: caret, undo: asSaid, scrollsToCaret: false)
+        if follows { textView.keepsEnd = true }
+    }
+
+    /// Writes the words heard and not written yet, unless the page can't take them now: while an
+    /// input method composes, or Writing Tools is at work. They're tried again a moment later. An
+    /// edit of the person's own is done within the turn it starts in, which words never come in
+    /// the middle of; one the keys asked about and didn't send, left on record, held them back
+    /// till the next keystroke.
+    private func writeDictation() {
+        guard var dictation, let unwritten = dictation.unwritten, storage.length > 0 else { return }
+        if isApplyingEdit || textView.isComposing || textView.isWritingToolsActive {
+            retryDictationSoon()
+            return
+        }
+        // One line, as heard: the lines are made as it's tidied.
+        var final = unwritten.final.replacingOccurrences(of: "\n", with: " ")
+        var pending = unwritten.pending.replacingOccurrences(of: "\n", with: " ")
+        // A line of their own starts with a word, not the space Soniox hears before an English one.
+        if dictation.start == nil {
+            final = String(final.drop(while: \.isWhitespace))
+            if final.isEmpty { pending = String(pending.drop(while: \.isWhitespace)) }
+        }
+        let words = final + pending
+        let range: NSRange
+        let inserted = NSMutableAttributedString()
+        if let written = dictation.pending, textIsStill(written.text, at: written.range) {
+            range = written.range
+            inserted.append(NSAttributedString(string: words, attributes: lineBreakAttributes(for: block(of: lineRange(at: range.location)))))
+        } else if dictation.start != nil {
+            range = NSRange(location: storage.length - 1, length: 0)
+            inserted.append(NSAttributedString(string: words, attributes: lineBreakAttributes(for: block(of: lineRange(at: range.location)))))
+        } else {
+            guard !words.isEmpty else {
+                self.dictation?.unwritten = nil
+                return
+            }
+            // The first words: on the empty line the page ends with, as typed there, unless it's
+            // being typed on; else on a line of their own after the page's last.
+            let last = lineRange(at: storage.length)
+            let content = contentRange(of: last)
+            var lastBlock = block(of: last)
+            let isTypedOn = textView.isFirstResponder && NSLocationInRange(textView.selectedRange.location, last)
+            if content.isEmpty, lastBlock.kind == .paragraph || lastBlock.kind.isList, !isTypedOn {
+                range = NSRange(location: content.lowerBound, length: 0)
+                lastBlock.isChecked = false
+                inserted.append(NSAttributedString(string: words, attributes: lineBreakAttributes(for: lastBlock)))
+                dictation.start = content.lowerBound
+            } else {
+                range = NSRange(location: content.upperBound, length: NSMaxRange(last) - content.upperBound)
+                let line = lineBreakAttributes(for: BlockAttributes(kind: .paragraph))
+                inserted.append(NSAttributedString(string: "\n", attributes: lineBreakAttributes(for: lastBlock)))
+                inserted.append(NSAttributedString(string: words + "\n", attributes: line))
+                dictation.start = content.upperBound + 1
+            }
+        }
+        // The caret stays on the text it was on, before the words if it's where they go.
+        let delta = inserted.length - range.length
+        func moved(_ location: Int) -> Int {
+            if location <= range.location { return location }
+            if location >= NSMaxRange(range) { return location + delta }
+            return range.location
+        }
+        let selection = textView.selectedRange
+        let start = moved(selection.location)
+        let caret = NSRange(location: start, length: max(0, moved(NSMaxRange(selection)) - start))
+        let follows = followsEnd
+        let wordsStart = range.location + (inserted.string.hasPrefix("\n") ? 1 : 0)
+        isWritingDictation = true
+        // Words come many times a second: telling the keyboard each time made the candidates
+        // above the Chinese keys flicker as they came (user, 2026-11-01).
+        replace(range, with: inserted, selection: caret, recordsUndo: false, scrollsToCaret: false,
+                tellsKeyboard: selection.location > range.location)
+        isWritingDictation = false
+        let pendingLength = (pending as NSString).length
+        if pendingLength > 0 {
+            let pendingRange = NSRange(location: wordsStart + (final as NSString).length, length: pendingLength)
+            dictation.pending = (pendingRange, pending)
+            storage.addAttribute(.foregroundColor, value: PlatformColor.secondaryText, range: pendingRange)
+        } else {
+            dictation.pending = nil
+        }
+        dictation.unwritten = nil
+        self.dictation = dictation
+        if follows { textView.keepsEnd = true }
+    }
+
+    private func retryDictationSoon() {
+        guard dictationRetry == nil else { return }
+        dictationRetry = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            self?.dictationRetry = nil
+            self?.writeDictation()
+        }
+    }
+
+    /// Where the words still being made out are, while they're there as written.
+    private var pendingWords: NSRange? {
+        guard !isWritingDictation, let pending = dictation?.pending, textIsStill(pending.text, at: pending.range) else { return nil }
+        return pending.range
+    }
+
+    /// `selection` kept off the words still being made out, which the next words heard replace:
+    /// before them, the caret going no further than where they start (user, 2026-11-01).
+    private func keptOffPendingWords(_ selection: NSRange) -> NSRange {
+        guard let pending = pendingWords, NSMaxRange(selection) > pending.location else { return selection }
+        let location = min(selection.location, pending.location)
+        return NSRange(location: location, length: pending.location - location)
+    }
+
+    /// Whether the page's end is in view, and stays there as words come, as on a page looked at
+    /// rather than typed in or moved by a finger.
+    private var followsEnd: Bool {
+        #if canImport(UIKit)
+        guard !textView.isFirstResponder, !textView.isTracking, !textView.isDragging, !textView.isDecelerating else { return false }
+        #endif
+        return isAtEnd
     }
 
     // MARK: Reporting changes

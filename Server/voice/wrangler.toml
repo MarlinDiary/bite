@@ -1,0 +1,5 @@
+# Bite's voice relay: hands the app short-lived Soniox keys for live transcription, and tidies
+# what was said with Claude. The real keys stay here as secrets (wrangler secret put).
+name = "bite-voice"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"

@@ -185,6 +185,13 @@ final class ColumnMover {
         }
     }
 
+    /// Another page on screen: the dots go round to its dot, drawn in or not as they were. Judged
+    /// anew, they opened out and drew in again as the page's dot was tapped quickly: the keys,
+    /// going over to the next page, were typing into none for a moment (user, 2026-11-01).
+    func pageChanged() {
+        arranger?.arrange(drawnIn: wasDrawnIn, keysOnScreen: tallestKeys > 120, byKeys: false)
+    }
+
     /// The spring that carries the change when the keys bring none: as they go, UIKit tells first.
     static let spring: TimeInterval = 0.35
 
@@ -259,7 +266,7 @@ struct ColumnHost<Dots: View, Dot: View, Menu: View>: UIViewControllerRepresenta
         if controller.pageIsColoured != pageIsColoured { controller.pageIsColoured = pageIsColoured }
         if controller.page != page {
             controller.page = page
-            UIView.performWithoutAnimation { mover.arrange() }
+            UIView.performWithoutAnimation { mover.pageChanged() }
         }
         lay(out: controller)
     }
@@ -319,11 +326,20 @@ final class ColumnController<Dots: View, Dot: View, Menu: View>: UIViewControlle
     }
     /// The dots' glass and Aa's, in a container of glass, which runs glass close together into one:
     /// opening out, the dots' glass takes Aa's back in. Aa's toolbar draws no glass of its own.
-    private let container: UIVisualEffectView = {
-        let effect = UIGlassContainerEffect()
-        effect.spacing = 10
-        return UIVisualEffectView(effect: effect)
-    }()
+    private let container = UIVisualEffectView(effect: ColumnController.containerEffect(runsTogether: true))
+    /// Whether glass 10 points apart runs together, as the dots' and Aa's move into and out of each
+    /// other; not while they stand drawn in, 12 points apart, as the system's own buttons down the
+    /// column never run together: the page's dot, giving under a finger, ran into Aa (user,
+    /// 2026-11-01). Either way they stand too far apart to run together then, so the change can't
+    /// be seen.
+    private var glassRunsTogether = true {
+        didSet {
+            guard glassRunsTogether != oldValue else { return }
+            UIView.performWithoutAnimation {
+                container.effect = Self.containerEffect(runsTogether: glassRunsTogether)
+            }
+        }
+    }
     private let glass = ColumnController.makeGlass()
     private let formatGlass = ColumnController.makeGlass()
     /// What of the dots shows: within the glass, 3 points in from its edge, as near its edge as
@@ -366,6 +382,12 @@ final class ColumnController<Dots: View, Dot: View, Menu: View>: UIViewControlle
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    private static func containerEffect(runsTogether: Bool) -> UIGlassContainerEffect {
+        let effect = UIGlassContainerEffect()
+        effect.spacing = runsTogether ? 10 : 0
+        return effect
     }
 
     private static func makeGlass() -> UIVisualEffectView {
@@ -479,6 +501,7 @@ final class ColumnController<Dots: View, Dot: View, Menu: View>: UIViewControlle
         placeFormat()
         #endif
         let clearsOut = drawnIn && keysOnScreen && column.formatsOnKeys
+        glassRunsTogether = !(drawnIn && keysOnScreen && !column.isShort && !clearsOut)
         if clearsOut {
             clearOut(column)
         } else if column.isShort {

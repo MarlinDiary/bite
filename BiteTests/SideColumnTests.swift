@@ -282,6 +282,16 @@ struct SideColumnTests {
         #expect(controller.glassIsMovingForTesting)
         #expect(controller.formatIsMovingForTesting)
         #expect(controller.menuIsMovingForTesting)
+        // The page's dot tapped quickly, the next page on screen as the keys pass over to it,
+        // typing into no page for a moment: the dots stay drawn in, round its dot.
+        mover.holdsKeys = { false }
+        controller.page = 3
+        mover.pageChanged()
+        #expect(controller.glassFrameForTesting == column.firstButton.offsetBy(dx: -left, dy: 0))
+        #expect(controller.formatFrameForTesting == column.secondButton.offsetBy(dx: -left, dy: 0))
+        mover.holdsKeys = { true }
+        controller.page = 0
+        mover.pageChanged()
         // A Live Activity coming while the keys are up: the format bar comes up on them, and the
         // page's dot, Aa and the button go down under them, out of sight; and back as it goes.
         let grown = try #require(columnUnderLiveActivity())

@@ -14,6 +14,8 @@ struct SettingsView: View {
     @State private var locksPortrait = Preferences.locksPortrait
     @State private var keepsScreenOn = Preferences.keepsScreenOn
     @State private var dotGlows = Preferences.dotGlows
+    @State private var allowsVoiceInput = Preferences.allowsVoiceInput
+    @State private var isAskingForVoiceInput = false
     @State private var isConfirmingReset = false
 
     var body: some View {
@@ -27,6 +29,12 @@ struct SettingsView: View {
                 }
                 Section {
                     Toggle("Check Spelling", isOn: $checksSpelling)
+                    // Apple Vision Pro records nothing: its "…" has no Record.
+                    #if !os(visionOS)
+                    if VoiceInput.shared.isAvailable {
+                        voiceInputToggle
+                    }
+                    #endif
                     // Apple Vision Pro opens links in Safari's own window, having no Safari to
                     // open them in Bite with, and has no screen that goes off.
                     #if !os(visionOS)
@@ -70,6 +78,11 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
         }
+        #if !os(visionOS)
+        .sheet(isPresented: $isAskingForVoiceInput) {
+            VoiceConsentSheet { allowsVoiceInput = true }
+        }
+        #endif
         .onChange(of: syncsWithICloud) {
             Preferences.syncsWithICloud = syncsWithICloud
         }
@@ -95,6 +108,24 @@ struct SettingsView: View {
             Preferences.dotGlows = dotGlows
         }
     }
+
+    #if !os(visionOS)
+    /// Turned on, it asks first, as Record does the first time (see `VoiceConsentSheet`); turned
+    /// off, what's said goes nowhere, a recording stopping where it is.
+    private var voiceInputToggle: some View {
+        Toggle("Voice Input", isOn: Binding {
+            allowsVoiceInput
+        } set: { isOn in
+            if isOn {
+                isAskingForVoiceInput = true
+            } else {
+                allowsVoiceInput = false
+                Preferences.allowsVoiceInput = false
+                VoiceInput.shared.turnedOff()
+            }
+        })
+    }
+    #endif
 }
 
 /// The app icon, a ring like the dots', comes in every dot's colour, as Tot's does. Orange is

@@ -83,6 +83,15 @@ enum Preferences {
         set { set(newValue, forKey: opensLinksInBiteKey) }
     }
 
+    /// On a phone and an iPad, whether what's said while recording, and part of the page, may go to
+    /// Soniox to be written down, and, while tidying is on, to Anthropic's Claude to be tidied (see
+    /// `VoiceInput`). Asked the first time Record is tapped, as App Review wants before anything
+    /// goes to another company's AI, and turned off again in Settings. Off until allowed.
+    static var allowsVoiceInput: Bool {
+        get { defaults.bool(forKey: allowsVoiceInputKey) }
+        set { set(newValue, forKey: allowsVoiceInputKey) }
+    }
+
     private static let syncsWithICloudKey = "syncsWithICloud"
     private static let showsInSpotlightKey = "showsInSpotlight"
     private static let checksSpellingKey = "checksSpelling"
@@ -92,6 +101,7 @@ enum Preferences {
     private static let keepsScreenOnKey = "keepsScreenOn"
     private static let dotGlowsKey = "dotGlows"
     private static let opensLinksInBiteKey = "opensLinksInBite"
+    private static let allowsVoiceInputKey = "allowsVoiceInput"
     private static let keys = [syncsWithICloudKey, showsInSpotlightKey, checksSpellingKey, panelIsGlassKey, playsHapticsKey,
                                locksPortraitKey, keepsScreenOnKey, dotGlowsKey, opensLinksInBiteKey]
 

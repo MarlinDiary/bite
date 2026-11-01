@@ -27,6 +27,9 @@ struct DotMenu: View {
                 // `-startLine` starts a line at the end of the page, the page being edited, for a
                 // picture.
                 if CommandLine.arguments.contains("-startLine") { store.startLine(on: dot, asToDo: false) }
+                // `-showVoiceConsent` asks whether what's said may go to Soniox and Claude, as
+                // Record does the first time, for a picture of it.
+                if CommandLine.arguments.contains("-showVoiceConsent") { window.recordingAsked = RecordingAsked(page: dot) }
             }
             #endif
     }
@@ -184,11 +187,14 @@ struct ShownStatistics: Identifiable {
 /// page's colour, as they were from the button, a card in the middle of an iPad's window unless the
 /// window's as narrow as a phone, where they're the phone's drawer (see `fittedSheet`); so on
 /// iPhone Duo's inner display, as big as an iPad's, where the system puts its own sheets in the
-/// middle too, but beside another app.
+/// middle too, but beside another app. And Record's question the first time (see
+/// `VoiceConsentSheet`), which records once it's gone, if allowed.
 struct DotMenuSheets: ViewModifier {
     let window: PageWindow
     @Environment(\.horizontalSizeClass) private var widthClass
     @Environment(\.verticalSizeClass) private var heightClass
+    /// The page to record on once Record's question is gone, Allow tapped.
+    @State private var recordsOn: Int?
 
     func body(content: Content) -> some View {
         @Bindable var window = window
@@ -204,6 +210,16 @@ struct DotMenuSheets: ViewModifier {
                     .environment(\.sheetIsCard, sheetIsCard)
                     .tint(tint)
             }
+            .sheet(item: $window.recordingAsked, onDismiss: recordIfAllowed) { asked in
+                VoiceConsentSheet { recordsOn = asked.page }
+                    .tint(DotPalette.colors[asked.page].color)
+            }
+    }
+
+    private func recordIfAllowed() {
+        guard let page = recordsOn else { return }
+        recordsOn = nil
+        VoiceInput.shared.toggle(page: page, in: window)
     }
 
     private var sheetIsCard: Bool {

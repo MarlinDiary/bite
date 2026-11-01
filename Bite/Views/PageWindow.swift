@@ -18,6 +18,9 @@ final class PageWindow {
     var isShowingSettings = false
     /// A page's statistics, asked for from the "…" button.
     var shownStatistics: ShownStatistics?
+    /// Record, tapped before what's said may go to Soniox and Claude: Bite asks first (see
+    /// `VoiceConsentSheet`).
+    var recordingAsked: RecordingAsked?
     @ObservationIgnored weak var pager: DotPagerCoordinator?
 
     init(page: Int) {

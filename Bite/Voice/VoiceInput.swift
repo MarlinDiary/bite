@@ -2,9 +2,8 @@ import AVFoundation
 import UIKit
 
 /// Voice input: what's said is written at the end of the page as it's said, the words still being
-/// made out drawn lighter, and once it's stopped it's tidied, into what one person speaking meant
-/// to write, in the page's own kind of lines (user, 2026-11-01). Started and stopped from the "…"
-/// menu, Record and Stop Recording, with no button of its own (user, 2026-11-01). It belongs to the
+/// made out drawn lighter, and kept as heard once it's stopped (see `tidies`). Started and stopped
+/// from the "…" menu, Record and Stop Recording, with no button of its own. It belongs to the
 /// page it started on, which it goes on writing to as other pages are looked at, and from any of
 /// which it can be stopped, but not started again meanwhile.
 @MainActor @Observable
@@ -20,6 +19,12 @@ final class VoiceInput {
     }
 
     private(set) var phase = Phase.idle
+
+    /// Whether what was said is tidied by Claude once it's stopped, into what one person speaking
+    /// meant to write, in the page's own kind of lines. Off for now, what's heard being what's
+    /// written (user, 2026-11-01); the relay's tidy stays for when it's back, and Bite's question
+    /// before recording names Claude only while it's on (see `VoiceConsentSheet`).
+    static let tidies = false
 
     /// Whether Bite has voice input: built with its relay.
     var isAvailable: Bool {
@@ -45,7 +50,18 @@ final class VoiceInput {
         }
     }
 
+    /// Turned off in Settings while it records: it stops, and what was heard stays as it was heard,
+    /// not sent to be tidied.
+    func turnedOff() {
+        if case .listening = phase { stop() }
+    }
+
     private func start(page: Int, in window: PageWindow) {
+        // Nothing goes to Soniox or Claude till that's allowed.
+        guard Preferences.allowsVoiceInput else {
+            window.recordingAsked = RecordingAsked(page: page)
+            return
+        }
         guard let relay = VoiceRelay.shared, let pager = window.pager, pager.controllers.indices.contains(page) else { return }
         switch AVAudioApplication.shared.recordPermission {
         case .undetermined:
@@ -151,7 +167,7 @@ final class VoiceInput {
     private func tidy(with relay: VoiceRelay) async {
         guard let editor else { return }
         editor.settleDictation()
-        guard let said = editor.dictatedMarkdown else {
+        guard Self.tidies, Preferences.allowsVoiceInput, let said = editor.dictatedMarkdown else {
             editor.endDictation()
             return
         }

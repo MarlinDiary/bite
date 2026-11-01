@@ -225,6 +225,34 @@
         }
       }
     },
+    "Allow" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "許可"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "허용"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許"
+          }
+        }
+      }
+    },
     "App Icon" : {
       "localizations" : {
         "ja" : {
@@ -1793,6 +1821,62 @@
         }
       }
     },
+    "Not Now" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今はしない"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나중에"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以后"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在不要"
+          }
+        }
+      }
+    },
+    "Nothing is sent at other times, and you can turn this off in Settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "それ以外のときは何も送られません。設定でオフにすることもできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 외에는 아무것도 전송되지 않으며, 설정에서 끌 수도 있습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他时候不会发送任何内容，你也可以在设置中关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他時候不會傳送任何內容，你也可以在設定中關閉。"
+          }
+        }
+      }
+    },
     "Numbered List" : {
       "localizations" : {
         "ja" : {
@@ -1901,6 +1985,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每個圓點一頁，記下心裡惦記的事。滑動或點一下即可切換。"
+          }
+        }
+      }
+    },
+    "Only When You Record" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音するときだけ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음할 때만"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只在录音时"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只在錄音時"
           }
         }
       }
@@ -3053,6 +3165,34 @@
         }
       }
     },
+    "Then what you said and part of the page go to Anthropic's Claude." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "続いて、話した内容とページの一部が Anthropic の Claude に送られます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그다음 말한 내용과 페이지 일부가 Anthropic의 Claude로 전송됩니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "然后，你说的话和页面上的部分内容会发送给 Anthropic 的 Claude。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接著，你說的話和頁面上的部分內容會傳送給 Anthropic 的 Claude。"
+          }
+        }
+      }
+    },
     "There's no microphone to record with." : {
       "localizations" : {
         "ja" : {
@@ -3105,6 +3245,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "勾選待辦事項"
+          }
+        }
+      }
+    },
+    "Tidied When You Stop" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "止めたら整理"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "멈추면 다듬기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停下后整理"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停下後整理"
           }
         }
       }
@@ -3221,6 +3389,34 @@
         }
       }
     },
+    "Voice Input" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 입력"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音输入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音輸入"
+          }
+        }
+      }
+    },
     "Welcome to Bite" : {
       "localizations" : {
         "ja" : {
@@ -3333,6 +3529,34 @@
         }
       }
     },
+    "Written as You Speak" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "話しながら文字に"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "말하는 대로 받아쓰기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "边说边写"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "邊說邊寫"
+          }
+        }
+      }
+    },
     "Yellow" : {
       "localizations" : {
         "ja" : {
@@ -3441,6 +3665,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "透過 iCloud，你在哪裡用 Bite，頁面就同步到哪裡。"
+          }
+        }
+      }
+    },
+    "Your voice and part of the page go to Soniox to write down what you say." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "声とページの一部が Soniox に送られ、話した内容が文字に起こされます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "목소리와 페이지 일부가 Soniox로 전송되어 말한 내용이 받아써집니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的声音和页面上的部分内容会发送给 Soniox，由它把你说的话写成文字。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的聲音和頁面上的部分內容會傳送給 Soniox，由它把你說的話寫成文字。"
           }
         }
       }

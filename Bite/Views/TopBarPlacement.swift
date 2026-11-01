@@ -152,6 +152,62 @@ struct BarEdgeReader: UIViewRepresentable {
     }
 }
 
+/// Reads what the system covers of a window, its status bar and camera, as on iPhone Duo's screens
+/// (see `SideColumn`), in the window. UIKit tells of it, and of each change, as the Dynamic Island
+/// showing a Live Activity grows the status bar's room down the column from 174 points to 264;
+/// SwiftUI tells of nothing outside the safe area on the phone, which the column is.
+struct OcclusionReader: UIViewRepresentable {
+    let onChange: ([CGRect]) -> Void
+
+    func makeUIView(context: Context) -> ReaderView {
+        ReaderView()
+    }
+
+    func updateUIView(_ view: ReaderView, context: Context) {
+        view.onChange = onChange
+        view.report()
+    }
+
+    final class ReaderView: UIView {
+        var onChange: (([CGRect]) -> Void)?
+        private var reported: [CGRect]?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) is not supported")
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            report()
+        }
+
+        // UIKit lays the window out again as what it covers changes.
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()
+        }
+
+        override func safeAreaInsetsDidChange() {
+            super.safeAreaInsetsDidChange()
+            report()
+        }
+
+        func report() {
+            guard let window else { return }
+            let occlusions = SideColumn.occlusions(in: window)
+            guard occlusions != reported else { return }
+            reported = occlusions
+            // Out of this layout pass, which SwiftUI's own is part of.
+            DispatchQueue.main.async { [weak self] in self?.onChange?(occlusions) }
+        }
+    }
+}
+
 /// The column down one side of a screen whose status bar stands there rather than across its top,
 /// as iPhone Duo's does. The system turns a page's bars into it: a navigation bar's buttons go to
 /// its top and a toolbar's and a tab bar's to its foot, in glass 48 points across where a phone's
@@ -167,8 +223,10 @@ struct BarEdgeReader: UIViewRepresentable {
 /// they draw in to the page's own dot, in a round button of glass as a tab bar does when it
 /// shrinks, and Aa and the "…" button come up out of the keys under it, the three where a
 /// navigation bar's buttons go (user, 2026-10-19 and 20). On its side the keys leave the column too
-/// little room for three: the page's dot, the first thing to go, draws in where Aa goes, and Aa
-/// coming up out of the keys covers it (user, 2026-10-20). The top of the page is the page's.
+/// little room for three: the page's dot, the first thing to go, draws in where Aa goes and turns
+/// into it (user, 2026-10-20 and 21). Upright under a status bar grown for a Live Activity, the
+/// format bar comes up on the keys instead, as on any other phone (see `formatsOnKeys`). The top
+/// of the page is the page's.
 struct SideColumn: Equatable {
     var edge: HorizontalEdge
     var isTrailing: Bool { edge == .trailing }
@@ -241,12 +299,11 @@ struct SideColumn: Equatable {
             // The room alone is the status bar's, with no camera in it.
             self.camera = covered.count > 1 ? camera : cameraPlace
         } else {
-            // Until the system tells what it covers, a moment after the page first shows, as it
-            // covers iPhone Duo's outer screen: upright, the room 174 points down the column's top;
-            // on its side 82, at the top or, the column on the right, at the foot; the camera 37
-            // points across, 29.33 in from the screen's edges. Without, the dots came a moment after
-            // the page there. SwiftUI never tells of what's outside the safe area, which the column
-            // is.
+            // Until the system tells what it covers, half a second after the page first shows, as it
+            // covers iPhone Duo's outer screen with no Live Activity: upright, the room 174 points
+            // down the column's top; on its side 82, at the top or, the column on the right, at the
+            // foot; the camera 37 points across, 29.33 in from the screen's edges. Without, the dots
+            // came a moment after the page there.
             let roomHeight: CGFloat = inner ? 124 : isOnItsSide ? 82 : 174
             cameraRoom = CGRect(x: column.minX, y: atFoot ? size.height - roomHeight : 0, width: width, height: roomHeight)
             camera = cameraPlace
@@ -323,6 +380,12 @@ struct SideColumn: Equatable {
         return isBigScreen(window.traitCollection) && insets.top > 0 || barEdge(window.traitCollection) != nil
     }
 
+    /// Whether on-screen keys in `window` carry the format bar: on any phone but where the column has
+    /// Aa (see `formatsOnKeys`).
+    static func keysHaveBar(in window: UIWindow) -> Bool {
+        !isShown(in: window) || SideColumn(in: window)?.formatsOnKeys == true
+    }
+
     /// Whether the safe area says the status bar stands at a side: none kept at the top, some down
     /// one side only. The system tells where it covers the screen a moment after: Bite launching,
     /// its first frames had no column, and drew the dot bar across the top instead.
@@ -335,15 +398,25 @@ struct SideColumn: Equatable {
         return statusBarIsAtSide(safeTop: insets.top, safeLeading: insets.left, safeTrailing: insets.right)
     }
 
+    /// What the system covers of `window`, its status bar and camera, in the window (see
+    /// `OcclusionReader`). None on Apple Vision Pro.
+    static func occlusions(in window: UIWindow) -> [CGRect] {
+        #if os(iOS)
+        guard #available(iOS 27.1, *) else { return [] }
+        return window.reservedRegions(kind: .occlusion).filter(\.isActive).map(\.frame)
+        #else
+        return []
+        #endif
+    }
+
     /// `window`'s column, as UIKit tells of it. None on Apple Vision Pro.
     init?(in window: UIWindow) {
         #if os(iOS)
         guard #available(iOS 27.1, *) else { return nil }
         let insets = window.safeAreaInsets
-        let occlusions = window.reservedRegions(kind: .occlusion).filter(\.isActive).map(\.frame)
         let divisions = window.reservedRegions(kind: .division, options: .includeInactive)
         self.init(safeTop: insets.top, safeLeading: insets.left, safeTrailing: insets.right, size: window.bounds.size,
-                  occlusions: occlusions, bigScreen: Self.isBigScreen(window.traitCollection),
+                  occlusions: Self.occlusions(in: window), bigScreen: Self.isBigScreen(window.traitCollection),
                   folds: divisions.filter(\.isActive).map(\.frame), barEdge: Self.barEdge(window.traitCollection),
                   screenFolds: !divisions.isEmpty)
         #else
@@ -359,8 +432,10 @@ struct SideColumn: Equatable {
     private var middleX: CGFloat { camera.midX.rounded() }
 
     /// Where the column's buttons may start at its top, and must end at its foot: right against the
-    /// camera's room, or 24 points from the screen's edge.
-    var freeTop: CGFloat { roomIsAtTop ? cameraRoom.maxY.rounded() : frame.minY + Self.pageTop }
+    /// camera's room, or 24 points from the screen's edge. Clear of the room to the whole point:
+    /// into it by a third of a point, under a status bar grown for a Live Activity to 264.33, Aa's
+    /// toolbar moved Aa 30 points along, off its glass, to keep clear of it (user, 2026-11-01).
+    var freeTop: CGFloat { roomIsAtTop ? (cameraRoom.maxY - 0.01).rounded(.up) : frame.minY + Self.pageTop }
     var freeBottom: CGFloat { roomIsAtTop ? frame.maxY - 24 : cameraRoom.minY.rounded() }
 
     /// The edge, towards the dots, of what shows at the camera's end of the column: the foot of the
@@ -404,6 +479,24 @@ struct SideColumn: Equatable {
     /// side. There the page's dot turns into Aa; its inner one, as wide, is tall enough for all
     /// three.
     var isShort: Bool { isOnItsSide && frame.height < 600 }
+
+    /// Whether the format bar comes up on on-screen keys, as on any other phone, in place of Aa
+    /// down the column: upright under a status bar grown for a Live Activity, Aa's panel, which the
+    /// system keeps out of the status bar's room and off the keys, had 108 points of its 186 over
+    /// Chinese keys, and stood squashed. Notes brings up its toolbar there (user, 2026-11-01). The
+    /// column clears out of the keys' way while they're up, as the dot bar goes up out of their way
+    /// on a phone on its side: over Chinese keys the bar's glass would stand 4 points under its top
+    /// button.
+    var formatsOnKeys: Bool {
+        !isOnItsSide && !isOnBigScreen && roomIsAtTop && freeTop + Self.panelHeight > frame.maxY - Self.tallKeys
+    }
+
+    /// How tall the keys stand at their tallest as usually seen upright on iPhone Duo's outer screen:
+    /// letters under a bar of candidates, as Chinese and Japanese keys have, 40 points over the 265 of
+    /// English ones, which have no bar over a page that corrects nothing.
+    static let tallKeys: CGFloat = 306
+    /// How tall Aa's format panel is on iPhone Duo's outer screen (see `FormatPanelView.Metrics`).
+    static let panelHeight: CGFloat = 186
 
     /// The column's top buttons, where a navigation bar's go: the first at the column's top, each
     /// next 12 points under the one before. With the keys up, the page's dot, Aa and the "…" button;

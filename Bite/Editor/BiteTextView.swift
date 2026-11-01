@@ -882,7 +882,7 @@ final class BiteTextView: UITextView {
     override func editMenu(for textRange: UITextRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
         var children = Self.trimmed(suggestedActions)
         #if !SHARE_EXTENSION
-        let keysHaveNoBar = [.pad, .vision].contains(traitCollection.userInterfaceIdiom) || window.map(SideColumn.isShown(in:)) == true
+        let keysHaveNoBar = [.pad, .vision].contains(traitCollection.userInterfaceIdiom) || window.map(SideColumn.keysHaveBar(in:)) == false
         if keysHaveNoBar, let links = linkMenu() {
             let edit = children.firstIndex { ($0 as? UIMenu)?.identifier == .standardEdit }
             children.insert(links, at: edit.map { $0 + 1 } ?? 0)

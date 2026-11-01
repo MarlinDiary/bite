@@ -146,6 +146,9 @@ final class ColumnMover {
     var holdsKeys: @MainActor () -> Bool = { true }
     /// Whether the dots were drawn in when last arranged.
     private var wasDrawnIn = false
+    /// Called as the column changes, the status bar grown for a Live Activity or back: the pager
+    /// brings the format bar up on the keys or takes it away (see `SideColumn.formatsOnKeys`).
+    var onColumnChange: (() -> Void)?
 
     /// Whether the dots are drawn in: the keys are up over them, and staying.
     var isDrawnIn: Bool {
@@ -263,17 +266,25 @@ struct ColumnHost<Dots: View, Dot: View, Menu: View>: UIViewControllerRepresenta
 
     private func lay(out controller: ColumnController<Dots, Dot, Menu>) {
         guard mover.column != column || mover.height != height || controller.column != column else { return }
-        // Folded part way, or opened flat, the screen otherwise the same: the dots move off the fold
-        // or back, in the keys' spring, no animation coming with the change.
-        let isFold = mover.height == height && mover.column.map { var was = $0; was.fold = column.fold; return was == column } == true
+        // Folded part way, or opened flat, or the status bar grown for a Live Activity, or back, the
+        // screen otherwise the same: the dots and buttons move off the fold or the status bar, or
+        // back, in the keys' spring, no animation coming with the change.
+        let eases = mover.height == height && mover.column.map { was in
+            var was = was
+            was.fold = column.fold
+            was.cameraRoom = column.cameraRoom
+            was.camera = column.camera
+            return was == column
+        } == true
         mover.column = column
         mover.height = height
         controller.column = column
-        if isFold {
+        if eases {
             UIView.animate(springDuration: ColumnMover.spring, bounce: 0) { mover.arrange() }
         } else {
             mover.arrange()
         }
+        mover.onColumnChange?()
     }
 }
 
@@ -467,11 +478,44 @@ final class ColumnController<Dots: View, Dot: View, Menu: View>: UIViewControlle
         #if !SHARE_EXTENSION
         placeFormat()
         #endif
-        if column.isShort {
+        let clearsOut = drawnIn && keysOnScreen && column.formatsOnKeys
+        if clearsOut {
+            clearOut(column)
+        } else if column.isShort {
             arrangeOnItsSide(column, byKeys: byKeys && animated)
         } else {
             arrangeUpright(column, keysOnScreen: keysOnScreen, byKeys: byKeys, animated: animated)
         }
+        // Out of sight under the keys, nothing of it to read.
+        menuHost.view.accessibilityElementsHidden = clearsOut
+    }
+
+    /// With the format bar on the keys, as under a status bar grown for a Live Activity (see
+    /// `SideColumn.formatsOnKeys`), the dots, Aa and the "…" button go down under the keys as they
+    /// come up, out of sight, and come back up out of them as they go, as the dot bar goes up out
+    /// of their way and back on a phone on its side.
+    private func clearOut(_ column: SideColumn) {
+        let left = column.frame.minX
+        let below = column.frame.height + 10
+        UIView.performWithoutAnimation {
+            dotsHost.view.alpha = 1
+            turnHost.view.alpha = 0
+        }
+        dotIsTurned = false
+        formatHasTurned = false
+        turnAtOnce(intoFormat: false)
+        // As they stand, at rest or drawn in to the page's dot: drawing in or opening out on the way
+        // down, the dots beside the page's showed.
+        placeDots(column, drawnIn: glass.frame.height < DotSwitcher.width)
+        glass.frame.origin.y = below
+        dotsHost.view.accessibilityElementsHidden = true
+        dotHost.view.alpha = 0
+        dotHost.view.accessibilityElementsHidden = true
+        formatGlass.frame = underFoot(column)
+        menuHost.view.frame = CGRect(x: column.button.minX - left, y: below, width: SideColumn.glass, height: SideColumn.glass)
+        #if !SHARE_EXTENSION
+        formatButton.accessibilityElementsHidden = true
+        #endif
     }
 
     /// Upright, drawn in, the page's dot is a button under the status bar. Aa comes up from under
@@ -493,6 +537,18 @@ final class ColumnController<Dots: View, Dot: View, Menu: View>: UIViewControlle
         dotIsTurned = false
         formatHasTurned = false
         turnAtOnce(intoFormat: false)
+        // Out from under the keys, where the column cleared out to for the format bar (see
+        // `clearOut`): the dots come back up as they're to stand, drawn in to the page's dot with
+        // the keys staying up as the Live Activity goes, Aa and the button coming up after it as
+        // out of the keys. Coming up all at once, the dots drawing in on the way, the three ran
+        // together.
+        let returns = animated && glass.frame.minY >= column.frame.height
+        if returns {
+            UIView.performWithoutAnimation {
+                placeDots(column, drawnIn: drawnIn)
+                glass.frame.origin.y = column.frame.height + 10
+            }
+        }
         placeDots(column, drawnIn: drawnIn)
         dotHost.view.alpha = drawnIn ? 1 : 0
         dotHost.view.accessibilityElementsHidden = !drawnIn
@@ -501,7 +557,7 @@ final class ColumnController<Dots: View, Dot: View, Menu: View>: UIViewControlle
         let slot = local(column.typingFormat)
         let underFoot = underFoot(column)
         let menuFrame = local(drawnIn ? column.typingMenu : column.button)
-        let entering = drawnIn && animated && byKeys
+        let entering = drawnIn && animated && (byKeys || returns)
         let parts = entering && !keysOnScreen
         if entering && !parts {
             UIView.performWithoutAnimation { formatGlass.frame = underFoot }

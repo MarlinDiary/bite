@@ -37,6 +37,9 @@ struct PagesView<Leading: View, Trailing: View>: View {
     @State private var windowControls: CGFloat = 0
     /// The side the system puts its bars down, on iPhone Duo (see `BarEdgeReader`).
     @State private var barEdge: HorizontalEdge?
+    /// What the system covers of the window, its status bar and camera, on iPhone Duo (see
+    /// `OcclusionReader`).
+    @State private var occlusions: [CGRect] = []
 
     var body: some View {
         @Bindable var store = store
@@ -54,7 +57,7 @@ struct PagesView<Leading: View, Trailing: View>: View {
             let column: SideColumn? = nil
             #else
             let column = SideColumn(safeTop: safeArea.top, safeLeading: safeArea.leading, safeTrailing: safeArea.trailing,
-                                    size: size, occlusions: occlusions(proxy), bigScreen: isBigScreen, folds: folds(proxy),
+                                    size: size, occlusions: occlusions, bigScreen: isBigScreen, folds: folds(proxy),
                                     barEdge: barEdge, screenFolds: screenFolds(proxy))
             #endif
             ZStack(alignment: .top) {
@@ -62,6 +65,8 @@ struct PagesView<Leading: View, Trailing: View>: View {
                     .ignoresSafeArea()
                 #if !SHARE_EXTENSION
                 BarEdgeReader { barEdge = $0 }
+                    .ignoresSafeArea()
+                OcclusionReader { occlusions = $0 }
                     .ignoresSafeArea()
                 #endif
 
@@ -130,13 +135,6 @@ struct PagesView<Leading: View, Trailing: View>: View {
         .background(Color(uiColor: .systemBackground))
         .tint(accent)
         .onChange(of: visiblePage) { washChangesAtOnce = false }
-    }
-
-    /// What the system covers of the screen, its status bar and camera, on the screen.
-    private func occlusions(_ proxy: GeometryProxy) -> [CGRect] {
-        guard #available(iOS 27.1, *) else { return [] }
-        let origin = CGPoint(x: proxy.safeAreaInsets.leading, y: proxy.safeAreaInsets.top)
-        return proxy.reservedRegions(kind: .occlusion).filter(\.isActive).map { $0.frame.offsetBy(dx: origin.x, dy: origin.y) }
     }
 
     /// Where the screen's folded part way, on the screen.

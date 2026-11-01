@@ -11,9 +11,17 @@ struct SideColumnTests {
     /// covers the camera and the status bar above it.
     private static let folded = CGSize(width: 466, height: 678)
     private static let covered = [CGRect(x: 399.67, y: 29.33, width: 37, height: 37), CGRect(x: 382, y: 0, width: 84, height: 174)]
+    /// The same with a Live Activity in the Dynamic Island, the status bar's room grown down the
+    /// column (measured on iPhone Duo with iOS 27.2, music playing).
+    private static let coveredByLiveActivity = [CGRect(x: 399.67, y: 29.33, width: 37, height: 37),
+                                                CGRect(x: 382, y: 0, width: 84, height: 264.33)]
 
     private func column() -> SideColumn? {
         SideColumn(safeTop: 0, safeLeading: 0, safeTrailing: 84, size: Self.folded, occlusions: Self.covered)
+    }
+
+    private func columnUnderLiveActivity() -> SideColumn? {
+        SideColumn(safeTop: 0, safeLeading: 0, safeTrailing: 84, size: Self.folded, occlusions: Self.coveredByLiveActivity)
     }
 
     /// The "…" button where the system puts a toolbar's last button there, in glass 48 points
@@ -33,6 +41,34 @@ struct SideColumnTests {
         #expect(column.thirdButton == CGRect(x: 394, y: 294, width: 48, height: 48))
         #expect(column.titleMiddle == 29.33 + 37 / 2)
         #expect(!column.isOnItsSide)
+    }
+
+    /// A Live Activity in the Dynamic Island grows the status bar's room down the column: Aa's panel,
+    /// which the system keeps between the room and the keys, would stand squashed there, so the
+    /// format bar comes up on the keys, as Notes' toolbar does, and the column clears out of their
+    /// way (user, 2026-11-01). With no Live Activity, or on its side, Aa stays down the column. The
+    /// buttons start clear of the room, to the whole point, for Aa's toolbar moves Aa off its glass
+    /// to keep clear of any of it. The dots stand midway between the grown status bar and the button.
+    @Test func underAStatusBarGrownForALiveActivityTheFormatBarComesUp() throws {
+        let plain = try #require(column())
+        #expect(!plain.formatsOnKeys)
+        // Aa's panel fits between the status bar and Chinese keys.
+        #expect(plain.freeTop + SideColumn.panelHeight <= 678 - 305.5)
+        #expect(SideColumn.panelHeight == FormatPanelView.Metrics.compact.size.height)
+        let column = try #require(columnUnderLiveActivity())
+        #expect(column.formatsOnKeys)
+        #expect(!column.isShort)
+        #expect(column.firstButton == CGRect(x: 394, y: 265, width: 48, height: 48))
+        #expect(!column.firstButton.intersects(column.cameraRoom))
+        #expect(column.cameraEnd == 264.33 - 23)
+        #expect(column.dots == CGRect(x: 394, y: 311, width: 48, height: DotSwitcher.width))
+        #expect(column.drawsIn(keys: 678 - 412, height: 678, onScreen: true))
+        let onItsSide = try #require(SideColumn(safeTop: 0, safeLeading: 84, safeTrailing: 0, size: CGSize(width: 678, height: 466),
+                                                occlusions: [CGRect(x: 29.33, y: 29.33, width: 37, height: 37), CGRect(x: 0, y: 0, width: 84, height: 82)]))
+        #expect(!onItsSide.formatsOnKeys)
+        let inner = try #require(SideColumn(safeTop: 0, safeLeading: 0, safeTrailing: 84, size: CGSize(width: 951, height: 669),
+                                            occlusions: [CGRect(x: 867, y: 0, width: 84, height: 124)], bigScreen: true))
+        #expect(!inner.formatsOnKeys)
     }
 
     /// On its side the column is on the camera's side: on the left with the camera at its top, its
@@ -246,6 +282,19 @@ struct SideColumnTests {
         #expect(controller.glassIsMovingForTesting)
         #expect(controller.formatIsMovingForTesting)
         #expect(controller.menuIsMovingForTesting)
+        // A Live Activity coming while the keys are up: the format bar comes up on them, and the
+        // page's dot, Aa and the button go down under them, out of sight; and back as it goes.
+        let grown = try #require(columnUnderLiveActivity())
+        mover.attachForTesting(controller, column: grown, height: 678)
+        #expect(mover.isDrawnIn)
+        #expect(controller.glassFrameForTesting == CGRect(x: grown.firstButton.minX - left, y: 678 + 10, width: 48, height: 48))
+        #expect(controller.formatFrameForTesting == CGRect(x: grown.secondButton.minX - left, y: 678 + 10, width: 48, height: 48))
+        #expect(controller.menuFrameForTesting == CGRect(x: grown.button.minX - left, y: 678 + 10, width: 48, height: 48))
+        mover.attachForTesting(controller, column: column, height: 678)
+        #expect(mover.isDrawnIn)
+        #expect(controller.glassFrameForTesting == column.firstButton.offsetBy(dx: -left, dy: 0))
+        #expect(controller.formatFrameForTesting == column.secondButton.offsetBy(dx: -left, dy: 0))
+        #expect(controller.menuFrameForTesting == column.thirdButton.offsetBy(dx: -left, dy: 0))
         pager.controllers[2].textView.resignFirstResponder()
         container.keysForTesting = 0
         container.setNeedsLayout()
